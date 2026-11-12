@@ -1,0 +1,1233 @@
+cartridge "TAG/JOHN FEDOR/1989"
+' TAG - John Fedor, ReRUN 1989 Special Issue (C64, BASIC loader + ML).
+' Music by Ken Fountain. ColecoVision port in Amy.
+'
+' The game (two players, one controller each): a ball bounces round a walled
+' field with a score box in the middle. Touch the ball with your ring to
+' pick it up, carry it into the other side's goal (a gap in the side wall):
+' red (controller 1) scores on the right, blue (controller 2) on the left.
+' Touch the carrier with your ring to tag: the ball goes free, the carrier
+' freezes for 32 frames and can't pick the ball up for 48, the tagger for
+' 16. The button lets the ball go (then 32 frames before you can pick it up
+' again). First to 5 goals wins.
+'
+' Rules taken from the original's ML (orig/tag_c000.bin, $C000-$C9FF; see
+' README.md): every position below is in the ORIGINAL's sprite coordinates
+' (C64 pixels, X 0-343, Y 0-255) and every edge, gap and timer is the
+' original's number. Only the drawing maps them onto the Coleco screen
+' (screen mapping, DrawSprites). The ball moves 1 px a frame on both axes
+' (the C64 moved it in its 60 Hz IRQ); the players 13 px every 5 frames
+' (traced: 3 px per jsc64 frame against 1.15 IRQs = 2.6 px per IRQ).
+
+const TWallh = 128
+const TWallv = 129
+const TPosttop = 130
+const TPostbot = 131
+const TNet = 132
+const TFloor = 133
+const TDot = 134
+const TBxtl = 135
+const TBxt = 136
+const TBxtr = 137
+const TBxl = 138
+const TBxr = 139
+const TBxbl = 140
+const TBxb = 141
+const TBxbr = 142
+const TPanel = 143
+const TLT00 = 144
+const TLT01 = 145
+const TLT02 = 146
+const TLT10 = 147
+const TLT11 = 148
+const TLT12 = 149
+const TLT20 = 150
+const TLT21 = 151
+const TLT22 = 152
+const TLT30 = 153
+const TLT31 = 154
+const TLT32 = 155
+const TLA00 = 156
+const TLA01 = 157
+const TLA02 = 158
+const TLA10 = 159
+const TLA11 = 160
+const TLA12 = 161
+const TLA20 = 162
+const TLA21 = 163
+const TLA22 = 164
+const TLA30 = 165
+const TLA31 = 166
+const TLA32 = 167
+const TLG00 = 168
+const TLG01 = 169
+const TLG02 = 170
+const TLG10 = 171
+const TLG11 = 172
+const TLG12 = 173
+const TLG20 = 174
+const TLG21 = 175
+const TLG22 = 176
+const TLG30 = 177
+const TLG31 = 178
+const TLG32 = 179
+const SRing = 0
+const SBall = 4
+const NTiles8 = 416
+const SprBytes = 64
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndBounce = 6
+const SndTag = 7
+const SndThrow = 8
+const SndGrab = 9
+const SndGoal = 10
+const TuneFrames = 1296
+const TxtCredits = 0
+const TxtHow1 = 1
+const TxtHow2 = 2
+const TxtHow3 = 3
+const NSpr = 3
+const HideY = 192
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StGoal = 5
+const StOver = 9
+const WinGoals = 5
+' colours: red / light red, dark blue / light blue, yellow ball
+const CRed = 8
+const CRedL = 9
+const CBlue = 4
+const CBlueL = 5
+const CBall = 11
+
+' positions in the original's sprite coordinates
+u16 X0 = 0
+u16 X1 = 0
+u16 X2 = 0
+u8 Y0 = 0
+u8 Y1 = 0
+u8 Y2 = 0
+' ball direction (0 = left/up, 1 = right/down); holder 0 none, 1 red, 2 blue
+u8 Dx = 0
+u8 Dy = 0
+u8 H = 0
+' timers, as the original's $340-$343: 1/2 = red/blue frozen, 3/4 = red/blue
+' may not pick the ball up
+u8 Lk[5]
+u8 Sc1 = 0
+u8 Sc2 = 0
+u8 Acc = 0
+u8 Mask = 0
+u8 Scorer = 0
+u8 Winner = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' the player being moved
+u8 P = 0
+u8 Jp = 0
+u16 Cx = 0
+u8 Cy = 0
+u8 Ok = 0
+' scratch
+u16 D16 = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Ax = 0
+u8 Ay = 0
+' sprite screen positions
+u8 Sx = 0
+u8 Sy = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if State = StPlay then goto play_loop
+  ' a goal: the scorer slides into the net, the score box counts it
+  GoalSlide
+  if Winner = 0 then
+    print at 9,4, "GOAL FOR "
+    if Scorer = 1 then
+      print at 18,4, "RED"
+    else
+      print at 18,4, "BLUE"
+    end if
+    print at 8,18, "PRESS THE BUTTON"
+    Rearm
+    wait 20 frames
+    WaitPress
+    fill TFloor count 26 at 3,4
+    fill TFloor count 26 at 3,18
+    NewRound
+    goto play_loop
+  end if
+
+  GameOver
+  State = StOver
+  Rearm
+  WaitPress
+  StopTune
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (the original's numbers)
+
+' 16-bit xorshift: stepped every title frame
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub NewGame:
+  Sc1 = 0
+  Sc2 = 0
+  Winner = 0
+  DrawPlay
+  NewRound
+  return
+end sub
+
+' $C58B: ball at (173,100) with a random direction, red at (28,137), blue
+' at (320,137), nobody holds the ball, every timer 0
+sub NewRound:
+  X0 = 173
+  Y0 = 100
+  X1 = 28
+  Y1 = 137
+  X2 = 320
+  Y2 = 137
+  Rand
+  W16 = Rs & 1
+  Dx = W16
+  W16 = Rs & 2
+  Dy = 0
+  if W16 > 0 then Dy = 1
+  H = 0
+  fill array Lk with 0
+  Acc = 0
+  Mask = 0
+  Scorer = 0
+  DrawSprites
+  State = StPlay
+  return
+end sub
+
+' one frame: the players' steps (main loop), then the ball, the timers and
+' the collisions (the original's IRQ)
+sub PlayStep:
+  Acc += 13
+ps_steps:
+  if Acc >= 5 then
+    Acc -= 5
+    P = 1
+    Jp = J1
+    PlayerStep
+    P = 2
+    Jp = J2
+    PlayerStep
+    ' $C23B: blue in the left goal mouth, red in the right one
+    if X2 = 27 then
+      Scorer = 2
+      State = StGoal
+      return
+    end if
+    if X1 = 321 then
+      Scorer = 1
+      State = StGoal
+      return
+    end if
+    goto ps_steps
+  end if
+  BallStep
+  for J = 1 to 4
+    if Lk[J] > 0 then
+      T = Lk[J]
+      dec T
+      Lk[J] = T
+    end if
+  next
+  Collide
+  DrawSprites
+  return
+end sub
+
+' $C478: one step of player P with stick bits Jp (1 up 2 down 4 left 8 right
+' 16 button)
+sub PlayerStep:
+  if P = 1 then
+    Cx = X1
+    Cy = Y1
+  else
+    Cx = X2
+    Cy = Y2
+  end if
+  if Lk[P] = 0 then
+    V = Jp & 1
+    if V > 0 then dec Cy
+    V = Jp & 2
+    if V > 0 then inc Cy
+    V = Jp & 4
+    if V > 0 then Cx -= 1
+    V = Jp & 8
+    if V > 0 then Cx += 1
+    if Cy < 56 then inc Cy
+    if Cy >= 227 then dec Cy
+    if Cx < 256 then
+      ' the score box: x 107-239, y 119-155
+      if Cx = 107 then
+        if Cy >= 119 then
+          if Cy < 156 then Cx -= 1
+        end if
+      end if
+      if Cx = 239 then
+        if Cy >= 119 then
+          if Cy < 156 then Cx += 1
+        end if
+      end if
+      if Cy = 119 then
+        if Cx >= 107 then
+          if Cx < 240 then dec Cy
+        end if
+      end if
+      if Cy = 155 then
+        if Cx >= 107 then
+          if Cx < 240 then inc Cy
+        end if
+      end if
+      ' the left wall; its goal mouth (y 134-140) lets in only blue with
+      ' the ball
+      if Cx < 28 then
+        Ok = 0
+        if Cy >= 134 then
+          if Cy < 141 then
+            if H = P then
+              if P = 2 then Ok = 1
+            end if
+          end if
+        end if
+        if Ok = 0 then Cx += 1
+      end if
+    else
+      ' the right wall (x 321); its goal mouth lets in only red with the ball
+      if Cx >= 321 then
+        Ok = 0
+        if Cy >= 134 then
+          if Cy < 141 then
+            if H = P then
+              if P = 1 then Ok = 1
+            end if
+          end if
+        end if
+        if Ok = 0 then Cx -= 1
+      end if
+    end if
+    if P = 1 then
+      X1 = Cx
+      Y1 = Cy
+    else
+      X2 = Cx
+      Y2 = Cy
+    end if
+  end if
+  ' $C555: the carrier's button lets the ball go
+  if H = P then
+    V = Jp & 16
+    if V > 0 then
+      K = P + 2
+      Lk[K] = 32
+      H = 0
+      play sound SndThrow
+    end if
+  end if
+  ' the ball rides with its carrier
+  if H = P then
+    X0 = Cx
+    Y0 = Cy
+  end if
+  return
+end sub
+
+' $C30F: the free ball, 1 px a frame on each axis, bouncing off the walls
+' (y 54 / 228, x 26 / 322) and the score box (x 108-238, y 120-154)
+sub BallStep:
+  if H > 0 then return
+  if Dx = 0 then
+    X0 -= 1
+  else
+    X0 += 1
+  end if
+  if Dy = 0 then
+    dec Y0
+  else
+    inc Y0
+  end if
+  K = 0
+  if Y0 = 54 then
+    Dy = 1
+    K = 1
+  end if
+  if Y0 = 228 then
+    Dy = 0
+    K = 1
+  end if
+  if X0 < 256 then
+    if X0 = 26 then
+      Dx = 1
+      K = 1
+    end if
+    if Y0 >= 120 then
+      if Y0 < 155 then
+        if X0 = 108 then
+          Dx = 0
+          K = 1
+        end if
+        if X0 = 238 then
+          Dx = 1
+          K = 1
+        end if
+      end if
+    end if
+    if X0 >= 108 then
+      if X0 < 239 then
+        if Y0 = 120 then
+          Dy = 0
+          K = 1
+        end if
+        if Y0 = 154 then
+          Dy = 1
+          K = 1
+        end if
+      end if
+    end if
+  else
+    if X0 = 322 then
+      Dx = 0
+      K = 1
+    end if
+  end if
+  if K = 1 then play sound SndBounce
+  return
+end sub
+
+' the C64's sprite-sprite collision bits (1 ball, 2 red, 4 blue), from the
+' sprites' shapes: rings 10 x 10 at (x+6, y+4), the ball 6 x 6 at (x+8, y+6)
+sub Collide:
+  Mask = 0
+  ' ring against ring: boxes overlap, round corners don't touch
+  D16 = X1 - X2
+  if X1 < X2 then D16 = X2 - X1
+  if D16 <= 9 then
+    Ax = D16
+    Ay = Y1 - Y2
+    if Y1 < Y2 then Ay = Y2 - Y1
+    if Ay <= 9 then
+      Ok = 1
+      if Ax >= 8 then
+        if Ay >= 8 then Ok = 0
+      end if
+      if Ok = 1 then Mask = 6
+    end if
+  end if
+  if H = 0 then
+    Cx = X1
+    Cy = Y1
+    BallTouch
+    if Ok = 1 then Mask = Mask | 3
+    Cx = X2
+    Cy = Y2
+    BallTouch
+    if Ok = 1 then Mask = Mask | 5
+  end if
+  ' $C5A2: a tag when the rings touch and someone carries the ball
+  V = Mask & 6
+  if V = 6 then
+    if H > 0 then
+      if H = 1 then
+        Lk[4] = 16
+        Lk[3] = 48
+        Lk[1] = 32
+      else
+        Lk[3] = 16
+        Lk[4] = 48
+        Lk[2] = 32
+      end if
+      H = 0
+      play sound SndTag
+    end if
+    return
+  end if
+  if Mask = 3 then
+    if Lk[3] = 0 then
+      H = 1
+      play sound SndGrab
+    end if
+  end if
+  if Mask = 5 then
+    if Lk[4] = 0 then
+      H = 2
+      play sound SndGrab
+    end if
+  end if
+  return
+end sub
+
+' does the free ball touch the ring at (Cx, Cy)? Ok = 1 if so (the ball
+' sitting exactly in the ring's hole touches nothing)
+sub BallTouch:
+  Ok = 0
+  D16 = X0 - Cx
+  if X0 < Cx then D16 = Cx - X0
+  if D16 > 7 then return
+  Ax = D16
+  Ay = Y0 - Cy
+  if Y0 < Cy then Ay = Cy - Y0
+  if Ay > 7 then return
+  Ok = 1
+  if Ax = 0 then
+    if Ay = 0 then Ok = 0
+  end if
+  return
+end sub
+
+' $C23B: the scorer (and the ball) slide 9 px into the goal, one step a
+' frame, then the score counts
+sub GoalSlide:
+  play sound SndGoal
+  for K = 1 to 9
+    Frame1
+    if Scorer = 1 then
+      X1 += 1
+      X0 += 1
+    else
+      X2 -= 1
+      X0 -= 1
+    end if
+    DrawSprites
+  next
+  if Scorer = 1 then
+    inc Sc1
+    if Sc1 >= WinGoals then Winner = 1
+  else
+    inc Sc2
+    if Sc2 >= WinGoals then Winner = 2
+  end if
+  ShowScores
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing. Screen mapping: the original's field (sprite x 32-335, y 58-241,
+' inside its one-character walls) onto columns 3-28, rows 2-21: sprite x =
+' 12 + (x - 16) * 175/256, sprite y = 12 + (y - 54) * 7/8. A ring's
+' pattern starts at column 4 / row 3, the ball's at column 6 / row 5, so a
+' ring at x 28-320 shows at pixels 24-230 and the ball inside them too.
+
+sub MapXY:
+  D16 = Cx - 16
+  D16 = D16 * 175
+  D16 = D16 >> 8
+  Sx = D16
+  Sx += 12
+  D16 = Cy - 54
+  D16 = D16 * 7
+  D16 = D16 >> 3
+  Sy = D16
+  Sy += 12
+  return
+end sub
+
+sub DrawSprites:
+  Cx = X0
+  Cy = Y0
+  MapXY
+  set sprite 0 to Sy,Sx,SBall,CBall
+  Cx = X1
+  Cy = Y1
+  MapXY
+  C = CRed
+  if Lk[3] > 0 then C = CRedL
+  set sprite 1 to Sy,Sx,SRing,C
+  Cx = X2
+  Cy = Y2
+  MapXY
+  C = CBlue
+  if Lk[4] > 0 then C = CBlueL
+  set sprite 2 to Sy,Sx,SRing,C
+  update sprites
+  return
+end sub
+
+sub ShowScores:
+  print at 11,10, "PLAYER 1"
+  NumU = Sc1
+  print at 20,10, digits$(NumU, 1)
+  print at 11,12, "PLAYER 2"
+  NumU = Sc2
+  print at 20,12, digits$(NumU, 1)
+  return
+end sub
+
+' the walls with their goal mouths (rows 11-12 of columns 2 and 29)
+sub DrawWalls:
+  fill TWallh count 28 at 2,1
+  fill TWallh count 28 at 2,22
+  for J = 2 to 21
+    T = TWallv
+    if J = 10 then T = TPosttop
+    if J = 11 then T = TNet
+    if J = 12 then T = TNet
+    if J = 13 then T = TPostbot
+    put char T at 2,J
+    put char T at 29,J
+  next
+  return
+end sub
+
+sub DrawField:
+  DrawWalls
+  for J = 2 to 21
+    fill TFloor count 26 at 3,J
+  next
+  put char TDot at 6,4
+  put char TDot at 24,6
+  put char TDot at 14,17
+  put char TDot at 5,19
+  put char TDot at 26,16
+  put char TDot at 17,3
+  ' the score box (an obstacle): frame lines where x 120-247, y 130-161
+  ' map to
+  put char TBxtl at 10,9
+  fill TBxt count 10 at 11,9
+  put char TBxtr at 21,9
+  for J = 10 to 12
+    put char TBxl at 10,J
+    put char TBxr at 21,J
+  next
+  put char TBxbl at 10,13
+  fill TBxb count 10 at 11,13
+  put char TBxbr at 21,13
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  DrawField
+  ShowScores
+  ShowScreen
+  return
+end sub
+
+sub GameOver:
+  if Winner = 1 then
+    print at 10,4, "RED WINS!"
+  else
+    print at 10,4, "BLUE WINS!"
+  end if
+  print at 8,18, "PRESS THE BUTTON"
+  ' the original plays its tune again when a player reaches 5
+  PlayTune
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+sub PlayTune:
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  return
+end sub
+
+sub StopTune:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  return
+end sub
+
+' a new press of either button (or 30 s alone) ends the wait
+sub WaitPress:
+  WasBtn = 16
+  Waited = 0
+wp_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then Press = 1
+  if Press = 0 then goto wp_loop
+  return
+end sub
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then StopTune
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' J1 / J2 = each controller (1 up, 2 down, 4 left, 8 right, 16 button);
+' for the menus: Jk = directions held on either, Edge = newly pressed,
+' Press = a button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TileColZ to vram.color + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  decompress zx0 TileColZ to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the big TAG, the author, the menu (cursor back on START), the
+' original's tune once
+sub TitlePage:
+  NewScreen
+  fill TWallh count 28 at 2,1
+  fill TWallh count 28 at 2,22
+  C = 3
+  for J = 0 to 3
+    T = J * 3
+    K = TLT00 + T
+    put char K at 9,C
+    inc K
+    put char K at 10,C
+    inc K
+    put char K at 11,C
+    K = TLA00 + T
+    put char K at 14,C
+    inc K
+    put char K at 15,C
+    inc K
+    put char K at 16,C
+    K = TLG00 + T
+    put char K at 19,C
+    inc K
+    put char K at 20,C
+    inc K
+    put char K at 21,C
+    inc C
+  next
+  print at 9,8, "BY JOHN FEDOR"
+  print at 12,12, "START"
+  print at 12,14, "HOW TO PLAY"
+  print at 12,16, "CREDITS"
+  print at 6,19, "MUSIC BY KEN FOUNTAIN"
+  Menu = 0
+  ShowMenu
+  set sprite 0 to 101,124,SBall,CBall
+  set sprite 1 to 99,40,SRing,CRed
+  set sprite 2 to 99,200,SRing,CBlue
+  update sprites
+  ShowScreen
+  State = StTitle
+  PlayTune
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  StopTune
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,12
+  put char 32 at 10,14
+  put char 32 at 10,16
+  C = Menu << 1
+  C += 12
+  put char 62 at 10,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 13,2, "CREDITS"
+  TxT = TxtCredits
+  TxX0 = 3
+  TxY = 5
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' a HOW TO PLAY page header and its text (TxT) from row 3, airy
+sub HowPage:
+  NewScreen
+  print at 8,1, "HOW TO PLAY  "
+  NumU = Page
+  print at 21,1, digits$(NumU, 1)
+  print at 22,1, "/3"
+  TxX0 = 3
+  TxY = 3
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StHow
+  return
+end sub
+
+' HOW TO PLAY: three pages, each with a picture made of the game's own
+' tiles and sprites
+sub HowTo:
+  Page = 1
+  TxT = TxtHow1
+  HowPage
+  ' the picture: red ring next to the ball, blue waiting
+  fill TWallh count 18 at 7,12
+  fill TWallh count 18 at 7,18
+  set sprite 0 to 115,108,SBall,CBall
+  set sprite 1 to 113,92,SRing,CRed
+  set sprite 2 to 113,170,SRing,CBlue
+  update sprites
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  Page = 2
+  TxT = TxtHow2
+  HowPage
+  ' the picture: the right goal mouth, red carrying the ball into it
+  for J = 10 to 17
+    T = TWallv
+    if J = 12 then T = TPosttop
+    if J = 13 then T = TNet
+    if J = 14 then T = TNet
+    if J = 15 then T = TPostbot
+    put char T at 20,J
+  next
+  print at 14,13, "RED"
+  set sprite 0 to 103,148,SBall,CBall
+  set sprite 1 to 103,148,SRing,CRed
+  set sprite 2 to 113,64,SRing,CBlue
+  update sprites
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  Page = 3
+  TxT = TxtHow3
+  HowPage
+  ' the picture: blue tags the carrier (red turns light, the ball is free)
+  fill TWallh count 18 at 7,14
+  fill TWallh count 18 at 7,19
+  set sprite 0 to 125,136,SBall,CBall
+  set sprite 1 to 131,100,SRing,CRedL
+  set sprite 2 to 131,107,SRing,CBlue
+  update sprites
+  PageWait
+ht_end:
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $A2,$10,$00,$40,$8B,$00,$04,$EE,$F1,$F6,$EA,$E7,$F0,$F9,$FE,$E0,$83,$88,$AA,$22,$AA,$EE,$F8,$00
+  $FE,$1F,$BD,$86,$FE,$25,$07,$00,$22,$07,$04,$5A,$08,$5E,$EA,$F0,$B8,$EF,$DA,$E1,$94,$FE,$A7,$81
+  $85,$D8,$F4,$D0,$1E,$FF,$6A,$03,$07,$F0,$E0,$AA,$C0,$00,$AA,$C3,$81,$A9,$00,$AA,$C0,$E0,$F0,$07
+  $A9,$03,$C0,$78,$B0,$38,$FE,$F0,$D0,$19,$97,$03,$F0,$E0,$FA,$1A,$40,$FF,$F0,$47,$F0,$C7,$A0,$E7
+  $19,$F0,$C5,$40,$DF,$CF,$8E,$F7,$70,$AF,$4D,$07,$B6,$D5,$55,$60
+end data
+data TileColZ bytes
+  $AE,$EF,$0E,$FA,$3C,$F0,$60,$E6,$0B,$0A,$0A,$0B,$E0,$39,$A1,$1A,$FC,$B8,$01,$FE,$6E,$41,$E8,$4A
+  $F1,$5B,$0F,$CA,$DE,$1F,$E0,$FE,$7C,$B8,$3A,$E2,$BA,$1F,$FE,$96,$04,$9A,$08,$01,$69,$08,$A7,$18
+  $DF,$E0,$FE,$69,$19,$69,$01,$5A,$1A,$5A,$01,$56,$96,$1B,$96,$01,$A8,$81,$18,$6A,$08,$9F,$81,$E0
+  $E7,$DC,$C6,$50,$3D,$09,$09,$E0,$F7,$50,$3C,$FF,$30,$7D,$50,$7D,$E0,$F8,$67,$40,$38,$20,$36,$90
+  $07,$87,$F0,$65,$90,$F5,$40,$B8,$B1,$A8,$99,$B1,$0B,$0B,$FF,$E2,$E0,$D5,$55,$60
+end data
+data SpritePatZ bytes
+  $88,$00,$22,$03,$07,$0C,$08,$09,$0C,$07,$03,$00,$20,$88,$C0,$E0,$30,$10,$20,$30,$E0,$C0,$00,$22
+  $01,$03,$2F,$01,$EE,$E0,$BC,$BD,$E0,$C4,$D5,$55,$60
+end data
+
+data TxD_0 bytes
+  $03,$54,$48,$45,$02,$42,$59,$03,$41,$4D,$59,$04,$42,$41,$4C,$4C,$07,$43,$41,$52,$52,$49,$45,$52
+  $02,$49,$53,$02,$4F,$4E,$06,$53,$43,$4F,$52,$45,$53,$02,$54,$4F,$03,$54,$57,$4F,$0B,$28,$41,$4E
+  $54,$48,$52,$4F,$50,$49,$43,$29,$04,$31,$39,$38,$39,$04,$32,$30,$32,$36,$01,$35,$01,$41,$03,$41
+  $4E,$44
+end data
+data TxD_1 bytes
+  $09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$04,$42,$4C,$55,$45,$03,$42,$4F,$58,$07,$42,$55,$54,$54
+  $4F,$4E,$3A,$05,$43,$41,$52,$52,$59,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56
+  $49,$53,$49,$4F,$4E,$05,$46,$45,$44,$4F,$52,$05,$46,$49,$52,$53,$54,$08,$46,$4F,$55,$4E,$54,$41
+  $49,$4E,$04,$46,$52,$45,$45,$07,$46,$52,$4F,$5A,$45,$4E,$2E,$03,$47,$4F,$2E,$05,$47,$4F,$41,$4C
+  $2E,$05,$47,$4F,$41,$4C,$53,$04,$47,$4F,$45,$53
+end data
+data TxD_2 bytes
+  $04,$47,$52,$41,$42,$02,$49,$4E,$04,$49,$4E,$54,$4F,$05,$49,$53,$53,$55,$45,$02,$49,$54,$03,$49
+  $54,$2C,$04,$4A,$4F,$48,$4E,$03,$4B,$45,$4E,$05,$4C,$45,$46,$54,$2E,$03,$4C,$45,$54,$05,$4D,$55
+  $53,$49,$43,$05,$4F,$54,$48,$45,$52,$08,$50,$4C,$41,$59,$45,$52,$53,$2C,$04,$50,$4F,$52,$54,$03
+  $52,$45,$44,$05,$52,$45,$52,$55,$4E
+end data
+data TxD_3 bytes
+  $06,$52,$49,$47,$48,$54,$2C,$06,$52,$49,$4E,$47,$53,$2E,$05,$53,$43,$4F,$52,$45,$06,$53,$49,$44
+  $45,$27,$53,$07,$53,$50,$45,$43,$49,$41,$4C,$03,$54,$41,$47,$04,$54,$41,$47,$3A,$04,$54,$48,$45
+  $4E,$05,$54,$4F,$55,$43,$48,$08,$54,$4F,$55,$43,$48,$49,$4E,$47,$05,$57,$41,$4C,$4C,$2E,$05,$57
+  $49,$4E,$53,$2E
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3
+end data
+data TxM_Credits bytes
+  $35,$01,$26,$17,$FE,$2F,$0B,$34,$23,$FE,$2A,$01,$27,$19,$FE,$16,$2D,$21,$02,$FE,$01,$15,$0A,$FE
+  $02,$01,$02,$10,$0C,$FF
+end data
+data TxM_How1 bytes
+  $09,$2C,$09,$31,$FE,$20,$00,$03,$01,$39,$FE,$25,$37,$14,$24,$22,$FE,$00,$2B,$33,$1D,$FF
+end data
+data TxM_How2 bytes
+  $2E,$07,$06,$00,$30,$FE,$11,$07,$06,$00,$28,$FE,$18,$08,$0D,$1E,$3B,$FF
+end data
+data TxM_How3 bytes
+  $38,$00,$04,$08,$36,$FE,$00,$03,$1F,$1A,$0F,$FE,$00,$04,$05,$1B,$FE,$13,$29,$00,$03,$1C,$FE,$00
+  $32,$12,$05,$0E,$3A,$FF
+end data
+data TxMsg words
+  @TxM_Credits, @TxM_How1, @TxM_How2, @TxM_How3
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScBounce:
+    db $40,$7F,$20,$01,$40,$A9,$40,$02,$50
+ScTag:
+    db $00,$00,$15,$03,$00,$00,$36,$04,$00,$00,$56,$05,$10
+ScThrow:
+    db $40,$D6,$20,$02,$40,$8F,$30,$02,$40,$6B,$40,$03,$50
+ScGrab:
+    db $40,$55,$30,$02,$40,$40,$30,$02,$50
+ScGoal:
+    db $40,$D6,$10,$05,$40,$AA,$10,$05,$40,$8F,$10,$05,$40,$6B,$20,$0C,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScBounce,$705D
+    dw ScTag,$7053
+    dw ScThrow,$705D
+    dw ScGrab,$705D
+    dw ScGoal,$705D
+; TAG title tune (Ken Fountain, from the C64 original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$10,$12,$13,$12,$0E,$12,$13,$12,$10,$12,$13,$15
+    db $17,$01,$01,$01,$10,$12,$13,$12,$10,$12,$13,$12,$10,$12,$13,$15
+    db $17,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$1A,$1C,$1C,$17,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$1A,$1C,$1C,$17,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$1A,$1C,$1C,$17,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00
+    db $17,$00,$17,$01,$10,$12,$13,$12,$10,$12,$13,$12,$10,$12,$13,$15
+    db $17,$01,$01,$01,$10,$12,$13,$12,$10,$12,$13,$12,$10,$12,$13,$15
+    db $17,$01,$01,$01,$10,$12,$13,$12,$10,$12,$13,$12,$10,$12,$13,$15
+    db $17,$01,$01,$01,$10,$12,$13,$12,$10,$12,$13,$12,$10,$12,$13,$12
+    db $10,$01,$01,$01,$00,$00
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01
+    db $0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01
+    db $0B,$01,$0E,$01,$10,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$17
+    db $01,$13,$15,$15,$10,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$17
+    db $01,$13,$15,$15,$10,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$17
+    db $01,$13,$15,$15,$10,$01,$01,$01,$01,$01,$01,$01,$00,$00,$10,$00
+    db $10,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01
+    db $0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01
+    db $0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01
+    db $0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01,$0E,$01,$0B,$01
+    db $01,$01,$00,$00,$00,$00
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$33,$0E,$14,$66
+    db $22,$02,$33,$0E,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22
+    db $02,$33,$0E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$22,$02,$33,$0E,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$33,$0E,$14,$66,$22
+    db $02,$33,$0E,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66
+    db $22,$02,$33,$0E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$22
+    db $02,$33,$0E,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$04,$14,$66,$02,$45,$05,$13,$11,$02,$33,$01,$14,$66
+    db $22,$02,$45,$05,$13,$11,$02,$33,$03,$14,$66,$02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$04,$14,$66,$02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$03,$14,$66,$02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$04,$14,$66
+    db $02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$03,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$01,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$22,$02,$45,$05,$13,$11,$2B,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$04,$14,$66,$02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$04,$14,$66,$02,$36,$04,$13,$11,$02,$33,$02,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$09,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$33,$0E,$14,$66,$22
+    db $02,$33,$0E,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$33,$0E,$14,$66
+    db $22,$02,$33,$0E,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$33,$0E,$14,$66,$22
+    db $02,$33,$0E,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$22,$02,$33,$0E,$14,$66
+    db $22,$02,$33,$0E,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$09,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66
+    db $22,$02,$33,$0E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$22
+    db $02,$33,$0E,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$33,$0E,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$22,$02,$33,$0E,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$09,$14,$66,$32,$02,$36,$04,$13,$11,$2C
+    db $10
+ScTuneBassPitch:
+    db $C0,$5A,$F0,$10,$C0,$4C,$F0,$10,$C0,$5A,$F0,$10,$C0,$4C,$F0,$14,$C0,$5A,$F0,$0C,$C0,$4C,$F0,$15
+    db $C0,$5A,$F0,$0B,$C0,$4C,$F0,$14,$C0,$5A,$F0,$0C,$C0,$4C,$F0,$10,$C0,$5A,$F0,$10,$C0,$4C,$F0,$14
+    db $C0,$5A,$F0,$0C,$C0,$4C,$F0,$15,$C0,$5A,$F0,$0B,$C0,$4C,$F0,$14,$C0,$44,$F0,$60,$C0,$2D,$F0,$11
+    db $C0,$33,$F0,$0F,$C0,$44,$F0,$60,$C0,$2D,$F0,$11,$C0,$33,$F0,$0F,$C0,$44,$F0,$60,$C0,$2D,$F0,$11
+    db $C0,$33,$F0,$0F,$C0,$44,$F0,$70,$C0,$5A,$F0,$11,$C0,$4C,$F0,$0F,$C0,$5A,$F0,$10,$C0,$4C,$F0,$11
+    db $C0,$5A,$F0,$0F,$C0,$4C,$F0,$0C,$C0,$5A,$F0,$10,$C0,$4C,$F0,$10,$C0,$5A,$F0,$14,$C0,$4C,$F0,$0C
+    db $C0,$5A,$F0,$10,$C0,$4C,$F0,$10,$C0,$5A,$F0,$14,$C0,$4C,$F0,$0C,$C0,$5A,$F0,$10,$C0,$4C,$F0,$10
+    db $C0,$5A,$F0,$14,$C0,$4C,$F0,$0C,$C0,$5A,$F0,$10,$C0,$4C,$F0,$10,$C0,$5A,$F0,$15,$C0,$4C,$F0,$0B
+    db $C0,$5A,$F0,$15,$C0,$4C,$F0,$0B,$C0,$5A,$F0,$15,$C0,$4C,$F0,$0B,$C0,$5A,$F0,$10,$C0,$4C,$F0,$10
+    db $C0,$5A,$F0,$15,$C0,$4C,$F0,$0B,$C0,$5A,$F0,$1E,$FF,$E3
+    db $D0
+}

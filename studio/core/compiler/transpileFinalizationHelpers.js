@@ -1629,7 +1629,25 @@ export function finalizeAmyTranspile({
     : null;
   const recommendedStackReserveBytes = ramLayout?.recommendedStackReserveBytes || 0;
   if (stackHeadroomBytes != null && recommendedStackReserveBytes > 0 && stackHeadroomBytes < recommendedStackReserveBytes) {
-    compilerWarnings.push(`Only ${stackHeadroomBytes} byte(s) remain below the initial OS7 stack pointer; ${recommendedStackReserveBytes} are recommended. This is an advisory budget, not a guaranteed maximum stack depth.`);
+    const measuredTypicalStackBytes = 40;
+    const dangerStart = Math.max(ramLayout.userRamStart || 0, ramLayout.stackTop - measuredTypicalStackBytes);
+    const addressedVariables = [...runtimeVars.entries()]
+      .filter(([, info]) => Number.isInteger(info?.address) && info.address < nextRamAddress)
+      .sort((left, right) => left[1].address - right[1].address);
+    const distinctAddresses = [...new Set(addressedVariables.map(([, info]) => info.address))];
+    const riskyNames = addressedVariables
+      .filter(([, info]) => {
+        const addressIndex = distinctAddresses.indexOf(info.address);
+        const endAddress = distinctAddresses[addressIndex + 1] ?? nextRamAddress;
+        return endAddress > dangerStart;
+      })
+      .map(([name]) => name)
+      .filter((name, index, names) => names.indexOf(name) === index);
+    const visibleRiskNames = riskyNames.slice(-8);
+    const riskSuffix = visibleRiskNames.length
+      ? ` A 40-byte stack would overlap: ${visibleRiskNames.join(", ")}${riskyNames.length > visibleRiskNames.length ? ` (and ${riskyNames.length - visibleRiskNames.length} more)` : ""}.`
+      : "";
+    compilerWarnings.push(`Only ${stackHeadroomBytes} byte(s) remain below the initial OS7 stack pointer; ${recommendedStackReserveBytes} are recommended. Measured OS7 games commonly reached 36-38 bytes. This is an advisory budget, not a guaranteed maximum stack depth.${riskSuffix}`);
   }
   const summaryLog = `Amy transpiler generated ${declarations.length} constant(s), ${runtimeVars.size} RAM variable(s), ${body.length} ASM lines and ${assets.length} asset block(s).`;
   const warningLog = Array.isArray(compilerWarnings) && compilerWarnings.length

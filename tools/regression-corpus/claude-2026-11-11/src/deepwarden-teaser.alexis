@@ -1,0 +1,7109 @@
+' DEEPWARDEN
+' An original game by Claude (an AI made by Anthropic) for Amy Studio,
+' 2026, in Amy by Amy Bienvenu: a first-person dungeon crawler.
+'
+' The bell beneath Hollowmere rings by itself, and monsters climb out of
+' the old mines. You are the town's last warden: go down three floors,
+' find the keys, the pick and the hidden ways, and silence the Bell-
+' Ringer's Servant in the bell chamber at the bottom.
+'
+' Controls. Standard controller: the stick walks and turns, pulling back
+' guards; left fire swings, right fire is the lantern flare; keypad *
+' the hero sheet, # the map, 1 a potion. Super Action Controller: yellow
+' swings, orange flares, purple drinks, blue the map, the speed roller
+' turns (the stick works too).
+'
+' How it is drawn: STORM LIGHT's ray caster (gen.py, ray_src.asm ->
+' ray.asm) with rock, timber, cracked rock and gate textures and wall
+' pictures; monsters are magnified sprites in 4 drawn sizes, cut column
+' by column where a wall is nearer (StMon); the weapon is one sprite a
+' line over them. Wall cells with a state ("slots": chests, gates,
+' secrets...) open and close through SlotOpen.
+
+cartridge "DEEPWARDEN/CLAUDE/2026"
+
+const TFloor = 26
+const TBlank = 27
+const WallFirst = 96
+const WallBytes = 1280
+const HudBytes = 224
+const HHblank = 0
+const HHeart = 1
+const HHearth = 2
+const HHearte = 3
+const HDagger = 4
+const HPick = 5
+const HSword = 6
+const HLeather = 7
+const HChain = 8
+const HKey = 9
+const HCoin = 10
+const HXpf = 11
+const HXpe = 12
+const HPotion = 13
+const HDrop = 14
+const HOilf = 15
+const HOile = 16
+const HHpf = 17
+const HStrf = 18
+const HMwall = 19
+const HMfloor = 20
+const HMdoor = 21
+const HMstair = 22
+const HMsecret = 23
+const HMfore = 24
+const HMchest = 25
+const TxStory0 = 0
+const TxStory1 = 1
+const TxStory2 = 2
+const TxOver = 3
+const TxEnd = 4
+const TxCredits = 5
+const TxHow1 = 6
+const TxHow2 = 7
+const TxSheet = 8
+const TxSheet1 = 9
+const TxMap = 10
+const TxMGate = 11
+const TxMLocked = 12
+const TxMBarred = 13
+const TxMClank = 14
+const TxMShrine = 15
+const TxMCracked = 16
+const TxMLoose = 17
+const TxMSecret = 18
+const TxMLevelUp = 19
+const TxMI0 = 20
+const TxMI1 = 21
+const TxMI2 = 22
+const TxMI3 = 23
+const TxMI4 = 24
+const TxMI5 = 25
+const TxMI6 = 26
+const TxMI7 = 27
+const TxMI8 = 28
+const TxMI9 = 29
+const TxMI10 = 30
+const TxMNoOil = 31
+const TxMForeman = 32
+const TxMDraft = 33
+const TxMRune = 34
+const TxMBurrow = 35
+const SndTitleA = 1
+const SndTitleB = 2
+const SndTitleC = 3
+const SndTitleD = 4
+const SndExpA = 5
+const SndExpB = 6
+const SndCmbA = 7
+const SndCmbB = 8
+const SndCmbDrum = 9
+const SndBossA = 10
+const SndBossB = 11
+const SndBossDrum = 12
+const SndLowA = 13
+const SndLowB = 14
+const SndLvlA = 15
+const SndLvlB = 16
+const SndItemA = 17
+const SndItemB = 18
+const SndWinA = 19
+const SndWinB = 20
+const SndDieA = 21
+const SndDieB = 22
+const SndDieC = 23
+const SndSwing = 24
+const SndPickSwing = 25
+const SndHitFlesh = 26
+const SndHitBone = 27
+const SndFootstep = 28
+const SndSkelRattle = 29
+const SndMonDeath = 30
+const SndGate = 31
+const SndStairs = 32
+const SndClang = 33
+const SndKey = 34
+const SndGold = 35
+const SndHurt = 36
+const SndWarnRat = 37
+const SndWarnSkel = 38
+const SndWarnWraith = 39
+const SndWarnBoss = 40
+const SndRatSqueak = 41
+const SndWraithWail = 42
+const SndHitGhost = 43
+const SndLocked = 44
+const SndPotion = 45
+const SndBellToll = 46
+const TitleFrames = 1664
+const ExpFrames = 2304
+const CmbFrames = 1536
+const BossFrames = 768
+const LowFrames = 384
+const LvlStingFrames = 61
+const ItemStingFrames = 34
+const WinStingFrames = 104
+const DieStingFrames = 154
+' --- DEEPWARDEN music driver: variables (paste with sndconst.txt near the top) ---
+const MuNone = 0
+const MuExplore = 1
+const MuCombat = 2
+const MuBoss = 3
+const MuLow = 4
+u8 MuCur = 0
+u8 MuWant = 0
+u8 MuF = 0
+u8 MuHold = 0
+u8 MuDrum = 0
+u8 MuPass = 0
+u8 MuSt = 0
+u8 MuX = 0
+u16 MuTT = 0
+const HideY = 192
+' game states, read by the bots and the checks
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StText = 7
+const StOver = 9
+const StEnd = 10
+const StSheet = 11
+const StMapPg = 12
+const StHowPic = 13
+' slot kinds (map.py)
+const KLantern = 0
+const KStairs = 1
+const KLadder = 2
+const KChest = 3
+const KGate = 4
+const KLGate = 5
+const KLever = 6
+const KCrack = 7
+const KPush = 8
+const KPath = 9
+const KRune = 10
+const KBarr = 11
+const KShrine = 12
+' wall pictures (art.py FEATS)
+const PLantern = 0
+const PShaft = 1
+const PLadder = 2
+const PChest = 3
+const PChestO = 4
+const PLock = 5
+const PLeverU = 6
+const PLeverD = 7
+const PCrack1 = 8
+const PCrack2 = 9
+const PMortar = 10
+const PRune = 11
+const PSlab = 19
+const PShrine = 12
+const PShrine0 = 13
+
+u8 State = 0
+
+' --- the ray caster (ray.asm) ----------------------------------------------
+u16 Px = 0
+u16 Py = 0
+u8 Ang = 0
+u8 Rcol = 0
+u8 Ra = 0
+u16 RdX = 0
+u16 RdY = 0
+u8 RstX = 0
+u8 RstY = 0
+u16 RsdX = 0
+u16 RsdY = 0
+u8 Rside = 0
+u8 Rrow = 0
+u8 Hc[28]
+u8 Sc[28]
+u8 Zc[28]
+u8 Pc[28]
+u16 Rcell = 0
+u16 Rdist = 0
+u16 Rpptr = 0
+u8 Rpc = 0
+u8 Rslot = 0
+u8 Rpic = 0
+u8 Rface = 0
+u8 Rfs = 0
+u8 Rtex = 0
+u8 RTim = 0
+u8 RLv = 0
+u8 PTim = 0
+u8 PSide = 0
+u8 PLv = 0
+u16 PCell = 0
+u8 CSlot = 255
+u8 CZ = 0
+u8 SlotTex[16]
+u8 SlotOpen[16]
+u8 Tb[112]
+u8 DPass = 0
+u16 Rptr = 0
+u16 MapBase = 0
+u8 MapNo = 0
+u16 Qc = 0
+u8 Pk = 0
+u8 DimL = 0
+u8 VbMiss = 0
+u8 FrPass = 0
+u8 SatPend = 0
+
+' --- the monster's sprite pieces (StMon) ---------------------------------
+u16 MonFr = 0
+u16 MonSrc = 0
+u8 MonIx = 0
+u8 MonColB = 0
+u8 MonY = 0
+u8 MonZ = 0
+u8 MonH = 0
+u8 MonBuf = 0
+u8 MonFlash = 0
+u8 MonK = 0
+u8 MonC = 0
+u8 MonPy = 0
+u8 MonOk = 0
+u8 MonPc = 0
+u8 MonML = 0
+u8 MonMR = 0
+u8 MonRT = 0
+u8 MonRV = 0
+u8 MonRB = 0
+u8 SpN = 0
+u8 ShownN = 0
+u16 LFr = 0
+u8 LCol = 0
+u8 LY = 0
+u8 LZ = 0
+u8 LFl = 0
+u8 Moved = 1
+u16 LPx = 0
+u16 LPy = 0
+u8 LAng = 0
+
+' --- the monsters of this floor (9: up to 7 placed, 2 called by the
+' Servant). MK kind (0 rat, 1 skeleton, 2 wraith, 3 the Servant, 4 the
+' cart, 255 none); MX, MY 1/16 cells; MSt 0 moving, 1 wind-up, 2 attack,
+' 3 struck, 4 dying, 5 gone, 6 calling, 7 in the bell; MT passes in the
+' state; MHp; MRet passes backing off; MStn passes stunned (the flare)
+u8 MK[9]
+u8 MX[9]
+u8 MY[9]
+u8 MSt[9]
+u8 MT[9]
+u8 MHp[9]
+u8 MRet[9]
+u8 MStn[9]
+u8 Dead[3]
+u8 NMon = 0
+u8 MDr = 255
+u8 MZ = 0
+u8 MCol = 0
+u8 Mi = 0
+u8 Reach = 0
+u8 PZ = 0
+u8 PCol = 0
+u8 POn = 0
+u8 BestZ = 0
+u8 Bob = 0
+u8 Dist = 0
+u8 PX16 = 0
+u8 PY16 = 0
+u8 Sp = 0
+u8 Ox = 0
+u8 Oy = 0
+u8 Nx8 = 0
+u8 Ny8 = 0
+u8 Ok = 0
+u8 Jm = 0
+u8 Km = 0
+u8 SeeAny = 0
+u8 Qk = 0
+u8 Qx = 0
+u8 Qy = 0
+u8 Qs = 0
+u8 Qt = 0
+u8 Qh = 0
+u8 Qr = 0
+u8 Qn = 0
+u8 TxN = 0
+u8 Bumped = 0
+u8 MapAll = 0
+u8 BarX = 0
+u8 BarY = 0
+u8 BarN = 0
+u8 BarV = 0
+u8 BarF = 0
+u8 BarE = 0
+u8 MSee = 0
+u8 WasDn = 0
+u8 WasUp = 0
+u8 MonSp0 = 0
+u16 Cell = 0
+u8 Boss = 0
+u8 Phase = 0
+u8 CallT = 0
+
+' --- you -------------------------------------------------------------------
+' WSt: the weapon (0 ready, 1 drawn back, 2 the slash, 3 follow-through,
+' 4 guard); Wpn 0 dagger, 1 pick, 2 sword; Arm 0, 1 leather, 2 chain
+u8 WSt = 0
+u8 WT = 0
+u8 WFr = 0
+u8 Guard = 0
+u8 Kick = 0
+u8 Walk = 0
+u8 Wpn = 0
+u8 HavePick = 0
+u8 Arm = 0
+u8 Hp = 10
+u8 MaxHp = 10
+u8 Str = 1
+u8 Lv = 1
+u8 Xp = 0
+u8 Pts = 0
+u16 Gold = 0
+u8 Oil = 64
+u8 OilT = 0
+u8 Pot = 1
+u8 Keys = 0
+u8 FlareT = 0
+u8 RuneT = 0
+u8 HurtT = 0
+u8 HitSlot = 255
+u8 CrackHits = 0
+u8 PushS = 255
+u8 PushT = 0
+u8 CartDx = 0
+u8 CartDy = 0
+u8 Secrets = 0
+u8 MapFull = 0
+u8 Flr = 0
+u8 MsgT = 0
+u8 ShownHp = 255
+u8 ShownXp = 255
+u8 ShownOil = 255
+u8 ShownInv = 255
+u16 ShownGold = 65535
+' the run's clock (frames, NTSC): TMin minutes and TFr frames of the
+' minute; it runs only in play; Best: the session's best finished run
+u16 TFr = 0
+u8 TMin = 0
+u8 Running = 0
+u8 ShowClock = 0
+u16 BestFr = 0
+u8 BestMin = 255
+u8 BestSec = 0
+u8 Won = 0
+
+u8 Tick = 0
+u8 Idle = 0
+u16 Waited = 0
+u8 TimedOut = 0
+u8 Menu = 0
+i16 Dx = 0
+i16 Dy = 0
+i16 Cx = 0
+u8 CsB = 0
+u8 SnB = 0
+i16 Zf = 0
+i16 Xl = 0
+i16 Lp = 0
+u16 Nx = 0
+u16 Ny = 0
+u16 NumU = 0
+u16 V16 = 0
+u16 Off = 0
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 N = 0
+u8 Up1 = 0
+u8 Dn1 = 0
+u8 Lf1 = 0
+u8 Rt1 = 0
+u8 Pad = 0
+u8 WasPad = 0
+u8 PadE = 0
+u8 Kp = 255
+u8 WasKp = 255
+u8 KpE = 255
+' presses latched during a pass (StLatch)
+u8 LatchJ = 0
+u8 FightT = 0
+u16 SeenLast = 0
+u16 SeenLast2 = 0
+u8 SatBank = 0
+u8 Hint = 0
+u8 BossT = 0
+u16 CCell = 0
+u8 BurD[3]
+u8 BurCell = 255
+u8 BurHit = 0
+u16 Back = 0
+u16 GBase = 0
+u8 FmDead = 0
+u8 GCol = 0
+u8 LatchK = 255
+i8 Spin = 0
+
+  mode 2 screen
+  sprites 16x16
+  sprites double
+  set sound table DwSoundTable areas 8
+  enable spinner
+  nmi off
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+  StoryPage(0)
+  Running = 1
+
+floor_start:
+  EnterFloor
+
+play_loop:
+  ReadPad
+  ' pages: the hero sheet (*), the map (# or blue); a potion (1 or purple)
+  if KpE = 10 then
+    SheetPage
+    goto floor_view
+  end if
+  V = PadE & 16
+  if KpE = 11 then V = 1
+  if V <> 0 then
+    MapPage
+    goto floor_view
+  end if
+  V = PadE & 32
+  if KpE = 1 then V = 1
+  if V <> 0 then Drink
+  ' turning: the stick, or the speed roller
+  if Lf1 = 1 then Ang = Ang - 4
+  if Rt1 = 1 then Ang = Ang + 4
+  V = Spin
+  Ang = Ang + V
+  Ang = Ang + V
+  Walk = 0
+  HitSlot = 255
+  if Up1 = 1 then Advance(22, 0)
+  Guard = 0
+  if Dn1 = 1 then
+    Advance(10, 1)
+    Guard = 1
+  end if
+  if HitSlot <> 255 then Bump(HitSlot)
+  if State <> StPlay then goto floor_start
+  Weapon
+  V = PadE & 64
+  if V <> 0 then Flare
+  Monsters
+  World
+  if Hp = 0 then goto game_over
+  if Won = 1 then goto the_end
+  ' the rules of this pass are done (the bots read the state here)
+  inc Tick
+  Moved = 0
+  if Px <> LPx then Moved = 1
+  if Py <> LPy then Moved = 1
+  if Ang <> LAng then Moved = 1
+  if RuneT = 1 then Moved = 1
+  if Moved = 1 then
+    LPx = Px
+    LPy = Py
+    LAng = Ang
+    call asm StRays
+    call asm StDraw
+    Mark
+  end if
+  DrawMon
+  DrawWeapon
+  Hud
+  PassEnd
+  goto play_loop
+
+floor_view:
+  ' back from a page: the play screen again
+  PlayScreen
+  goto play_loop
+
+game_over:
+  Running = 0
+  MuWant = MuNone
+  MuSt = SndDieA
+  MusicSting
+  Hold(90)
+  TextScreen
+  TxN = TxOver
+  call asm StPrint
+  State = StOver
+  PageWait
+  goto title
+
+the_end:
+  Running = 0
+  MuSt = SndWinA
+  MusicSting
+  Hold(120)
+  ' the session's best: the fastest finished run, and the most secrets
+  V = 0
+  if TMin < BestMin then V = 1
+  if TMin = BestMin then
+    if TFr < BestFr then V = 1
+  end if
+  if V = 1 then
+    BestMin = TMin
+    BestFr = TFr
+  end if
+  if Secrets > BestSec then BestSec = Secrets
+  TextScreen
+  TxN = TxEnd
+  call asm StPrint
+  NumU = Secrets
+  print at 19,7, digits$(NumU, 1)
+  print at 20,7, "/"
+  NumU = SecretsAll
+  print at 21,7, digits$(NumU, 1)
+  ClockAt(19, 9)
+  NumU = Lv
+  print at 19,11, digits$(NumU, 1)
+  NumU = Gold
+  print at 19,13, digits$(NumU, 5)
+  play sound SndBellToll
+  State = StEnd
+  PageWait
+  goto title
+
+' ---------------------------------------------------------------------------
+' you: walking
+
+' Advance(speed, back): along Ang, one axis at a time (walls are slid
+' along); HitSlot = a slot cell walked into (going forward); never within
+' 1.25 cells of a monster that stands (the cart is pushed instead)
+sub Advance(u8 Sv, u8 Back):
+  V = Ang
+  call asm StCosV
+  Dx = V
+  if V > 127 then Dx = Dx - 256
+  K = Ang - 64
+  V = K
+  call asm StCosV
+  Dy = V
+  if V > 127 then Dy = Dy - 256
+  V16 = Sv
+  Cx = V16
+  Dx = Dx * Cx
+  Dx = Dx >> 6
+  Dy = Dy * Cx
+  Dy = Dy >> 6
+  if Back = 1 then
+    Dx = 0 - Dx
+    Dy = 0 - Dy
+  end if
+  Nx = Px + Dx
+  Cx = 48
+  if Dx < 0 then Cx = -48
+  V16 = Nx + Cx
+  Solid(V16, Py, Back)
+  if K = 0 then
+    MonBlock(Nx, Py)
+    if K = 0 then Px = Nx
+  end if
+  Ny = Py + Dy
+  Cx = 48
+  if Dy < 0 then Cx = -48
+  V16 = Ny + Cx
+  Solid(Px, V16, Back)
+  if K = 0 then
+    MonBlock(Px, Ny)
+    if K = 0 then Py = Ny
+  end if
+  Walk = 1
+  return
+end sub
+
+' Solid(x, y, back): K = 1 if the cell of (x, y) is a wall (an open slot is
+' floor); a closed slot walked into going forward -> HitSlot
+sub Solid(u16 Qx, u16 Qy, u8 Bk):
+  V = highbyte Qy
+  Qc = V
+  Qc = Qc << 4
+  V = highbyte Qx
+  Qc = Qc + V
+  call asm StPeekMap
+  K = 0
+  if Pk <> 0 then
+    K = 1
+    if Bk = 0 then
+      if Pk >= 4 then
+        if Pk < 20 then HitSlot = Pk - 4
+      end if
+    end if
+  end if
+  return
+end sub
+
+
+' ---------------------------------------------------------------------------
+' you: the slots you walk into
+
+sub Bump(u8 Sl):
+  SlotKind(Sl)
+  if K = KStairs then
+    ' the foreman guards the stairs; a build with fewer floors ends at its
+    ' last stairs
+    if FmDead = 0 then
+      Msg(TxMForeman)
+      return
+    end if
+    if MapNo = Floors - 1 then Won = 1
+  end if
+  if SlotOpen[Sl] <> 0 then return
+  if K = KChest then
+    SlotOpen[Sl] = 2
+    Loot(V)
+  end if
+  if K = KGate then
+    if Keys > 0 then
+      dec Keys
+      SlotOpen[Sl] = 1
+      play sound SndGate
+      Msg(TxMGate)
+    else
+      play sound SndLocked
+      Msg(TxMLocked)
+    end if
+  end if
+  if K = KRune then
+    if RuneT > 0 then
+      SlotOpen[Sl] = 1
+      Secret
+    end if
+  end if
+  if K = KShrine then
+    SlotOpen[Sl] = 2
+    play sound SndBellToll
+    Msg(TxMShrine)
+    GainXp(12)
+  end if
+  if K = KCrack then Msg(TxMCracked)
+  if K = KPush then Msg(TxMLoose)
+  SetTex
+  return
+end sub
+
+' SlotKind(slot): K = its kind, V = its arg (the floor's block +272, +288)
+sub SlotKind(u8 Sl):
+  Qc = 272 + Sl
+  call asm StPeekMap
+  K = Pk
+  Qc = 288 + Sl
+  call asm StPeekMap
+  V = Pk
+  return
+end sub
+
+
+sub Secret:
+  inc Secrets
+  play sound SndKey
+  Msg(TxMSecret)
+  return
+end sub
+
+' Loot(item): a chest's contents (map.py ITEMS)
+sub Loot(u8 It):
+  play sound SndGold
+  if It = 0 then Gold = Gold + 50
+  if It = 1 then inc Pot
+  if It = 2 then
+    Oil = Oil + 48
+    if Oil > 96 then Oil = 96
+  end if
+  if It = 3 then
+    inc Keys
+    play sound SndKey
+  end if
+  if It = 4 then
+    HavePick = 1
+    if Wpn < 1 then Wpn = 1
+  end if
+  if It = 8 then
+    MaxHp = MaxHp + 2
+    Hp = MaxHp
+  end if
+  if It = 9 then MapFull = MapFull | Bits[MapNo]
+  V = It + TxMI0
+  Msg(V)
+  if It >= 4 then
+    MuSt = SndItemA
+    MusicSting
+  end if
+  return
+end sub
+
+sub Drink:
+  if Pot = 0 then return
+  if Hp = MaxHp then return
+  dec Pot
+  Hp = Hp + 6
+  if Hp > MaxHp then Hp = MaxHp
+  play sound SndPotion
+  return
+end sub
+
+sub GainXp(u8 G):
+  Xp = Xp + G
+  if Lv < 8 then
+    V = LvXpT[Lv]
+    if Xp >= V then
+      inc Lv
+      inc Pts
+      MuSt = SndLvlA
+      MusicSting
+      Msg(TxMLevelUp)
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' you: the weapon and the flare
+
+' Weapon: the button swings (drawn back, the slash, the follow-through;
+' the dagger is quick, the pick slow); down holds the guard
+sub Weapon:
+  V = PadE & 128
+  if WSt = 0 then
+    if V <> 0 then
+      WSt = 1
+      WT = 0
+    end if
+  end if
+  if WSt > 0 then
+    if WSt < 4 then
+      inc WT
+      if WSt = 1 then
+        V = SwingT[Wpn]
+        if WT >= V then
+          WSt = 2
+          WT = 0
+          V = SndSwing
+          if Wpn = 1 then V = SndPickSwing
+          play sound V
+          Strike
+        end if
+      end if
+      if WSt = 2 then
+        if WT >= 2 then
+          WSt = 3
+          WT = 0
+        end if
+      end if
+      if WSt = 3 then
+        if WT >= 3 then
+          WSt = 0
+          WT = 0
+        end if
+      end if
+    end if
+  end if
+  if WSt = 4 then WSt = 0
+  if WSt = 0 then
+    if Guard = 1 then WSt = 4
+  end if
+  WFr = WSt
+  if Kick > 0 then dec Kick
+  return
+end sub
+
+' Strike: the slash meets the monster in front (within the weapon's reach,
+' near the middle of the view, standing), else the wall in front: a
+' cracked wall (with the pick), a push wall (no monster near)
+sub Strike:
+  V = ReachT[Wpn]
+  if MDr <> 255 then
+    if MZ < V then
+      if MCol >= 12 then
+        if MCol <= 19 then
+          Hit(MDr)
+          return
+        end if
+      end if
+    end if
+  end if
+  if CSlot = 255 then
+    ' a rat burrow in front: smash it (XP once; no rat comes back)
+    call asm StBurrow
+    if TxN <> 255 then
+      Msg(TxN)
+      GainXp(8)
+      LPx = 0
+    end if
+    return
+  end if
+  if CZ > 30 then return
+  SlotKind(CSlot)
+  if SlotOpen[CSlot] <> 0 then return
+  if K = KCrack then
+    if HavePick = 1 then
+      play sound SndHitBone
+      inc CrackHits
+      if CrackHits >= 3 then
+        SlotOpen[CSlot] = 1
+        play sound SndMonDeath
+        Secret
+      end if
+      SetTex
+    else
+      play sound SndClang
+      Msg(TxMCracked)
+    end if
+  end if
+  if K = KPush then
+    if PushT = 0 then
+      if SeeAny = 0 then
+        PushS = CSlot
+        PushT = 30
+        play sound SndGate
+      end if
+    end if
+  end if
+  return
+end sub
+
+' Hit(m): your blow on monster m (STR and the weapon; a stunned
+' bell-wraith takes double; the Servant in its bell takes nothing)
+sub Hit(u8 Hm):
+  J = Hm
+  K = MSt[J]
+  if K >= 3 then
+    if K < 6 then return
+  end if
+  if K = 7 then
+    play sound SndClang
+    return
+  end if
+  V = DmgT[Wpn] + Str
+  dec V
+  if MK[J] = 2 then
+    if MStn[J] > 0 then V = V + V
+  end if
+  K = MHp[J]
+  if K > V then
+    K = K - V
+  else
+    K = 0
+  end if
+  MHp[J] = K
+  MSt[J] = 3
+  MT[J] = 0
+  MRet[J] = 4
+  V = MK[J]
+  K = HitSndT[V]
+  play sound K
+  return
+end sub
+
+' Flare: the lantern's oil (12) lights the tunnel: monsters in view within
+' 5 cells are stunned ~2 s, bell-wraiths take 2, the Servant is driven out
+' of its bell; hidden runes glow for 3 s
+sub Flare:
+  if Oil < 12 then
+    play sound SndLocked
+    Msg(TxMNoOil)
+    return
+  end if
+  Oil = Oil - 12
+  FlareT = 4
+  RuneT = 180
+  SetTex
+  backdrop white
+  play sound SndWraithWail
+  call asm StViewTrig
+  for Mi = 0 to 8
+    if MSt[Mi] < 4 then
+      call asm StProjOne
+      if POn = 1 then
+        if PZ < 80 then
+          MStn[Mi] = 40
+          if MSt[Mi] = 1 then MSt[Mi] = 0
+          if MSt[Mi] = 2 then MSt[Mi] = 0
+          if MK[Mi] = 2 then
+            V = MHp[Mi]
+            if V > 2 then
+              MHp[Mi] = V - 2
+            else
+              MHp[Mi] = 0
+              MSt[Mi] = 3
+              MT[Mi] = 0
+            end if
+          end if
+          if MK[Mi] = 3 then
+            MStn[Mi] = 150
+            MSt[Mi] = 0
+          end if
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the world: oil, the flare's glow, runes, the push wall, the cart, music
+
+sub World:
+  if FlareT > 0 then
+    dec FlareT
+    if FlareT = 0 then backdrop black
+  end if
+  if RuneT > 0 then
+    dec RuneT
+    if RuneT = 0 then SetTex
+  end if
+  if HurtT > 0 then
+    dec HurtT
+    if HurtT = 0 then backdrop black
+  end if
+  ' the lantern burns 1 oil every 48 passes; without oil the light shrinks
+  inc OilT
+  if OilT >= 48 then
+    OilT = 0
+    if Oil > 0 then dec Oil
+  end if
+  DimL = 0
+  if Oil = 0 then DimL = 1
+  ' the push wall slides (2 cells in about a second)
+  if PushT > 0 then
+    dec PushT
+    J = PushS
+    if PushT = 20 then
+      SlotOpen[J] = 1
+      SetTex
+    end if
+    if PushT = 6 then
+      SlotKind(J)
+      SlotOpen[V] = 1
+      SetTex
+      Secret
+    end if
+  end if
+  ' the cart rolls until a wall; it smashes the barricade, crushes monsters
+  ' music: the Servant's chamber, a fight, low health, or the tunnels
+  V = MuExplore
+  ' (the fight music holds about 8 s after a monster was last in sight)
+  if SeeAny = 1 then FightT = 40
+  if FightT > 0 then
+    V = MuCombat
+    dec FightT
+  end if
+  K = MaxHp >> 2
+  if Hp <= K then V = MuLow
+  if Boss = 1 then V = MuBoss
+  MuWant = V
+  ' hints at a hidden rune wall in front (once each; StHint)
+  call asm StHint
+  if TxN <> 255 then Msg(TxN)
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then fill 32 count 28 to vram.name + 706
+  end if
+  return
+end sub
+
+
+' SetTex: each slot's picture by its kind and state (255: none)
+sub SetTex:
+  for I = 0 to 15
+    SlotKind(I)
+    X = 255
+    Y = SlotOpen[I]
+        if K = KLantern then X = PLantern
+    if K = KStairs then X = PShaft
+    if K = KChest then
+      X = PChest
+      if Y <> 0 then X = PChestO
+    end if
+    if K = KGate then X = PLock
+    if K = KCrack then
+      if CrackHits = 1 then X = PCrack1
+      if CrackHits = 2 then X = PCrack2
+    end if
+    if K = KPush then X = PMortar
+    if K = KRune then
+      ' a faint slab, the rune glowing in it under the flare
+      X = PSlab
+      if RuneT > 0 then X = PRune
+    end if
+    if K = KShrine then
+      X = PShrine
+      if Y <> 0 then X = PShrine0
+    end if
+    if K = KPath then
+      ' the push block sits on the first closed path cell after an open one
+      if Y = 0 then
+        J = I - 1
+        if SlotOpen[J] <> 0 then X = PMortar
+      end if
+    end if
+    SlotTex[I] = X
+  next
+  LPx = 0
+  return
+end sub
+
+' Mark: the automap: your cell is seen
+sub Mark:
+  V = highbyte Py
+  V = V << 4
+  K = highbyte Px
+  V = V + K
+  K = V >> 3
+  J = V & 7
+  SeenAt(K)
+  V = V | Bits[J]
+  SeenPut(K)
+  return
+end sub
+
+' SeenAt(byte): V = seen byte K of this floor (spare VRAM $1BB0 +
+' floor x 32); SeenPut(byte): writes V there
+sub SeenAt(u8 Sb):
+  V16 = MapNo
+  V16 = V16 << 5
+  V16 = V16 + Sb
+  vpeek vram.name + 944 + V16 into V
+  return
+end sub
+
+sub SeenPut(u8 Sb):
+  V16 = MapNo
+  V16 = V16 << 5
+  V16 = V16 + Sb
+  vpoke vram.name + 944 + V16, V
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the monsters
+
+sub Monsters:
+  call asm StMonsters
+  return
+end sub
+
+' Killed: monster Mi dies (from StMonsters): XP, gold, the dead list; the
+' Servant's fall ends the game (after its death frames)
+sub Killed:
+  ' a rat back from its burrow is worth nothing
+  call asm StBackQ
+  if V = 0 then
+    V = MK[Mi]
+    V = XpT[V]
+    GainXp(V)
+    Gold = Gold + 10
+  end if
+  if Mi < 7 then
+    V = Dead[MapNo]
+    V = V | Bits[Mi]
+    Dead[MapNo] = V
+  end if
+  if MK[Mi] = 3 then Won = 2
+  ' the foreman (wave 64): the way down is open
+  V = MonFirst[MapNo] + Mi
+  if MonWT[V] = 64 then FmDead = 1
+  return
+end sub
+
+' MonBlock(x, y): K = 1 when (x, y) is within 20/16 cells of a monster
+' that stands (StMonBlock; walking into the cart pushes it)
+sub MonBlock(u16 Bx, u16 By):
+  V16 = Bx >> 4
+  Nx8 = lowbyte V16
+  V16 = By >> 4
+  Ny8 = lowbyte V16
+  call asm StMonBlock
+  return
+end sub
+
+
+
+
+
+
+
+' Blow: monster Mi's blow lands: on the guard (a clang, nothing lost) or
+' on you (its damage less your armour, at least 1, in half hearts)
+sub Blow:
+  if Guard = 1 then
+    play sound SndClang
+    Kick = 3
+    return
+  end if
+  V = MK[Mi]
+  V = HurtT2[V]
+  if MapNo = 2 then inc V
+  if V > Arm then
+    V = V - Arm
+  else
+    V = 1
+  end if
+  play sound SndHurt
+  Kick = 4
+  if Hp > V then
+    Hp = Hp - V
+  else
+    Hp = 0
+  end if
+  HurtT = 3
+  backdrop dark red
+  return
+end sub
+
+
+' DrawMon: the nearest monster in view, its frame by state and size, cut
+' by the walls (StMon)
+sub DrawMon:
+  call asm StWaitSat
+  call asm StPickMon
+  if MDr <> 255 then
+    J = MDr
+    X = 3
+    if MZ < 82 then X = 2
+    if MZ < 52 then X = 1
+    if MZ < 33 then X = 0
+    K = MSt[J]
+    K = ArtT[K]
+    V = MK[J] * 6
+    V = V + K
+    V = V << 2
+    MonIx = V + X
+    call asm StSel
+    MonZ = MZ
+    call asm StHgt
+    MonY = MonH + 96
+    if MK[J] = 2 then
+      V = Tick >> 2
+      V = V & 7
+      Bob = BobT[V]
+      MonY = MonY - Bob
+    end if
+    MonColB = MCol + 16
+    MonFlash = 0
+    ' the foreman's bones are gold
+    V = MonFirst[MapNo] + J
+    if MonWT[V] = 64 then MonFlash = 139
+    V = MT[J]
+    if MSt[J] = 3 then
+      if V < 3 then
+        K = MK[J]
+        MonFlash = FlashT[K]
+      end if
+    end if
+    if MSt[J] = 4 then
+      if V >= 18 then MonFlash = 4
+    end if
+    if MStn[J] > 0 then
+      if MK[J] <> 3 then MonFlash = 7
+    end if
+    K = Moved
+    if MonFr <> LFr then K = 1
+    if MonColB <> LCol then K = 1
+    if MonY <> LY then K = 1
+    if MonZ <> LZ then K = 1
+    if MonFlash <> LFl then K = 1
+    if K = 1 then
+      MonBuf = MonBuf ^ 1
+      call asm StMon
+      LFr = MonFr
+      LCol = MonColB
+      LY = MonY
+      LZ = MonZ
+      LFl = MonFlash
+    end if
+  else
+    if ShownN > 0 then
+      SpN = 0
+      call asm StMnHide
+      LFr = 0
+    end if
+  end if
+  ShownN = SpN
+  return
+end sub
+
+' DrawWeapon: the weapon's frame (one sprite a line), knocked down a few
+' lines by a blow, bobbing as you walk; the pick swaps its top piece for
+' a head and colours the blade as a handle; the dagger is drawn lower
+sub DrawWeapon:
+  J = WFr * 17
+  N = WpnT[J]
+  V = Kick << 1
+  if Walk = 1 then
+    X = Tick & 4
+    V = V + X
+  end if
+  if Wpn = 0 then V = V + 22
+  ' (the lowest piece ends at line 160 + V: kept above line 184, the CRT's
+  ' safe area)
+  if V > 24 then V = 24
+  for K = 0 to 3
+    if K < N then
+      I = K << 2
+      I = I + J
+      inc I
+      Y = WpnT[I] + V
+      dec Y
+      inc I
+      X = WpnT[I]
+      inc I
+      Nx8 = WpnT[I]
+      inc I
+      Ny8 = WpnT[I]
+      if Ny8 = 15 then
+        if Wpn = 0 then Ny8 = 14
+        if Wpn = 1 then
+          Ny8 = 10
+          I = N - 1
+          if K = I then
+            Ny8 = 14
+            I = PickT[WFr]
+            if I <> 255 then Nx8 = I
+          end if
+        end if
+      end if
+      if Y > 200 then Y = HideY
+      set sprite K to Y,X,Nx8,Ny8
+    else
+      set sprite K to HideY,0,0,0
+    end if
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' floors
+
+sub NewGame:
+  MapNo = 0
+  Hp = 10
+  MaxHp = 10
+  Str = 1
+  Lv = 1
+  Xp = 0
+  Pts = 0
+  Gold = 0
+  Oil = 64
+  Pot = 1
+  Keys = 0
+  Wpn = 0
+  HavePick = 0
+  Arm = 0
+  Secrets = 0
+  Won = 0
+  TFr = 0
+  TMin = 0
+  for I = 0 to 2
+    Dead[I] = 0
+  next
+  MapFull = 0
+  ' the floors' saved state (slots, seen cells) in spare VRAM
+  for I = 0 to 143
+    vpoke vram.name + 896 + I, 0
+  next
+  Flr = 0
+  return
+end sub
+
+' EnterFloor: floor MapNo's state, its monsters, the play screen. Flr =
+' 255 after the ladder: arrive by the stairs down of this floor.
+sub EnterFloor:
+  V = MapNo
+  Off = V
+  Off = Off << 4
+  for I = 0 to 15
+    vpeek vram.name + 896 + Off + I into V
+    SlotOpen[I] = V
+  next
+  CrackHits = 0
+  PushT = 0
+  CartDx = 0
+  CartDy = 0
+  RuneT = 0
+  CallT = 0
+  ' the start, or in front of the stairs down (back up the ladder)
+  X = StartXT[MapNo]
+  Y = StartYT[MapNo]
+  Ang = 0
+  Px = X
+  Px = Px << 8
+  Px = Px + 128
+  Py = Y
+  Py = Py << 8
+  Py = Py + 128
+  Flr = MapNo
+  ' its monsters (the dead stay dead); the way down is open unless a
+  ' living foreman is placed
+  FmDead = 1
+  BossT = 0
+  BurD[0] = 255
+  BurD[1] = 255
+  BurD[2] = 255
+  Back = 0
+  call asm StInitMons
+  ' the cart rolls only once (gone after the barricade)
+  ' the Servant's summoned rats: slots 7 and 8, gone until called
+  SetTex
+  State = StPlay
+  MuWant = MuExplore
+  MusicNow
+  PlayScreen
+  return
+end sub
+
+' SaveFloor: this floor's slots to spare VRAM (the seen cells live there)
+sub SaveFloor:
+  V = MapNo
+  Off = V
+  Off = Off << 4
+  for I = 0 to 15
+    vpoke vram.name + 896 + Off + I, SlotOpen[I]
+  next
+  return
+end sub
+
+' the play screen: font, walls (in this floor's colours), HUD icons, the
+' wall pictures, the weapon's patterns, the HUD, the view
+sub PlayScreen:
+  TextScreen
+  decompress zx0 FeatPZ to vram.pattern + 2048
+  decompress zx0 FeatCZ to vram.color + 2048
+  copy WpnPat count WpnBytes to vram.spr_pat
+  HudAll
+  call asm StRays
+  call asm StDraw
+  LPx = Px
+  LPy = Py
+  LAng = Ang
+  LFr = 0
+  ShownN = 16
+  State = StPlay
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the HUD: row 1 the level, its XP bar (and a green arrow: a point to
+' spend on the hero sheet), the run's clock (if shown), gold; row 21 the
+' hearts, the oil, potions, keys, the weapon and armour; row 22 messages
+sub HudAll:
+  print at 2,1, "LV"
+  put char HCoin at 22,1
+  put char HDrop at 12,21
+  put char HPotion at 18,21
+  put char HKey at 21,21
+  ShownHp = 255
+  ShownXp = 255
+  ShownOil = 255
+  ShownInv = 255
+  ShownGold = 65535
+  MsgT = 0
+  Hud
+  return
+end sub
+
+sub Hud:
+  if Hp <> ShownHp then
+    ShownHp = Hp
+    for K = 0 to 7
+      X = K + 2
+      V = K << 1
+      J = HHblank
+      if V < MaxHp then J = HHearte
+      if V < Hp then J = HHearth
+      inc V
+      if V < Hp then J = HHeart
+      put char J at X,21
+    next
+  end if
+  V = Xp + Pts
+  V = V + Lv
+  if V <> ShownXp then
+    ShownXp = V
+    NumU = Lv
+    print at 4,1, digits$(NumU, 1)
+    ' XP within this level: 6 cells
+    J = Lv - 1
+    K = LvXpT[J]
+    if Lv = 1 then K = 0
+    N = LvXpT[Lv]
+    I = N - K
+    V = Xp - K
+    V16 = V
+    V16 = V16 * 6
+    V = I
+    V16 = V16 / V
+    BarV = lowbyte V16
+    Bar(6, 6, 1, HXpf, HXpe)
+    J = HHblank
+    ' (the font's ^: a level-up to spend)
+    if Pts > 0 then J = 94
+    put char J at 13,1
+  end if
+  V = Oil >> 3
+  if V <> ShownOil then
+    ShownOil = V
+    BarV = (V + 2) / 3
+    Bar(4, 13, 21, HOilf, HOile)
+  end if
+  V = Pot << 4
+  V = V + Keys
+  V = V + Wpn
+  V = V + Arm
+  if V <> ShownInv then
+    ShownInv = V
+    NumU = Pot
+    print at 19,21, digits$(NumU, 1)
+    NumU = Keys
+    print at 22,21, digits$(NumU, 1)
+    J = HDagger
+    if Wpn = 1 then J = HPick
+    if Wpn = 2 then J = HSword
+    put char J at 25,21
+    J = HHblank
+    if Arm = 1 then J = HLeather
+    if Arm = 2 then J = HChain
+    put char J at 27,21
+  end if
+  if Gold <> ShownGold then
+    ShownGold = Gold
+    NumU = Gold
+    print at 23,1, digits$(NumU, 5)
+  end if
+  if ShowClock = 1 then
+    V = Tick & 7
+    if V = 0 then ClockAt(14, 1)
+  end if
+  return
+end sub
+
+' Bar(n, x, y, full, empty): a bar of n tiles, the first BarV full
+sub Bar(u8 Bn, u8 Bx8, u8 By8, u8 Bf, u8 Be):
+  BarN = Bn
+  BarX = Bx8
+  BarY = By8
+  BarF = Bf
+  BarE = Be
+  call asm StBar
+  return
+end sub
+
+' ClockAt(x, y): the run's time as M:SS.CC
+sub ClockAt(u8 Cx8, u8 Cy8):
+  NumU = TMin
+  print at Cx8,Cy8, digits$(NumU, 1)
+  X = Cx8 + 1
+  print at X,Cy8, ":"
+  NumU = TFr / 60
+  inc X
+  print at X,Cy8, digits$(NumU, 2)
+  X = X + 2
+  print at X,Cy8, "."
+  V16 = NumU * 60
+  NumU = TFr - V16
+  NumU = NumU * 100
+  NumU = NumU / 60
+  inc X
+  print at X,Cy8, digits$(NumU, 2)
+  return
+end sub
+
+' Msg(n): a line on row 22 for about 3 s
+sub Msg(u8 Mn):
+  fill 32 count 28 to vram.name + 706
+  TxN = Mn
+  call asm StPrint
+  MsgT = 90
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' pages
+
+' StoryPage(n): the intro (0), between floors (1, 2)
+sub StoryPage(u8 Sn):
+  MusicOff
+  TextScreen
+  TxN = TxStory0 + Sn
+  call asm StPrint
+  State = StText
+  PageWait
+  return
+end sub
+
+' SheetPage: the hero (keypad *): bars, gear, supplies; spend level-up
+' points (+STR or +1 heart); the clock on or off
+sub SheetPage:
+  State = StSheet
+  Menu = 0
+sh_draw:
+  TextScreen
+  TxN = TxSheet
+  call asm StPrint
+  NumU = Lv
+  print at 10,3, digits$(NumU, 1)
+  for K = 0 to 7
+    X = K + 10
+    V = K << 1
+    J = HHblank
+    if V < MaxHp then J = HHearte
+    if V < Hp then J = HHeart
+    put char J at X,5
+  next
+  for K = 0 to 7
+    X = K + 12
+    J = HHblank
+    if K < Str then J = HStrf
+    put char J at X,7
+  next
+  NumU = Xp
+  print at 10,9, digits$(NumU, 3)
+  put char HDagger at 3,11
+  if HavePick = 1 then put char HPick at 5,11
+  if Wpn = 2 then put char HSword at 7,11
+  if Arm = 1 then put char HLeather at 9,11
+  if Arm = 2 then put char HChain at 9,11
+  put char HPotion at 13,11
+  NumU = Pot
+  print at 14,11, digits$(NumU, 1)
+  put char HDrop at 17,11
+  NumU = Oil
+  print at 18,11, digits$(NumU, 2)
+  put char HKey at 22,11
+  NumU = Keys
+  print at 23,11, digits$(NumU, 1)
+  put char HCoin at 3,13
+  NumU = Gold
+  print at 5,13, digits$(NumU, 5)
+  NumU = Secrets
+  print at 21,13, digits$(NumU, 1)
+  print at 22,13, "/"
+  NumU = SecretsAll
+  print at 23,13, digits$(NumU, 1)
+  if Pts > 0 then
+    TxN = TxSheet1
+    call asm StPrint
+  else
+    print at 3,15, "TIME"
+    ClockAt(9, 15)
+  end if
+  if ShowClock = 1 then print at 21,20, "ON"
+  if ShowClock = 0 then print at 21,20, "OFF"
+  ShowScreen
+sh_loop:
+  for K = 0 to 3
+    ' (each option its own row: 16, 18, 20, 22)
+    Y = K << 1
+    Y = Y + 16
+    V = 32
+    if K = Menu then V = 62
+    put char V at 3,Y
+  next
+  Frame1
+  ReadPad
+  if Dn1 = 1 then
+    if WasDn = 0 then
+      inc Menu
+      if Menu > 3 then Menu = 0
+      if Pts = 0 then
+        if Menu < 2 then Menu = 2
+      end if
+    end if
+  end if
+  if Up1 = 1 then
+    if WasUp = 0 then
+      if Menu = 0 then Menu = 4
+      dec Menu
+      if Pts = 0 then
+        if Menu < 2 then Menu = 3
+      end if
+    end if
+  end if
+  WasDn = Dn1
+  WasUp = Up1
+  if Pts = 0 then
+    if Menu < 2 then Menu = 2
+  end if
+  if KpE = 10 then return
+  V = PadE & 192
+  if V <> 0 then
+    if Menu = 0 then
+      if Str < 8 then
+        inc Str
+        dec Pts
+      end if
+      goto sh_draw
+    end if
+    if Menu = 1 then
+      if MaxHp < 16 then
+        MaxHp = MaxHp + 2
+        Hp = Hp + 2
+      end if
+      dec Pts
+      goto sh_draw
+    end if
+    if Menu = 2 then
+      ShowClock = ShowClock ^ 1
+      goto sh_draw
+    end if
+    return
+  end if
+  goto sh_loop
+end sub
+
+
+' MapPage: the floor's cells you have seen (all of them, the secrets as
+' "?", with the floor's map scrap); you are the green arrow
+sub MapPage:
+  State = StMapPg
+  TextScreen
+  ' the map's tiles in the middle third too (rows 8-15 hold the view's
+  ' wall pictures there otherwise)
+  decompress zx0 HudPZ to vram.pattern + 2048
+  decompress zx0 HudCZ to vram.color + 2048
+  TxN = TxMap
+  call asm StPrint
+  NumU = MapNo + 1
+  print at 12,1, digits$(NumU, 1)
+  ' a frame round the 16 x 16 cells (columns 8-23, rows 4-19)
+  for I = 7 to 24
+    put char 43 at I,3
+    put char 43 at I,20
+  next
+  for I = 4 to 19
+    put char 43 at 7,I
+    put char 43 at 24,I
+  next
+  MapAll = MapFull & Bits[MapNo]
+  call asm StMapDraw
+  ' the foreman, while he stands
+  for I = 0 to 8
+    if MK[I] < 4 then
+      V = MonFirst[MapNo] + I
+      if MonWT[V] = 64 then
+        if MSt[I] <> 5 then
+          X = MX[I] >> 4
+          X = X + 8
+          Y = MY[I] >> 4
+          Y = Y + 4
+          put char HMfore at X,Y
+        end if
+      end if
+    end if
+  next
+  ' you: a white arrow sprite on your cell, the way you face (8 ways),
+  ' blinking (under 2 Hz)
+  sprites 8x8
+  sprites simple
+  copy ArrowT count 64 to vram.spr_pat
+  ' (its own variables: ReadPad uses K and V)
+  Ox = highbyte Px
+  Ox = Ox << 3
+  Ox = Ox + 64
+  Oy = highbyte Py
+  Oy = Oy << 3
+  Oy = Oy + 31
+  Nx8 = Ang + 16
+  Nx8 = Nx8 >> 5
+  ' the way you face, in words (FACING E, SE ... NE)
+  J = Nx8 << 1
+  V = DirNT[J]
+  put char V at 23,1
+  inc J
+  V = DirNT[J]
+  put char V at 24,1
+  ShowScreen
+mp_loop:
+  Frame1
+  ' on 3/4 of the time (off 8 frames in 32), a dark blue shadow behind it
+  J = Oy
+  V = Tick & 24
+  if V = 24 then J = HideY
+  set sprite 0 to J,Ox,Nx8,15
+  inc J
+  N = Ox + 1
+  set sprite 1 to J,N,Nx8,4
+  update sprites
+  ReadPad
+  if KpE = 11 then return
+  V = PadE & 208
+  if V <> 0 then return
+  goto mp_loop
+end sub
+
+' the title: the picture (the menu drawn in it), the session's best
+sub TitlePage:
+  State = 0
+  Running = 0
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  picture screen
+  decompress zx0 TitleP to vram $0000
+  decompress zx0 TitleC to vram $2000
+  fill vram.name with sequence $00..$FF repeat 3
+  backdrop black
+  sprites 16x16
+  sprites double
+  DemoStamp
+  if BestMin <> 255 then BestLine
+  Menu = 0
+  TitleMenu
+  MusicTitle
+  ShowScreen
+  State = StTitle
+  Waited = 0
+tp_loop:
+  Frame1
+  ReadPad
+  if Dn1 = 1 then
+    if WasDn = 0 then
+      inc Menu
+      if Menu = 3 then Menu = 0
+      TitleMenu
+      play sound SndFootstep
+    end if
+  end if
+  if Up1 = 1 then
+    if WasUp = 0 then
+      if Menu = 0 then Menu = 3
+      dec Menu
+      TitleMenu
+      play sound SndFootstep
+    end if
+  end if
+  WasDn = Dn1
+  WasUp = Up1
+  V = PadE & 240
+  if V <> 0 then
+    MusicOff
+    return
+  end if
+  goto tp_loop
+end sub
+
+' TitleMenu: the chosen item white with its sword cursor, the others grey
+' (colour bytes of rows 18, 20, 22 of the picture)
+sub TitleMenu:
+  for I = 0 to 2
+    Off = I
+    Off = Off * 512 + 4632
+    V = $E1
+    K = $11
+    if I = Menu then
+      V = $F1
+      K = $B1
+    end if
+    fill K count 8 to vram.color + Off
+    Off = Off + 16
+    fill V count 88 to vram.color + Off
+  next
+  return
+end sub
+
+' BestLine: the session's records on row 16 of the picture (cleared to a
+' black line): "BEST M:SS.CC   SECRETS n/N" (the fastest finish; the most
+' secrets found in a finished run)
+sub BestLine:
+  fill 0 count 256 to vram.pattern + 4096
+  fill $F1 count 256 to vram.color + 4096
+  GBase = 4096
+  GCol = $F1
+  N = 3
+  Glyph(13)
+  Glyph(14)
+  Glyph(15)
+  Glyph(16)
+  inc N
+  V = BestMin
+  if BestMin > 9 then V = 9
+  Glyph(V)
+  Glyph(10)
+  NumU = BestFr / 60
+  V = lowbyte NumU
+  K = V / 10
+  Glyph(K)
+  K = V - K * 10
+  Glyph(K)
+  Glyph(11)
+  V16 = NumU * 60
+  NumU = BestFr - V16
+  NumU = NumU * 100
+  NumU = NumU / 60
+  V = lowbyte NumU
+  K = V / 10
+  Glyph(K)
+  K = V - K * 10
+  Glyph(K)
+  N = N + 2
+  Glyph(15)
+  Glyph(14)
+  Glyph(17)
+  Glyph(18)
+  Glyph(14)
+  Glyph(16)
+  Glyph(15)
+  inc N
+  Glyph(BestSec)
+  Glyph(12)
+  Glyph(SecretsAll)
+  return
+end sub
+
+' DemoStamp: "DEMO" cut into the gold beam under the subtitle (row 6,
+' columns 14-17)
+sub DemoStamp:
+  GBase = 0
+  GCol = $1A
+  N = 206
+  Glyph(19)
+  Glyph(14)
+  Glyph(20)
+  Glyph(21)
+  return
+end sub
+
+' Glyph(n): glyph n of GlyT into the picture's pattern N (GBase: the
+' third's offset), colour GCol
+sub Glyph(u8 Gn):
+  Off = Gn
+  Off = Off << 3
+  V16 = N
+  V16 = V16 << 3
+  V16 = V16 + GBase
+  for I = 0 to 7
+    J = lowbyte Off
+    X = GlyT[J]
+    vpoke vram.pattern + V16, X
+    vpoke vram.color + V16, GCol
+    inc V16
+    inc Off
+  next
+  inc N
+  return
+end sub
+
+sub CreditsPage:
+  TextScreen
+  TxN = TxCredits
+  call asm StPrint
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: page 1 the two controllers, page 2 the monsters and items
+sub HowTo:
+  TextScreen
+  TxN = TxHow1
+  call asm StPrint
+  State = StHow
+  PageWait
+  TextScreen
+  TxN = TxHow2
+  call asm StPrint
+  put char HPotion at 2,17
+  put char HDrop at 2,18
+  put char HKey at 2,19
+  put char HPick at 2,20
+  put char HMsecret at 2,21
+  ' the three monsters as sprites (their idle frames, far size)
+  for Mi = 0 to 2
+    MonIx = Mi * 24
+    MonIx = MonIx + 2
+    call asm StSel
+    MonZ = 0
+    ' (the floor line under the names; sprite boxes rows 4-12, text from row 13)
+    MonY = 74
+    V = Mi * 7
+    MonColB = V + 22
+    MonFlash = 0
+    MonBuf = 0
+    MonSp0 = SpN
+    if Mi = 0 then MonSp0 = 0
+    call asm StMon
+  next
+  MonSp0 = 0
+  State = StHowPic
+  PageWait
+  HideSprites
+  return
+end sub
+
+sub PageWait:
+  ShowScreen
+  update sprites
+  WasPad = 255
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    return
+  end if
+  V = PadE & 240
+  if V = 0 then goto pw_loop
+  return
+end sub
+
+' Hold(n): n frames (the music runs)
+sub Hold(u8 Hn):
+  for J = 1 to Hn
+    Frame1
+  next
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count 20
+  sprites flicker off
+  for K = 0 to 19
+    set sprite K to HideY,0,0,0
+  next
+  update sprites
+  ShownN = 16
+  return
+end sub
+
+' every text screen starts here: the font, the wall tiles in all three
+' thirds, the HUD icons in the top and bottom thirds
+sub TextScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  ' (mode 2 screen and the default font through StMode2: the BIOS's
+  ' INIT_TABLE and LOAD_ASCII change IX)
+  call asm StMode2
+  sprites 16x16
+  sprites double
+  duplicate mode 2 patterns
+  fill $F1 count 1024 to vram.color
+  fill $F1 count 1024 to vram.color + 2048
+  fill $F1 count 1024 to vram.color + 4096
+  decompress zx0 WallPZ to vram.pattern + 768
+  decompress zx0 WallCZ to vram.color + 768
+  decompress zx0 WallPZ to vram.pattern + 2816
+  decompress zx0 WallCZ to vram.color + 2816
+  decompress zx0 WallPZ to vram.pattern + 4864
+  decompress zx0 WallCZ to vram.color + 4864
+  decompress zx0 HudPZ to vram.pattern
+  decompress zx0 HudCZ to vram.color
+  decompress zx0 HudPZ to vram.pattern + 4096
+  decompress zx0 HudCZ to vram.color + 4096
+  backdrop black
+  fill 32 count 768 to vram.name
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub Rearm:
+  nmi off
+  nmi on
+  return
+end sub
+
+' the end of a play pass: the NMI's work and the music for each vblank
+' the pass ran through; a pass lasts at least 3 frames; the sprites go up
+' in a vblank (after the wait, or at the next pass's first vblank)
+sub PassEnd:
+  call asm StPoll
+  FrPass = FrPass + VbMiss
+  SoftNmis
+  if FrPass < 3 then
+    PassFrames
+  else
+    SatPend = 1
+  end if
+  FrPass = 0
+  return
+end sub
+
+sub SoftNmis:
+pe_soft:
+  if VbMiss > 0 then
+    call asm StSoftNmi
+    PlayTick
+    dec VbMiss
+    goto pe_soft
+  end if
+  return
+end sub
+
+sub PassFrames:
+pe_wait:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  PlayTick
+  inc FrPass
+  if FrPass < 3 then goto pe_wait
+  call asm StSatUp
+  SatPend = 0
+  VbMiss = 0
+  return
+end sub
+
+' PlayTick: one frame of play: the music, the run's clock
+sub PlayTick:
+  MusicTick
+  if Running = 1 then
+    inc TFr
+    if TFr >= 3600 then
+      TFr = 0
+      inc TMin
+    end if
+  end if
+  return
+end sub
+
+' Frame1: one frame on a page (the music runs, the clock does not)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  MusicTick
+  inc Tick
+  return
+end sub
+
+' ReadPad: both controllers (stick, the four buttons), the keypad, the
+' speed roller; PadE / KpE: what was pressed since the last read
+sub ReadPad:
+  V = joypad(1)
+  K = joypad(2)
+  V = V | K
+  V = V | LatchJ
+  LatchJ = 0
+  Up1 = V & 1
+  K = V >> 1
+  Rt1 = K & 1
+  K = V >> 2
+  Dn1 = K & 1
+  K = V >> 3
+  Lf1 = K & 1
+  K = WasPad ^ 255
+  PadE = V & K
+  WasPad = V
+  Kp = keypad(1)
+  if LatchK <> 255 then Kp = LatchK
+  LatchK = 255
+  KpE = 255
+  if Kp <> WasKp then KpE = Kp
+  WasKp = Kp
+  Spin = spinner(1)
+  return
+end sub
+
+' --- DEEPWARDEN music driver: subs (paste with the other subs) ---
+' Every in-game loop has a 96-frame bar. MusicTick counts the bar (MuF);
+' a new loop asked for in MuWant starts on the next bar line, so explore,
+' combat, boss and low-health hand over in tempo (at most 1.6 s later).
+'   MuWant = MuCombat            ' smooth: switches on the next bar line
+'   MuWant = MuCombat : MusicNow ' at once (the first fight of a level, the boss door)
+'   MuSt = SndLvlA : MusicSting  ' sting (SndLvlA, SndItemA, SndWinA, SndDieA); MuWant resumes after it
+'   MusicTitle                   ' title tune twice (55 s), then silence
+'   MusicOff                     ' everything off
+' Call MusicTick once per frame (the play loop and every wait loop).
+sub MusicTick:
+  if MuTT > 0 then
+    MuTT = MuTT - 1
+    if MuTT = 0 then
+      if MuPass > 1 then
+        dec MuPass
+        MuTitleGo
+      else
+        MuTitleStop
+      end if
+    end if
+    return
+  end if
+  if MuHold > 0 then
+    dec MuHold
+    if MuHold = 0 then MuStart
+    return
+  end if
+  inc MuF
+  if MuF >= 96 then
+    MuF = 0
+    if MuWant <> MuCur then
+      MuStart
+    else
+      if MuDrum > 0 then play sound MuDrum
+    end if
+  end if
+  return
+end sub
+
+sub MusicNow:
+  MuHold = 0
+  MuStart
+  return
+end sub
+
+' start MuWant on its bar 1 (the drum bar is replayed by MusicTick on each bar line)
+sub MuStart:
+  MuF = 0
+  MuCur = MuWant
+  MuDrum = 0
+  stop sound SndCmbDrum
+  if MuCur = MuNone then
+    stop sound SndExpA
+    stop sound SndExpB
+    return
+  end if
+  if MuCur = MuExplore then
+    play sound SndExpA
+    play sound SndExpB
+  end if
+  if MuCur = MuCombat then
+    play sound SndCmbA
+    play sound SndCmbB
+    MuDrum = SndCmbDrum
+  end if
+  if MuCur = MuBoss then
+    play sound SndBossA
+    play sound SndBossB
+    MuDrum = SndBossDrum
+  end if
+  if MuCur = MuLow then
+    play sound SndLowA
+    play sound SndLowB
+  end if
+  if MuDrum > 0 then play sound MuDrum
+  return
+end sub
+
+' MuSt = SndLvlA, SndItemA, SndWinA or SndDieA. For game over set MuWant = MuNone first.
+sub MusicSting:
+  MuTT = 0
+  MuDrum = 0
+  MuCur = MuNone
+  stop sound SndCmbDrum
+  play sound MuSt
+  MuX = MuSt + 1
+  play sound MuX
+  MuHold = LvlStingFrames
+  if MuSt = SndItemA then MuHold = ItemStingFrames
+  if MuSt = SndWinA then MuHold = WinStingFrames
+  if MuSt = SndDieA then
+    play sound SndDieC
+    MuHold = DieStingFrames
+  end if
+  return
+end sub
+
+sub MusicTitle:
+  MuHold = 0
+  MuCur = MuNone
+  MuWant = MuNone
+  MuPass = 2
+  MuTitleGo
+  return
+end sub
+
+sub MuTitleGo:
+  play sound SndTitleC
+  play sound SndTitleD
+  play sound SndTitleA
+  play sound SndTitleB
+  MuTT = TitleFrames
+  return
+end sub
+
+sub MuTitleStop:
+  stop sound SndTitleA
+  stop sound SndTitleB
+  stop sound SndTitleC
+  stop sound SndTitleD
+  MuTT = 0
+  return
+end sub
+
+sub MusicOff:
+  MuTitleStop
+  MuHold = 0
+  MuWant = MuNone
+  MuStart
+  return
+end sub
+
+' monsters by kind (rat, skeleton, wraith, the Servant): hit points
+' (+ the floor), rest before a wind-up, wind-up length, damage (half
+' hearts), XP; sounds
+data HpT bytes 2, 4, 4, 12, 1
+data RestT bytes 8, 14, 12, 16
+data WindT bytes 10, 14, 12, 30
+data HurtT2 bytes 1, 2, 2, 3
+data XpT bytes 3, 6, 8, 40
+data WarnT bytes 37, 38, 39, 40
+data AtkSndT bytes 41, 29, 42, 25
+data HitSndT bytes 26, 27, 43, 27, 27
+' the art's state for each monster state (moving, wind-up, attack, struck,
+' dying, gone, calling, in the bell)
+data ArtT bytes 0, 1, 2, 0, 3, 0, 4, 5
+' weapons (dagger, pick, sword): wind-up passes, reach (1/16 cells), damage
+data SwingT bytes 1, 3, 2
+data ReachT bytes 28, 34, 38
+data DmgT bytes 1, 2, 3
+' XP needed for level 2, 3...
+data LvXpT bytes 0, 10, 25, 45, 70, 100, 140, 190, 250
+data Bits bytes 1, 2, 4, 8, 16, 32, 64, 128, 0
+' the automap's tile for each slot kind (without and with the map scrap)
+data MapTileT bytes HMwall, HMstair, HMstair, HMchest, HMdoor, HMdoor, HMwall, HMwall, HMwall, HMwall, HMwall, HMwall, HMwall, HMwall, HMwall, HMwall
+data MapTileS bytes HMwall, HMstair, HMstair, HMchest, HMdoor, HMdoor, HMwall, HMsecret, HMsecret, HMwall, HMsecret, HMsecret, HMwall, HMwall, HMwall, HMwall
+' the map's facing words (E, SE ... NE), 2 letters each
+data DirNT bytes 69, 32, 83, 69, 83, 32, 83, 87, 87, 32, 78, 87, 78, 32, 78, 69
+data DirX bytes 1, 255, 0, 0
+data DirY bytes 0, 0, 1, 255
+data BobT bytes 0, 1, 2, 2, 2, 1, 0, 0
+data FaceAngT bytes 0, 128, 64, 192
+' the rats the Servant calls: x (1/16 cells) at row 13
+data CallXT bytes 40, 216
+' glyphs for the title's records and stamp: 0-9, ':', '.', '/', B, E, S,
+' T, C, R, D, M, O
+data GlyT bytes
+  $38,$44,$4C,$54,$64,$44,$38,$00, $10,$30,$10,$10,$10,$10,$38,$00
+  $38,$44,$04,$18,$20,$40,$7C,$00, $7C,$08,$10,$08,$04,$44,$38,$00
+  $08,$18,$28,$48,$7C,$08,$08,$00, $7C,$40,$78,$04,$04,$44,$38,$00
+  $18,$20,$40,$78,$44,$44,$38,$00, $7C,$04,$08,$10,$20,$20,$20,$00
+  $38,$44,$44,$38,$44,$44,$38,$00, $38,$44,$44,$3C,$04,$08,$30,$00
+  $00,$30,$30,$00,$30,$30,$00,$00, $00,$00,$00,$00,$00,$30,$30,$00
+  $04,$08,$08,$10,$20,$20,$40,$00, $78,$44,$44,$78,$44,$44,$78,$00
+  $7C,$40,$40,$78,$40,$40,$7C,$00, $3C,$40,$40,$38,$04,$04,$78,$00
+  $7C,$10,$10,$10,$10,$10,$10,$00, $38,$44,$40,$40,$40,$44,$38,$00
+  $78,$44,$44,$78,$50,$48,$44,$00, $78,$44,$44,$44,$44,$44,$78,$00
+  $44,$6C,$54,$54,$44,$44,$44,$00, $38,$44,$44,$44,$44,$44,$38,$00
+end data
+
+' the weapon's frames: N, then N x (y, x, pattern, colour) (17 bytes a frame); the pick's head pattern per frame
+data WpnT bytes 4, 128, 172, 0, 14, 96, 168, 4, 15, 64, 160, 8, 15, 32, 156, 12, 15, 4, 100, 192, 0, 14, 68, 200, 20, 15, 36, 202, 24, 15, 4, 208, 28, 15, 4, 128, 116, 36, 15, 96, 132, 40, 15, 64, 152, 44, 15, 32, 172, 48, 15, 4, 128, 44, 0, 14, 96, 40, 52, 15, 64, 30, 56, 15, 32, 28, 60, 15, 4, 112, 108, 0, 14, 80, 118, 68, 15, 48, 134, 72, 15, 16, 150, 76, 15
+data PickT bytes 16, 32, 255, 64, 80
+data WpnPat bytes 0, 255, 127, 3, 15, 31, 59, 63, 59, 63, 31, 15, 31, 63, 63, 63, 0, 254, 252, 128, 224, 240, 104, 252, 108, 252, 252, 248, 252, 254, 254, 254, 242, 115, 123, 121, 61, 61, 60, 30, 30, 14, 15, 15, 7, 7, 7, 3, 0, 0, 0, 0, 128, 128, 128, 192, 192, 64, 96, 96, 32, 176, 144, 144, 232, 236, 228, 246, 242, 114, 123, 121, 57, 61, 60, 28, 30, 30, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 128, 128, 192, 64, 96, 96, 0, 0, 0, 0, 128, 128, 128, 192, 96, 96, 112, 112, 120, 108, 116, 54, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 252, 254, 12, 4, 96, 96, 112, 112, 120, 108, 116, 54, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 123, 123, 123, 123, 122, 122, 114, 114, 114, 114, 114, 114, 114, 118, 246, 246, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 56, 58, 58, 58, 122, 114, 114, 114, 114, 114, 114, 114, 114, 246, 246, 246, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 224, 224, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 254, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 3, 3, 7, 15, 15, 31, 31, 63, 63, 126, 126, 252, 248, 252, 248, 240, 240, 224, 224, 192, 192, 128, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 3, 7, 7, 15, 31, 31, 63, 126, 126, 252, 248, 126, 252, 252, 248, 240, 240, 224, 192, 192, 128, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3, 3, 7, 15, 15, 31, 63, 63, 126, 252, 248, 63, 126, 252, 252, 248, 240, 240, 224, 192, 192, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 3, 3, 7, 15, 15, 31, 63, 63, 126, 252, 63, 126, 126, 252, 248, 248, 240, 224, 224, 192, 192, 128, 0, 0, 0, 0, 246, 242, 114, 123, 121, 57, 61, 60, 30, 30, 14, 15, 15, 7, 7, 3, 0, 0, 0, 0, 0, 128, 128, 128, 192, 64, 64, 96, 32, 176, 176, 144, 216, 232, 108, 116, 114, 115, 123, 121, 61, 61, 28, 30, 30, 14, 15, 15, 0, 0, 0, 0, 0, 0, 0, 0, 128, 128, 128, 192, 64, 96, 96, 32, 0, 0, 0, 0, 0, 0, 0, 0, 128, 128, 192, 64, 96, 112, 112, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 252, 254, 12, 4, 96, 112, 112, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 3, 3, 7, 7, 15, 14, 30, 29, 29, 57, 58, 114, 116, 228, 200, 208, 144, 160, 32, 96, 64, 192, 128, 128, 0, 0, 0, 0, 0, 0, 1, 1, 3, 7, 7, 14, 14, 28, 29, 57, 59, 114, 118, 244, 236, 232, 160, 160, 64, 64, 64, 192, 128, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 8, 16, 16, 48, 112, 96, 224, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 128, 0, 48, 112, 96, 224, 0, 0, 0, 0, 0, 0, 0, 0, 192, 224, 192, 64, 0, 0, 0, 0
+const WpnBytes = 672
+' the monsters of each floor: x, y (1/16 cells), kind; first index and count a floor
+data MonXT bytes 104, 136, 200, 104, 216, 184, 136, 168, 24
+data MonYT bytes 72, 168, 168, 216, 216, 232, 24, 120, 168
+data MonKT bytes 1, 2, 1, 1, 1, 2, 0, 0, 0
+' each one's wave byte (map.py): 0 stays dead, 1-63 back after n x 4 passes, 64 the foreman, 128 + d asleep until within d / 2 cells
+data MonWT bytes 134, 136, 138, 138, 64, 136, 45, 45, 45
+' each one's burrow: the cell (y x 16 + x) of the rat burrow next to its home (255 none)
+data BurrowT bytes 255, 255, 255, 255, 255, 255, 8, 138, 160
+data MonFirst bytes 0, 9, 9
+data MonCount bytes 9, 0, 0
+' per floor: start x, y (cells), the number of secrets
+data StartXT bytes 1
+data StartYT bytes 1
+data SecretsT bytes 3
+const SecretsAll = 3
+const Floors = 1
+' the map's arrow sprites (8 x 8): east, south-east, south ... north-east
+data ArrowT bytes 0, 8, 12, 126, 126, 12, 8, 0, 0, 32, 116, 60, 28, 28, 0, 0, 0, 24, 24, 24, 126, 60, 24, 0, 0, 4, 14, 60, 56, 60, 0, 0, 0, 16, 48, 126, 126, 48, 16, 0, 0, 0, 56, 56, 60, 46, 4, 0, 0, 24, 60, 126, 24, 24, 24, 0, 0, 0, 60, 28, 60, 112, 32, 0
+data ZBandT bytes 33, 52, 82, 150
+data FlashT bytes 15, 8, 15, 8, 15
+data WallPZ bytes
+  $12,$44,$0C,$92,$F0,$11,$60,$14,$70,$AA,$00,$1F,$F0,$3C,$E0,$F3,$D0,$CF,$C0,$B0,$3C,$A0,$F2,$90
+  $0E,$44,$01,$40,$08,$FA,$BF,$00,$71,$F0,$68,$92,$0A,$F0,$02,$80,$11,$A5,$60,$E9,$21,$00,$39,$FF
+  $7D,$54,$0D,$92,$0B,$51,$64,$94,$00,$3C,$E0,$F3,$D0,$CF,$C0,$B0,$3C,$A0,$F2,$90,$F3,$54,$00,$F6
+  $71,$F0,$80,$92,$A0,$0B,$28,$51,$0A,$64,$5F,$91,$82,$00,$02,$04,$08,$50,$F0,$01,$20,$10,$F0,$5F
+  $F0,$3C,$E0,$F3,$D0,$CF,$C0,$B0,$3C,$A0,$F2,$90,$F3,$04,$00,$F6,$71,$F0,$80,$50,$A0,$F0,$1A,$20
+  $5F,$91,$DF,$00,$FF,$FF,$DB,$3C,$E0,$7C,$F0,$A0,$01,$13,$CF,$90,$FB,$9F,$10,$71,$DA,$F0,$00,$02
+  $80,$00,$A5,$00,$FF,$F6,$20,$58,$0F,$89,$81,$A1,$85,$81,$91,$81,$C1,$E0,$3C,$F0,$F3,$E0,$CF,$D0
+  $C0,$3C,$B0,$F3,$A0,$CB,$90,$89,$CF,$00,$71,$DA,$F0,$A1,$02,$80,$85,$A0,$81,$29,$91,$7E,$91,$00
+  $0A,$A9,$A8,$1A,$A9,$91,$93,$C5,$7C,$F0,$F3,$E0,$CF,$D0,$C0,$3C,$B0,$F3,$A0,$CB,$90,$A9,$CF,$00
+  $71,$DA,$F0,$1A,$02,$80,$85,$A0,$91,$29,$93,$7D,$91,$61,$00,$8A,$40,$10,$95,$02,$7C,$C0,$F3,$B0
+  $CF,$A0,$90,$D6,$00,$5A,$40,$5F,$D1,$DA,$F0,$F0,$02,$80,$02,$A5,$20,$F8,$91,$00,$2B,$44,$0A,$01
+  $02,$55,$F3,$C0,$CF,$B0,$A0,$3F,$90,$09,$00,$69,$40,$69,$40,$69,$40,$7F,$B0,$DA,$F0,$60,$5C,$24
+  $00,$BF,$99,$FF,$F9,$BC,$FE,$E0,$F2,$F0,$92,$99,$92,$99,$91,$99,$F3,$A0,$FF,$90,$FE,$CF,$00,$EF
+  $DA,$F0,$99,$02,$80,$00,$A5,$99,$EF,$CA,$20,$76,$00,$1F,$FF,$EF,$F9,$FE,$E0,$3C,$F0,$A4,$44,$A4
+  $44,$A4,$44,$7C,$A0,$F3,$90,$77,$00,$F6,$EF,$F0,$80,$44,$A0,$00,$29,$44,$7B,$CA,$DE,$20,$00,$0D
+  $55,$56
+end data
+data WallCZ bytes
+  $92,$1A,$61,$A1,$61,$01,$F3,$F0,$CF,$E0,$D0,$3C,$C0,$F3,$B0,$CF,$A0,$90,$27,$1A,$41,$E1,$FB,$FC
+  $D4,$DA,$F0,$1A,$02,$80,$1A,$A0,$1A,$29,$1A,$7A,$21,$01,$1F,$48,$38,$00,$52,$96,$A1,$96,$A1,$95
+  $A1,$69,$A1,$69,$A1,$69,$A1,$68,$A1,$5F,$57,$9B,$FE,$1A,$CF,$E0,$F0,$3C,$E0,$F3,$D0,$CF,$C0,$B0
+  $3C,$A0,$F2,$90,$F3,$A1,$00,$F6,$EB,$F0,$80,$A1,$A0,$A1,$29,$A1,$3F,$DC,$DE,$20,$00,$0F,$DF,$F8
+  $F6,$E0,$7C,$00,$E0,$F0,$1E,$90,$7F,$FB,$00,$3F,$EB,$F0,$68,$01,$0A,$01,$02,$97,$01,$A5,$21,$E1
+  $7A,$FF,$16,$5F,$E0,$3C,$F0,$F3,$E0,$CF,$D0,$C0,$3C,$B0,$F3,$A0,$DF,$8E,$00,$3F,$EF,$F0,$68,$16
+  $0A,$16,$02,$93,$16,$FD,$DC,$20,$E4,$00,$A1,$61,$56,$96,$61,$85,$61,$69,$61,$69,$61,$69,$61,$69
+  $61,$69,$61,$18,$C6,$1A,$FA,$01,$95,$FA,$7C,$C0,$F3,$B0,$CF,$A0,$90,$C6,$00,$5A,$FA,$5A,$FA,$5A
+  $FA,$5F,$B0,$F7,$F0,$F7,$DD,$20,$86,$00,$91,$BA,$5A,$BA,$56,$96,$BA,$96,$BA,$96,$BA,$96,$BA,$96
+  $BA,$94,$BA,$B9,$1E,$FF,$8F,$0E,$EF,$1E,$E0,$3C,$F0,$F3,$E0,$CF,$D0,$C0,$3C,$B0,$F3,$A0,$9F,$90
+  $FF,$CF,$00,$EF,$DA,$F0,$1E,$02,$80,$0E,$A0,$EF,$3F,$B9,$20,$78,$00,$2F,$E1,$FF,$EF,$B1,$FE,$E0
+  $3C,$F0,$F3,$E0,$CF,$D0,$C0,$3C,$B0,$F3,$A0,$CF,$90,$14,$FF,$30,$EF,$80,$F0,$A0,$0E,$1A,$E1,$13
+  $DD,$00,$55,$56
+end data
+data HudPZ bytes
+  $80,$00,$93,$93,$41,$01,$83,$38,$10,$A0,$F0,$82,$A0,$E0,$8D,$34,$09,$92,$82,$44,$28,$92,$02,$04
+  $08,$50,$20,$50,$86,$C3,$4A,$08,$10,$10,$91,$FF,$20,$40,$02,$06,$0C,$58,$30,$30,$48,$80,$00,$44
+  $83,$FE,$C1,$D8,$F0,$3E,$60,$60,$95,$60,$70,$EA,$38,$E4,$38,$EA,$FE,$01,$3F,$F7,$F0,$A1,$82,$FF
+  $85,$CD,$CF,$FF,$F2,$F0,$D7,$C0,$E9,$F0,$01,$18,$66,$04,$00,$40,$00,$08,$AE,$44,$22,$F8,$2E,$54
+  $FE,$39,$31,$26,$02,$06,$B1,$C3,$38,$87,$DE,$44,$DF,$65,$4F,$00,$83,$49,$49,$01,$93,$D3,$A0,$FF
+  $81,$E9,$32,$ED,$01,$40,$08,$FA,$83,$52,$55,$55,$80
+end data
+data HudCZ bytes
+  $80,$01,$9A,$18,$98,$18,$BA,$81,$F0,$22,$89,$84,$88,$41,$FA,$14,$41,$FE,$01,$A2,$E1,$88,$A1,$21
+  $01,$1E,$E1,$A1,$A3,$F1,$EA,$F7,$FC,$01,$89,$1A,$16,$E8,$C0,$EE,$1E,$1F,$FC,$75,$08,$B1,$1B,$B1
+  $B1,$FF,$F0,$FF,$89,$EE,$EF,$13,$12,$13,$F4,$6E,$BF,$14,$F2,$BF,$73,$81,$3F,$41,$E2,$86,$1A,$1A
+  $E9,$C0,$90,$1A,$1B,$1A,$DA,$FF,$19,$E3,$F0,$F8,$64,$FF,$E2,$0A,$6A,$FC,$64,$0A,$01,$E1,$8E,$0E
+  $1E,$FE,$26,$0E,$01,$31,$AF,$13,$FB,$BA,$BF,$71,$FE,$FF,$01,$FD,$27,$20,$FF,$62,$FE,$EB,$65,$E1
+  $8D,$FC,$83,$52,$55,$55,$80
+end data
+data FeatPZ bytes
+  $96,$00,$02,$44,$0C,$92,$F0,$11,$60,$14,$70,$81,$EA,$14,$60,$11,$F0,$92,$0C,$44,$00,$11,$D0,$99
+  $3D,$F0,$BC,$AA,$FE,$FC,$E1,$E8,$F7,$E0,$D7,$FE,$F4,$C1,$FE,$7E,$C0,$84,$99,$48,$F1,$CC,$99,$FC
+  $F7,$DC,$80,$C0,$F8,$EB,$D4,$83,$10,$01,$40,$08,$B9,$FA,$5E,$37,$B9,$77,$70,$FE,$ED,$F8,$40,$5F
+  $E3,$C7,$10,$71,$5E,$E7,$90,$DD,$F0,$C7,$C0,$F7,$29,$70,$FF,$9B,$E4,$D1,$77,$E4,$FC,$DC,$80,$3C
+  $FE,$C9,$A0,$28,$99,$04,$F7,$78,$5C,$F0,$72,$E0,$13,$85,$FE,$54,$D5,$55,$60
+end data
+data FeatCZ bytes
+  $96,$11,$92,$1A,$BC,$A1,$EE,$BE,$0A,$FD,$FF,$FD,$6A,$FB,$F0,$8E,$A6,$6A,$FC,$78,$E1,$F8,$06,$06
+  $F5,$FC,$66,$01,$01,$04,$A1,$01,$AF,$0E,$E8,$FF,$C0,$E8,$F7,$F8,$E8,$8D,$FF,$06,$7A,$ED,$0B,$F7
+  $60,$FD,$B8,$FE,$E7,$C0,$FF,$F4,$E4,$C7,$C0,$AA,$FF,$1E,$E1,$E5,$F8,$8F,$0B,$0B,$F0,$7F,$FE,$E0
+  $AB,$C0,$88,$0E,$0E,$FB,$F6,$41,$8F,$FC,$84,$3E,$5C,$B7,$A1,$70,$7E,$ED,$E4,$DC,$60,$F2,$C6,$DD
+  $1A,$00,$E7,$10,$BC,$C5,$A1,$8E,$A3,$06,$88,$B0,$EA,$0B,$1B,$2C,$6B,$7F,$C0,$BD,$D2,$E0,$B6,$6A
+  $0C,$CE,$D0,$4A,$0F,$0F,$7F,$F7,$07,$07,$8F,$A6,$C2,$FF,$F1,$D1,$E5,$F7,$DD,$D5,$7D,$F7,$B9,$10
+  $F8,$E8,$FD,$83,$BF,$FB,$DF,$E9,$B9,$D0,$FE,$F5,$FE,$B9,$04,$C0,$FD,$ED,$FE,$E7,$04,$62,$01,$61
+  $16,$4D,$71,$F0,$FF,$D1,$41,$39,$96,$F8,$E1,$11,$FE,$55,$35,$55,$58
+end data
+
+data TitleP bytes
+  $80,$00,$40,$68,$3F,$68,$00,$28,$03,$AA,$00,$80,$28,$F0,$A0,$00,$A2,$FC,$81,$00,$A3,$FB,$FF,$C0
+  $FE,$F8,$C0,$FE,$28,$EF,$A2,$0F,$82,$00,$8E,$C0,$96,$2F,$1F,$FF,$8B,$50,$BF,$A0,$FF,$00,$68,$7E
+  $78,$36,$E2,$C0,$E8,$FE,$FF,$8F,$E2,$E0,$FC,$C3,$FF,$50,$2F,$07,$FF,$EE,$F7,$56,$4A,$E1,$50,$BE
+  $E0,$FF,$4A,$DC,$A0,$3F,$FE,$F7,$70,$A6,$0B,$01,$A2,$FF,$81,$A8,$00,$F8,$76,$04,$11,$F7,$FF,$B4
+  $1E,$FF,$86,$FC,$81,$00,$A1,$03,$AA,$C3,$F0,$1A,$00,$06,$96,$0F,$86,$C0,$A8,$00,$1F,$6A,$FC,$87
+  $BF,$D8,$50,$80,$1C,$1C,$2E,$01,$FE,$2A,$00,$97,$FB,$DB,$50,$07,$8C,$FE,$FF,$54,$FE,$DE,$50,$FF
+  $96,$1F,$96,$BF,$91,$00,$F3,$8D,$FE,$FA,$FE,$F1,$28,$7F,$F7,$91,$0D,$71,$00,$0A,$03,$5B,$F0,$CC
+  $65,$FC,$62,$C3,$03,$4F,$2B,$9D,$FE,$D6,$00,$B9,$00,$FE,$BD,$FC,$50,$2E,$1C,$FE,$EA,$50,$E3,$EA
+  $FE,$FE,$78,$50,$2E,$01,$FE,$69,$FB,$62,$00,$F1,$38,$50,$DB,$98,$AF,$92,$07,$52,$2D,$EF,$D2,$00
+  $96,$FC,$80,$3F,$DC,$EE,$FC,$53,$50,$A5,$0F,$D9,$00,$43,$58,$40,$CD,$6C,$C6,$00,$E3,$60,$C7,$B0
+  $DF,$C1,$B6,$FC,$C0,$D0,$71,$DD,$B6,$8E,$B6,$50,$12,$24,$E3,$E3,$DC,$0D,$BF,$FE,$50,$5E,$00,$96
+  $00,$97,$00,$B5,$F0,$CA,$02,$00,$5A,$00,$3D,$50,$DD,$40,$C6,$00,$E4,$50,$C7,$00,$5F,$50,$5D,$9F
+  $06,$FE,$01,$C8,$0E,$8E,$1F,$02,$71,$EE,$80,$FE,$08,$83,$F4,$44,$44,$47,$92,$FB,$44,$00,$5F,$50
+  $50,$DE,$2F,$5F,$D1,$99,$FE,$BE,$00,$E7,$14,$FA,$18,$00,$D0,$10,$10,$90,$9E,$DF,$00,$40,$FE,$20
+  $BE,$7C,$00,$07,$04,$FA,$3A,$00,$9F,$A1,$9E,$2A,$9F,$5A,$45,$65,$55,$4D,$45,$45,$45,$E8,$F3,$D1
+  $E7,$A3,$F4,$A0,$61,$C4,$EB,$F8,$7C,$EF,$F0,$04,$A0,$E6,$FF,$00,$4E,$51,$8A,$D1,$51,$61,$4E,$00
+  $41,$B3,$7D,$21,$BA,$D6,$D1,$F3,$A2,$91,$0E,$55,$55,$5B,$91,$71,$A8,$6D,$55,$29,$F7,$A7,$05,$FD
+  $40,$0D,$B1,$E0,$FC,$D6,$23,$BB,$B1,$E0,$FE,$5D,$89,$0C,$FA,$53,$CA,$D0,$FC,$02,$92,$FD,$96,$7F
+  $F6,$F8,$60,$94,$FB,$A5,$0F,$89,$FE,$F7,$4A,$1F,$02,$E4,$EF,$30,$62,$F8,$DF,$5A,$00,$52,$36,$F0
+  $BF,$90,$46,$24,$1F,$7F,$A0,$FE,$28,$FE,$45,$F5,$FE,$6E,$FB,$9A,$74,$CD,$6A,$89,$2A,$A2,$F0,$78
+  $3C,$00,$F7,$14,$88,$00,$EF,$52,$21,$00,$DF,$48,$9A,$00,$BF,$2A,$5A,$AA,$5A,$AA,$3F,$ED,$F0,$DC
+  $2A,$A6,$80,$92,$FE,$95,$00,$88,$00,$FD,$52,$20,$00,$FB,$48,$DF,$0F,$1E,$90,$BA,$D6,$FF,$00,$15
+  $68,$DE,$6A,$FE,$1D,$1E,$0F,$07,$03,$01,$9D,$D8,$33,$5B,$F0,$F1,$FE,$4A,$01,$82,$02,$04,$08,$10
+  $B6,$20,$2D,$48,$80,$70,$08,$04,$04,$02,$EA,$FC,$55,$3C,$F0,$2A,$54,$87,$03,$68,$85,$08,$BF,$A0
+  $EC,$CA,$2C,$80,$14,$31,$DA,$03,$10,$0F,$78,$F0,$E0,$C0,$95,$A5,$FF,$7F,$A1,$DF,$A0,$00,$06,$96
+  $F7,$82,$FE,$8F,$DE,$D0,$73,$F0,$4D,$8A,$04,$A0,$A0,$A0,$16,$AA,$02,$02,$AE,$0A,$20,$FE,$26,$10
+  $E0,$02,$18,$D8,$04,$03,$08,$AA,$55,$C0,$61,$1A,$01,$06,$08,$30,$C0,$0C,$10,$60,$80,$00,$01,$04
+  $10,$0A,$0D,$0F,$37,$6F,$55,$80,$3F,$AC,$40,$50,$8E,$E1,$0A,$E0,$3D,$C9,$A8,$F0,$77,$10,$56,$93
+  $00,$86,$FE,$97,$77,$8C,$E6,$B6,$FC,$00,$15,$BC,$DE,$FE,$D8,$5C,$1A,$0E,$1D,$B6,$D1,$B0,$00,$04
+  $B6,$01,$2B,$74,$1C,$20,$40,$34,$8F,$81,$D4,$89,$23,$1C,$32,$C0,$B8,$08,$BD,$FF,$00,$55,$B7,$F9
+  $FC,$89,$DF,$5F,$22,$C8,$D0,$0A,$D8,$CC,$F1,$FF,$EC,$FD,$C3,$FE,$29,$FC,$FE,$55,$A5,$77,$A0,$DF
+  $D8,$00,$43,$9D,$F0,$95,$00,$BC,$02,$FC,$A5,$80,$E4,$FE,$6B,$07,$1A,$27,$08,$37,$57,$C0,$30,$C1
+  $CD,$D2,$5A,$C3,$55,$A7,$FD,$6D,$04,$86,$00,$3B,$80,$7F,$F1,$D8,$68,$08,$20,$0A,$F0,$EA,$55,$DE
+  $00,$86,$A0,$90,$A8,$5C,$65,$00,$C2,$FB,$81,$00,$5D,$5F,$08,$F6,$FE,$00,$13,$03,$A0,$47,$57,$32
+  $ED,$FF,$08,$CC,$3A,$0F,$92,$C6,$80,$F7,$02,$F6,$17,$CA,$37,$27,$02,$AC,$37,$1D,$86,$FC,$AA,$FE
+  $FA,$A9,$EA,$AA,$2A,$50,$9D,$40,$D7,$09,$00,$14,$DB,$0A,$5C,$00,$FD,$E4,$59,$00,$13,$5D,$00,$E5
+  $FE,$48,$A8,$04,$3F,$03,$20,$83,$01,$E1,$E2,$02,$58,$0C,$5F,$F6,$F7,$E4,$75,$0D,$26,$CC,$DD,$00
+  $19,$DD,$1C,$9A,$0C,$54,$1B,$00,$DB,$FC,$A0,$49,$24,$C7,$00,$40,$A1,$00,$03,$F1,$FE,$97,$00,$95
+  $FE,$22,$03,$06,$19,$93,$0C,$02,$04,$D6,$A8,$85,$01,$D3,$CA,$D0,$E7,$DB,$FE,$72,$18,$F6,$40,$F9
+  $14,$5E,$FD,$D6,$A8,$14,$5D,$C5,$00,$71,$94,$00,$30,$78,$00,$96,$F7,$FC,$D9,$3F,$84,$68,$09,$A1
+  $07,$D7,$39,$53,$B4,$23,$E0,$F8,$75,$42,$BE,$0C,$FE,$A2,$18,$F8,$08,$1B,$00,$65,$02,$3D,$8F,$6D
+  $0E,$63,$02,$99,$B0,$B6,$04,$01,$AA,$14,$98,$1F,$40,$FE,$60,$85,$C0,$10,$FE,$A8,$2C,$FC,$75,$00
+  $28,$7C,$17,$56,$01,$61,$F8,$3E,$EF,$88,$0F,$FC,$01,$90,$7B,$FC,$7E,$EF,$FD,$DD,$B9,$AD,$20,$3F
+  $FD,$DF,$FB,$BF,$67,$6A,$4A,$C0,$3F,$BF,$F7,$7E,$6F,$79,$5A,$F8,$F5,$EE,$23,$D7,$D0,$94,$96,$C3
+  $F5,$D5,$A1,$A1,$00,$00,$F8,$61,$9E,$B7,$2C,$0D,$09,$C1,$9D,$7A,$4F,$6A,$FE,$90,$5A,$DF,$7A,$1A
+  $52,$E7,$E7,$E7,$0A,$9F,$D6,$16,$84,$2E,$F0,$BE,$DB,$32,$BD,$97,$B9,$BA,$06,$6A,$30,$BD,$02,$E0
+  $DD,$5F,$AA,$AF,$E2,$4A,$E0,$E0,$5A,$77,$5A,$4A,$10,$6A,$7F,$77,$28,$F5,$DD,$DE,$92,$AA,$1D,$C3
+  $0E,$F3,$B7,$A7,$AA,$15,$49,$A9,$A9,$A0,$FC,$04,$77,$93,$6E,$4B,$01,$02,$F0,$F0,$A0,$52,$BA,$5F
+  $5B,$1A,$7F,$84,$08,$9E,$D6,$14,$FC,$E1,$2D,$F8,$36,$A5,$21,$E0,$BC,$52,$CA,$9F,$29,$6A,$F8,$FE
+  $DA,$E9,$0F,$3D,$F4,$8D,$F3,$7A,$42,$82,$B1,$5E,$C6,$94,$84,$78,$91,$2F,$D7,$B3,$A5,$1F,$14,$98
+  $A5,$28,$FD,$A3,$AB,$38,$27,$53,$AB,$77,$A5,$10,$18,$7E,$02,$BC,$08,$B8,$D1,$CB,$8E,$12,$55,$A1
+  $15,$01,$9C,$70,$30,$20,$70,$20,$98,$0E,$0C,$08,$28,$0A,$C6,$38,$2F,$10,$B3,$56,$00,$6F,$C0,$29
+  $43,$BE,$A5,$21,$82,$B5,$3C,$18,$10,$0A,$42,$07,$FA,$A1,$1A,$94,$58,$23,$22,$1A,$0A,$0A,$92,$FF
+  $04,$E4,$A4,$24,$FC,$04,$30,$0D,$46,$8E,$12,$1C,$40,$63,$84,$30,$D5,$11,$67,$44,$66,$CE,$DB,$09
+  $D4,$E9,$40,$6E,$66,$50,$70,$50,$1A,$80,$58,$9C,$25,$0E,$42,$0A,$A0,$28,$2C,$C1,$53,$85,$FD,$F2
+  $D9,$49,$84,$53,$46,$D5,$9E,$1F,$FE,$08,$A2,$7B,$80,$70,$08,$82,$F0,$00,$E7,$88,$88,$8F,$88,$9A
+  $00,$3C,$A2,$58,$BC,$A8,$A4,$A2,$00,$F8,$20,$69,$00,$40,$AA,$02,$01,$1A,$04,$88,$FE,$02,$2F,$03
+  $A4,$42,$EB,$09,$C3,$18,$56,$64,$30,$59,$8C,$88,$C8,$C0,$02,$85,$C0,$9B,$1F,$12,$1A,$01,$AA,$EA
+  $80,$9E,$40,$FE,$11,$4D,$51,$DD,$10,$98,$04,$81,$00,$81,$3A,$D7,$0A,$A8,$2A,$78,$AB,$03,$AB,$07
+  $A7,$FD,$26,$0F,$DF,$9F,$9F,$0A,$BF,$BF,$CA,$C0,$23,$E0,$EA,$05,$B4,$3C,$49,$BC,$CD,$48,$66,$0D
+  $07,$05,$2C,$3F,$A0,$61,$80,$A1,$E0,$D7,$00,$44,$E2,$FF,$89,$8A,$8A,$FA,$8A,$0A,$89,$00,$C8,$28
+  $A0,$2A,$92,$2D,$C8,$00,$80,$60,$00,$F9,$22,$B3,$21,$11,$48,$F2,$CB,$33,$3C,$BB,$E7,$3C,$EE,$67
+  $6F,$82,$82,$83,$BA,$FB,$FA,$A0,$3B,$25,$E2,$BE,$B3,$A0,$C0,$46,$85,$91,$6F,$AA,$FC,$22,$AF,$0F
+  $96,$5F,$9F,$3F,$BF,$7F,$3F,$00,$A6,$3F,$68,$7F,$F2,$F4,$7D,$F9,$FA,$FD,$FC,$FE,$C0,$D1,$75,$E0
+  $8D,$1F,$02,$E6,$04,$1F,$02,$C0,$1F,$F5,$94,$FE,$57,$66,$09,$A9,$03,$A7,$B7,$1F,$1F,$50,$61,$67
+  $9C,$F8,$F8,$F0,$1F,$E1,$06,$CA,$6E,$3F,$FF,$A3,$1F,$0F,$F8,$68,$04,$65,$C0,$EA,$F0,$FA,$FC,$3A
+  $6B,$09,$04,$D5,$D4,$00,$75,$8A,$60,$7A,$A8,$CF,$6B,$28,$CF,$88,$48,$2F,$BC,$58,$10,$AA,$BC,$FB
+  $1B,$F8,$53,$D0,$B5,$87,$B6,$39,$8F,$F8,$3C,$F1,$90,$E8,$69,$90,$02,$25,$03,$07,$22,$7C,$FC,$6F
+  $0A,$EC,$9B,$3E,$BE,$3E,$2B,$FD,$FC,$10,$A8,$D4,$A8,$4C,$4D,$1F,$87,$0A,$84,$FE,$44,$D5,$55,$60
+end data
+data TitleC bytes
+  $80,$11,$40,$68,$F1,$A2,$E1,$A8,$11,$FF,$FF,$F0,$E0,$5F,$F0,$EE,$B4,$D0,$40,$FE,$E0,$F0,$4F,$30
+  $5F,$F0,$03,$F9,$80,$F0,$3D,$50,$0F,$00,$5F,$F0,$6F,$EE,$FF,$80,$B0,$F5,$FE,$2A,$E1,$2A,$51,$41
+  $B1,$3D,$E0,$79,$D0,$89,$BB,$BB,$3E,$F1,$D0,$15,$F7,$E0,$C7,$50,$E4,$F1,$B0,$7F,$F1,$D0,$57,$95
+  $F0,$F7,$00,$DD,$40,$B9,$0D,$55,$B0,$1F,$FE,$52,$9A,$B1,$A1,$7C,$E0,$A0,$A1,$2F,$BB,$F0,$7C,$CE
+  $E1,$D0,$5A,$B1,$57,$EF,$F0,$AA,$FF,$D7,$50,$DF,$F0,$D0,$07,$D4,$F0,$F7,$00,$D7,$20,$D7,$F0,$75
+  $00,$7B,$BD,$61,$E2,$FF,$F0,$F8,$66,$FF,$E0,$4F,$FF,$85,$D0,$3F,$F0,$90,$50,$E4,$E0,$F1,$F0,$0E
+  $30,$57,$77,$F0,$C5,$80,$F0,$FE,$1A,$A1,$48,$E7,$11,$91,$F2,$E7,$F1,$FE,$85,$F0,$03,$67,$A2,$61
+  $90,$F0,$FE,$18,$AF,$BB,$AA,$6A,$FB,$C2,$F0,$2F,$AA,$A6,$D0,$42,$96,$66,$96,$A6,$84,$A6,$53,$F6
+  $FE,$C0,$69,$A6,$13,$D5,$D0,$F5,$FE,$3F,$98,$E3,$F7,$AA,$BF,$F1,$A6,$FF,$F0,$CF,$66,$9E,$68,$55
+  $9F,$66,$F0,$A0,$A6,$3C,$D0,$42,$96,$A1,$96,$A1,$80,$A1,$7D,$20,$EE,$00,$F0,$5E,$D0,$50,$DD,$90
+  $DF,$70,$FD,$50,$B7,$81,$00,$3C,$FE,$A5,$A6,$D3,$74,$74,$DC,$5C,$0D,$54,$12,$FF,$51,$FE,$7F,$FF
+  $EF,$FE,$F1,$FF,$FD,$60,$F0,$4E,$D0,$3F,$B8,$BF,$20,$FC,$57,$9C,$29,$A1,$01,$E7,$58,$A4,$FF,$A6
+  $77,$00,$57,$D7,$A0,$F0,$FF,$54,$F4,$EC,$BD,$41,$FD,$81,$E0,$7E,$FC,$F6,$51,$FE,$96,$F1,$93,$A1
+  $FC,$F0,$DC,$E8,$D1,$11,$6F,$E1,$FF,$BC,$F6,$C0,$F2,$F1,$F0,$15,$CD,$74,$FD,$FE,$84,$60,$D7,$56
+  $77,$00,$01,$F5,$FC,$AA,$71,$41,$0F,$F0,$3D,$FE,$1A,$51,$5D,$21,$E0,$7D,$F4,$CE,$E4,$BF,$AA,$F8
+  $E2,$FC,$B1,$B1,$A1,$F1,$F2,$FE,$97,$A1,$37,$F0,$D7,$FE,$70,$60,$1F,$A0,$57,$1C,$00,$7D,$C0,$6F
+  $41,$FC,$1D,$53,$74,$03,$71,$0E,$D8,$00,$5C,$9D,$FC,$EF,$18,$AF,$FF,$73,$04,$DF,$FD,$0C,$5C,$15
+  $FD,$F0,$FB,$3D,$F4,$C5,$00,$5D,$DD,$0A,$C5,$00,$F1,$FE,$77,$0E,$75,$95,$06,$DE,$15,$F6,$7D,$E0
+  $AF,$AF,$FD,$49,$FC,$E1,$FC,$E1,$FE,$2D,$11,$D5,$00,$75,$DC,$50,$D5,$A0,$7D,$FE,$58,$A8,$51,$B1
+  $E1,$3B,$F0,$1C,$0C,$5F,$F9,$DF,$E4,$FE,$36,$11,$94,$A1,$77,$04,$57,$75,$60,$68,$AA,$15,$CD,$AA
+  $DC,$00,$56,$F3,$E1,$FE,$56,$0C,$56,$CD,$F1,$EC,$37,$00,$77,$14,$16,$84,$A1,$C7,$00,$01,$77,$04
+  $A4,$A5,$F4,$F1,$65,$60,$A7,$81,$62,$02,$64,$51,$45,$41,$89,$51,$41,$5A,$51,$53,$48,$C2,$1F,$F0
+  $74,$37,$FE,$CB,$FE,$51,$12,$B4,$7E,$61,$F0,$4D,$24,$42,$37,$00,$52,$84,$51,$36,$65,$24,$5A,$4A
+  $8B,$4A,$4A,$D4,$FE,$88,$54,$4A,$A7,$41,$D9,$F0,$E3,$51,$54,$41,$FE,$E5,$F3,$FE,$EF,$B1,$45,$F2
+  $FA,$C0,$51,$52,$F9,$4E,$FF,$D0,$E0,$AC,$F9,$7D,$E0,$6F,$A1,$F0,$7A,$90,$9A,$4A,$A5,$A0,$A4,$F2
+  $F4,$7D,$61,$61,$4A,$50,$FC,$3F,$70,$3D,$20,$7D,$50,$7D,$FE,$BD,$51,$F0,$2E,$4A,$FE,$F3,$F0,$F4
+  $3A,$80,$A0,$3B,$B8,$97,$EE,$F1,$F3,$F0,$FE,$FE,$C0,$53,$F0,$F3,$E0,$F9,$FB,$E0,$0A,$11,$57,$63
+  $14,$FC,$FE,$F0,$E3,$D6,$06,$14,$FD,$D0,$07,$9A,$E0,$F0,$7F,$C3,$F0,$FF,$F2,$D0,$7D,$E0,$78,$80
+  $DD,$5E,$77,$82,$4D,$5C,$50,$53,$C0,$F0,$F1,$FE,$5A,$61,$57,$1D,$14,$B9,$AA,$F0,$0C,$0A,$D9,$AA
+  $FA,$F7,$FF,$BF,$E7,$E0,$F5,$ED,$B0,$F6,$81,$0E,$4D,$9E,$08,$F0,$A3,$B1,$84,$FE,$52,$87,$61,$36
+  $F0,$B4,$66,$49,$80,$4E,$FD,$8F,$B1,$FE,$A5,$BF,$D5,$35,$D0,$77,$0A,$F4,$FB,$C3,$26,$58,$00,$05
+  $F4,$F0,$4F,$10,$46,$85,$81,$77,$40,$77,$02,$36,$01,$85,$AA,$33,$F0,$5D,$19,$AA,$38,$FA,$E5,$FE
+  $15,$D7,$0C,$D6,$0E,$1A,$FB,$FA,$FE,$BB,$62,$A1,$AB,$1B,$BA,$C9,$C1,$F0,$33,$60,$03,$5C,$00,$44
+  $E3,$A8,$90,$1E,$69,$81,$03,$45,$72,$5A,$96,$AA,$77,$AA,$FB,$FB,$3C,$FD,$E0,$F8,$24,$E1,$93,$BA
+  $BA,$D9,$FF,$10,$F8,$D9,$5A,$78,$FE,$44,$4D,$55,$56
+end data
+
+
+asm {
+; DEEPWARDEN audio (original) - generated by gen.py; do not edit by hand
+; set sound table DwSoundTable areas 8
+; The Last Warden, D minor march (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+DwTitleMel:
+    db $44
+    dw sndtiny_1
+    db 13
+    db $02,$40,$1B,$55,$21,$00,$00,$1C,$00,$00,$1F,$00,$1C,$00,$00,$00
+    db $00,$00,$01,$01,$21,$00,$00,$1C,$00,$00,$24,$00,$23,$00,$00,$00
+    db $00,$00,$01,$01,$02,$30,$31,$88,$1C,$00,$21,$00,$00,$23,$24,$00
+    db $26,$00,$24,$23,$21,$00,$1C,$00,$1D,$00,$21,$00,$24,$00,$29,$00
+    db $28,$00,$00,$00,$26,$00,$23,$00,$1C,$00,$21,$00,$00,$23,$24,$00
+    db $26,$00,$28,$00,$29,$00,$28,$26,$24,$00,$23,$00,$21,$00,$20,$00
+    db $21,$00,$00,$00,$00,$00,$01,$01,$02,$40,$1B,$55,$1D,$00,$00,$1C
+    db $00,$00,$1B,$00,$1C,$00,$00,$00,$00,$00,$01,$01,$21,$00,$00,$1C
+    db $00,$00,$20,$00,$21,$00,$00,$00,$00,$00,$01,$01
+    db $FF
+DwTitleHarm:
+    db $84
+    dw sndtiny_2
+    db 13
+    db $02,$50,$14,$CC,$15,$00,$00,$00,$00,$00,$00,$00,$15,$00,$00,$00
+    db $00,$00,$00,$00,$15,$00,$00,$00,$18,$00,$00,$00,$14,$00,$00,$00
+    db $17,$00,$00,$00,$18,$00,$00,$00,$1C,$00,$00,$00,$1A,$00,$00,$00
+    db $1D,$00,$00,$00,$15,$00,$00,$00,$18,$00,$00,$00,$14,$00,$00,$00
+    db $17,$00,$00,$00,$18,$00,$00,$00,$1C,$00,$00,$00,$1A,$00,$00,$00
+    db $1D,$00,$00,$00,$14,$00,$00,$00,$17,$00,$00,$00,$18,$00,$00,$00
+    db $1C,$00,$00,$00,$15,$00,$00,$00,$18,$00,$00,$00,$14,$00,$00,$00
+    db $17,$00,$00,$00,$18,$00,$00,$00,$1C,$00,$00,$00,$15,$00,$00,$00
+    db $00,$00,$01,$01
+    db $FF
+DwTitleBassVol:
+    db $02,$33,$32,$14,$66,$22,$02,$33,$32,$14,$66,$22,$02,$33,$32,$14,$66,$3F
+    db $37,$02,$36,$04,$13,$11,$02,$33,$2E,$14,$66,$22,$02,$33,$32,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$2E,$14,$66,$22,$02,$33,$32,$14,$66,$22,$02,$33,$1A,$14,$66
+    db $02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66
+    db $22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66
+    db $02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66
+    db $22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66
+    db $02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66
+    db $22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66
+    db $02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66
+    db $22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66
+    db $02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66
+    db $22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66
+    db $02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$2E,$14,$66,$22
+    db $02,$33,$32,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$2E,$14,$66,$22,$02,$33,$32,$14,$66
+    db $22,$02,$33,$1A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$33,$1A,$14,$66
+    db $02,$45,$05,$13,$11,$02,$33,$13,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$2E,$14,$66,$3F
+    db $37
+    db $10
+DwTitleBassPitch:
+    db $C0,$66,$F0,$34,$C0,$88,$F0,$34,$C0,$66,$F0,$6C,$C0,$80,$F0,$30,$C0,$AB,$F0,$38,$C0,$88,$F0,$30
+    db $C0,$5A,$F0,$34,$C0,$66,$F0,$34,$C0,$88,$F0,$34,$C0,$98,$F0,$34,$C0,$66,$F0,$34,$C0,$80,$F0,$34
+    db $C0,$AB,$F0,$34,$C0,$88,$F0,$34,$C0,$5A,$F0,$34,$C0,$66,$F0,$34,$C0,$88,$F0,$34,$C0,$98,$F0,$34
+    db $C0,$66,$F0,$34,$C0,$88,$F0,$34,$C0,$5A,$F0,$34,$C0,$66,$F0,$34,$C0,$88,$F0,$38,$C0,$80,$F0,$30
+    db $C0,$AB,$F0,$38,$C0,$88,$F0,$30,$C0,$5A,$F0,$34,$C0,$66,$F0,$34,$C0,$88,$F0,$38,$C0,$66,$F0,$2E
+    db $FF,$F7
+    db $D0
+; Exp loop, 2304 frames, Tiny Sound tone 1
+DwExpMel:
+    db $44
+    dw sndtiny_1
+    db 24
+    db $02,$60,$14,$CC,$02,$70,$18,$66,$21,$00,$00,$00,$1C,$00,$00,$00
+    db $01,$01,$01,$01,$01,$01,$01,$01,$02,$60,$14,$CC,$98,$00,$00,$00
+    db $1A,$00,$1C,$00,$97,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01
+    db $1C,$00,$1A,$00,$17,$00,$00,$18,$9A,$00,$00,$00,$18,$00,$00,$15
+    db $01,$01,$15,$17,$94,$00,$00,$00,$01,$01,$01,$01,$02,$70,$18,$66
+    db $21,$00,$00,$00,$01,$01,$01,$01,$02,$70,$18,$66,$1C,$00,$00,$00
+    db $01,$01,$01,$01,$02,$60,$14,$CC,$18,$00,$17,$00,$95,$00,$00,$00
+    db $01,$01,$01,$01,$01,$01,$01,$01,$FF
+; tone 2
+DwExpBass:
+    db $84
+    dw sndtiny_2
+    db 24
+    db $02,$70,$F1,$22,$09,$01,$04,$01,$09,$01,$01,$01,$07,$01,$0E,$01
+    db $07,$01,$01,$01,$05,$01,$0C,$01,$05,$01,$01,$01,$04,$01,$0B,$01
+    db $04,$01,$08,$01,$09,$01,$04,$01,$0C,$01,$0B,$01,$07,$01,$0E,$01
+    db $0B,$01,$09,$01,$05,$01,$0C,$01,$0E,$01,$05,$01,$04,$01,$0B,$01
+    db $04,$01,$01,$01,$09,$01,$01,$01,$0A,$01,$01,$01,$09,$01,$01,$01
+    db $07,$01,$01,$01,$05,$01,$01,$01,$04,$01,$01,$01,$05,$01,$04,$01
+    db $04,$01,$01,$01,$FF
+; Cmb loop, 1536 frames, Tiny Sound tone 1
+DwCmbMel:
+    db $44
+    dw sndtiny_1
+    db 12
+    db $02,$50,$13,$88,$1C,$00,$00,$21,$00,$00,$23,$00,$24,$00,$23,$00
+    db $21,$00,$1C,$00,$1D,$00,$00,$21,$00,$00,$24,$00,$23,$00,$00,$00
+    db $26,$00,$23,$00,$1C,$00,$00,$21,$00,$00,$23,$00,$24,$00,$26,$00
+    db $28,$00,$00,$00,$29,$00,$28,$00,$26,$00,$24,$00,$23,$00,$00,$00
+    db $20,$00,$00,$00,$21,$00,$01,$21,$1D,$00,$1A,$00,$1F,$00,$23,$00
+    db $26,$00,$00,$00,$24,$00,$23,$24,$21,$00,$1C,$00,$21,$00,$00,$00
+    db $01,$01,$1C,$00,$1D,$00,$21,$00,$24,$00,$21,$00,$1F,$00,$23,$00
+    db $26,$00,$23,$00,$1C,$00,$20,$00,$23,$00,$26,$00,$28,$00,$00,$00
+    db $23,$00,$20,$00,$FF
+; tone 2
+DwCmbBass:
+    db $84
+    dw sndtiny_2
+    db 12
+    db $02,$50,$14,$33,$09,$09,$15,$09,$10,$09,$15,$10,$09,$09,$15,$09
+    db $10,$09,$15,$10,$05,$05,$11,$05,$0C,$05,$11,$0C,$07,$07,$13,$07
+    db $0E,$07,$13,$0E,$09,$09,$15,$09,$10,$09,$15,$10,$09,$09,$15,$09
+    db $10,$09,$15,$10,$05,$05,$11,$05,$0C,$05,$11,$0C,$04,$04,$10,$04
+    db $0B,$04,$10,$0B,$0E,$0E,$11,$0E,$09,$0E,$11,$09,$07,$07,$13,$07
+    db $0E,$07,$13,$0E,$09,$09,$15,$09,$10,$09,$15,$10,$09,$09,$15,$09
+    db $10,$09,$15,$10,$05,$05,$11,$05,$0C,$05,$11,$0C,$07,$07,$13,$07
+    db $0E,$07,$13,$0E,$04,$04,$10,$04,$0B,$04,$10,$0B,$04,$04,$10,$04
+    db $0B,$04,$10,$0B,$FF
+; one drum bar (95 frames), replayed by the driver on each bar line
+DwCmbDrum:
+    db $02,$56,$06,$14,$11,$26,$02,$A4,$02,$13,$11,$2A,$02,$65,$06,$15
+    db $11,$26,$02,$A4,$02,$13,$11,$2A,$02,$56,$06,$14,$11,$26,$02,$56
+    db $06,$14,$11,$26,$02,$65,$06,$15,$11,$26,$02,$A4,$02,$13,$11,$29
+    db $10
+; Boss loop, 768 frames, Tiny Sound tone 1
+DwBossMel:
+    db $44
+    dw sndtiny_1
+    db 12
+    db $02,$50,$1A,$33,$21,$00,$00,$1B,$00,$00,$22,$00,$21,$00,$00,$00
+    db $00,$00,$01,$01,$02,$50,$13,$88,$1C,$00,$1D,$00,$1E,$00,$1F,$00
+    db $20,$00,$00,$00,$21,$00,$22,$00,$02,$50,$1A,$33,$22,$00,$00,$1C
+    db $00,$00,$23,$00,$22,$00,$00,$00,$21,$00,$00,$00,$02,$50,$13,$88
+    db $24,$00,$23,$00,$22,$00,$21,$00,$20,$00,$00,$00,$1B,$00,$00,$00
+    db $FF
+; tone 2
+DwBossBass:
+    db $84
+    dw sndtiny_2
+    db 12
+    db $02,$50,$14,$33,$09,$09,$0A,$09,$05,$04,$09,$0F,$09,$09,$0A,$09
+    db $05,$04,$09,$0F,$09,$09,$0A,$09,$05,$04,$09,$0F,$09,$09,$0A,$09
+    db $05,$04,$09,$0F,$0A,$0A,$0B,$0A,$06,$05,$0A,$10,$09,$09,$0A,$09
+    db $05,$04,$09,$0F,$09,$09,$0A,$09,$05,$04,$09,$0F,$08,$08,$09,$08
+    db $04,$04,$08,$0E,$FF
+; one drum bar (95 frames), replayed by the driver on each bar line
+DwBossDrum:
+    db $02,$56,$06,$14,$11,$2C,$02,$56,$06,$14,$11,$02,$65,$06,$15,$11
+    db $26,$02,$56,$06,$14,$11,$26,$02,$56,$06,$14,$11,$26,$02,$A4,$02
+    db $13,$11,$2A,$02,$65,$06,$15,$11,$26,$02,$65,$06,$15,$11,$25,$10
+; Low loop, 384 frames, Tiny Sound tone 1
+DwLowMel:
+    db $44
+    dw sndtiny_1
+    db 12
+    db $02,$80,$13,$FF,$A8,$00,$00,$00,$00,$00,$00,$00,$A9,$00,$00,$00
+    db $00,$00,$00,$00,$A8,$00,$00,$00,$00,$00,$00,$00,$A7,$00,$00,$00
+    db $00,$00,$00,$00,$FF
+; tone 2
+DwLowBass:
+    db $84
+    dw sndtiny_2
+    db 12
+    db $02,$50,$16,$22,$04,$09,$01,$01,$04,$09,$01,$01,$04,$09,$01,$01
+    db $04,$09,$01,$01,$04,$09,$01,$01,$04,$09,$01,$01,$04,$09,$01,$01
+    db $04,$09,$01,$01,$FF
+; sting LvlA, 61 frames
+DwLvlA:
+    db $40,$BE,$30,$07,$40,$A0,$30,$07,$40,$7F,$30,$07,$42,$5F,$30,$28
+    db $1C,$33,$50
+; sting LvlB, 61 frames
+DwLvlB:
+    db $80,$FE,$50,$07,$80,$BE,$50,$07,$80,$A0,$50,$07,$82,$7F,$50,$28
+    db $1A,$44,$90
+; sting ItemA, 34 frames
+DwItemA:
+    db $40,$7F,$40,$05,$40,$5F,$40,$05,$42,$4C,$30,$18,$1C,$22,$50
+; sting ItemB, 34 frames
+DwItemB:
+    db $AA,$82,$BE,$60,$18,$19,$22,$90
+; sting WinA, 104 frames
+DwWinA:
+    db $40,$FE,$30,$08,$40,$BE,$30,$08,$40,$A0,$30,$08,$40,$7F,$30,$10
+    db $40,$8F,$30,$08,$40,$7F,$30,$08,$42,$5F,$30,$30,$1C,$44,$50
+; sting WinB, 104 frames
+DwWinB:
+    db $80,$40,$51,$18,$80,$1D,$51,$10,$80,$53,$51,$10,$82,$2E,$51,$30
+    db $1A,$55,$90
+; sting DieA, 144 frames
+DwDieA:
+    db $40,$AA,$30,$10,$40,$B4,$30,$10,$40,$BE,$30,$10,$40,$CA,$30,$10
+    db $42,$BE,$30,$50,$1C,$77,$50
+; sting DieB, 144 frames
+DwDieB:
+    db $80,$F0,$50,$10,$80,$FE,$50,$10,$80,$0D,$51,$10,$80,$1D,$51,$10
+    db $82,$40,$51,$50,$1A,$88,$90
+; sting DieC, 154 frames
+DwDieC:
+    db $3F,$3F,$22,$02,$42,$5A,$1B,$88,$10
+; Swing: channel noise, 12 frames
+DwSwing:
+    db $00,$00,$74,$01,$00,$00,$44,$02,$00,$00,$24,$02,$00,$00,$35,$02
+    db $00,$00,$65,$02,$00,$00,$A5,$03,$10
+; PickSwing: channel noise, 22 frames
+DwPickSwing:
+    db $00,$00,$75,$02,$00,$00,$45,$02,$00,$00,$26,$03,$00,$00,$16,$03
+    db $00,$00,$36,$03,$00,$00,$66,$04,$00,$00,$A6,$05,$10
+; HitFlesh: channel noise, 17 frames
+DwHitFlesh:
+    db $00,$00,$06,$02,$00,$00,$22,$03,$02,$46,$0C,$18,$11,$10
+; HitBone: channel noise, 14 frames
+DwHitBone:
+    db $00,$00,$04,$01,$00,$00,$94,$01,$00,$00,$14,$01,$00,$00,$85,$02
+    db $00,$00,$34,$01,$02,$65,$08,$18,$11,$10
+; Footstep: channel noise, 3 frames
+DwFootstep:
+    db $00,$00,$76,$01,$00,$00,$A6,$02,$10
+; SkelRattle: channel noise, 17 frames
+DwSkelRattle:
+    db $00,$00,$44,$01,$21,$00,$00,$55,$01,$22,$00,$00,$44,$01,$21,$00
+    db $00,$55,$01,$23,$00,$00,$64,$01,$21,$00,$00,$75,$01,$22,$00,$00
+    db $94,$01,$10
+; MonDeath: channel noise, 46 frames
+DwMonDeath:
+    db $00,$00,$15,$03,$00,$00,$26,$05,$00,$00,$32,$08,$02,$46,$1E,$1B
+    db $33,$10
+; Gate: channel noise, 42 frames
+DwGate:
+    db $00,$00,$52,$05,$00,$00,$61,$04,$00,$00,$42,$06,$00,$00,$51,$04
+    db $00,$00,$42,$08,$00,$00,$26,$03,$02,$66,$0C,$19,$11,$10
+; Stairs: channel noise, 42 frames
+DwStairs:
+    db $00,$00,$56,$02,$28,$00,$00,$66,$02,$28,$00,$00,$76,$02,$28,$00
+    db $00,$86,$02,$28,$00,$00,$A6,$02,$10
+; Clang: channel tone 1, 17 frames
+DwClang:
+    db $40,$40,$00,$01,$40,$2D,$10,$01,$40,$40,$20,$02,$40,$2D,$30,$02
+    db $40,$40,$50,$02,$40,$2D,$70,$03,$40,$40,$90,$03,$40,$2D,$C0,$03
+    db $50
+; Key: channel tone 1, 18 frames
+DwKey:
+    db $40,$47,$30,$03,$40,$35,$20,$03,$42,$2A,$20,$0C,$1A,$11,$50
+; Gold: channel tone 1, 17 frames
+DwGold:
+    db $40,$39,$20,$03,$42,$2A,$10,$0E,$1C,$11,$50
+; Hurt: channel tone 2, 23 frames
+DwHurt:
+    db $80,$1D,$11,$02,$80,$53,$01,$03,$80,$AB,$11,$03,$80,$1A,$22,$04
+    db $80,$7F,$42,$05,$80,$F9,$82,$06,$90
+; WarnRat: channel tone 2, 14 frames
+DwWarnRat:
+    db $80,$50,$50,$02,$A1,$80,$46,$40,$02,$A1,$80,$3E,$30,$02,$A1,$80
+    db $35,$20,$05,$90
+; WarnSkel: channel tone 2, 28 frames
+DwWarnSkel:
+    db $80,$56,$33,$05,$80,$F9,$32,$05,$80,$A6,$22,$05,$80,$5D,$22,$05
+    db $80,$FC,$11,$08,$90
+; WarnWraith: channel tone 2, 32 frames
+DwWarnWraith:
+    db $80,$D6,$60,$04,$80,$BF,$50,$04,$80,$AA,$40,$04,$80,$97,$30,$04
+    db $80,$87,$20,$04,$82,$78,$20,$0C,$16,$22,$90
+; WarnBoss: channel tone 2, 24 frames
+DwWarnBoss:
+    db $80,$CD,$12,$08,$82,$F9,$13,$10,$18,$22,$90
+; RatSqueak: channel tone 3, 16 frames
+DwRatSqueak:
+    db $C0,$28,$30,$02,$C0,$22,$20,$02,$C0,$2B,$50,$02,$E2,$C0,$25,$30
+    db $02,$C0,$1F,$20,$03,$C0,$25,$70,$03,$D0
+; WraithWail: channel tone 3, 42 frames
+DwWraithWail:
+    db $C0,$FE,$70,$04,$C0,$E2,$50,$04,$C0,$CA,$40,$04,$C0,$B4,$30,$06
+    db $C0,$BF,$30,$04,$C0,$CA,$40,$04,$C0,$E2,$60,$04,$C0,$F0,$80,$04
+    db $C0,$FE,$B0,$08,$D0
+; HitGhost: channel tone 3, 18 frames
+DwHitGhost:
+    db $C0,$55,$10,$02,$C0,$7F,$20,$02,$C0,$4C,$30,$02,$C0,$97,$40,$03
+    db $C0,$65,$60,$03,$C2,$B4,$90,$06,$16,$11,$D0
+; Locked: channel tone 3, 21 frames
+DwLocked:
+    db $C0,$BC,$23,$06,$E3,$C2,$F9,$23,$0C,$16,$22,$D0
+; Potion: channel tone 3, 28 frames
+DwPotion:
+    db $C0,$1D,$41,$02,$C0,$D6,$40,$02,$C0,$FE,$40,$02,$C0,$BF,$30,$02
+    db $C0,$E2,$40,$02,$C0,$AA,$30,$02,$C0,$BF,$40,$02,$C0,$8F,$30,$02
+    db $C2,$6B,$20,$0C,$1A,$11,$D0
+; BellToll: channel tone 3, 102 frames
+DwBellToll:
+    db $C0,$7F,$40,$02,$C2,$FC,$41,$64,$1B,$99,$D0
+DwSoundTable:
+    dw DwTitleMel,$702B
+    dw DwTitleHarm,$7035
+    dw DwTitleBassVol,$703F
+    dw DwTitleBassPitch,$7049
+    dw DwExpMel,$702B
+    dw DwExpBass,$7035
+    dw DwCmbMel,$702B
+    dw DwCmbBass,$7035
+    dw DwCmbDrum,$703F
+    dw DwBossMel,$702B
+    dw DwBossBass,$7035
+    dw DwBossDrum,$703F
+    dw DwLowMel,$702B
+    dw DwLowBass,$7035
+    dw DwLvlA,$702B
+    dw DwLvlB,$7035
+    dw DwItemA,$702B
+    dw DwItemB,$7035
+    dw DwWinA,$702B
+    dw DwWinB,$7035
+    dw DwDieA,$702B
+    dw DwDieB,$7035
+    dw DwDieC,$703F
+    dw DwSwing,$7053
+    dw DwPickSwing,$7053
+    dw DwHitFlesh,$7053
+    dw DwHitBone,$7053
+    dw DwFootstep,$7053
+    dw DwSkelRattle,$7053
+    dw DwMonDeath,$7053
+    dw DwGate,$7053
+    dw DwStairs,$7053
+    dw DwClang,$705D
+    dw DwKey,$705D
+    dw DwGold,$705D
+    dw DwHurt,$7067
+    dw DwWarnRat,$7067
+    dw DwWarnSkel,$7067
+    dw DwWarnWraith,$7067
+    dw DwWarnBoss,$7067
+    dw DwRatSqueak,$7071
+    dw DwWraithWail,$7071
+    dw DwHitGhost,$7071
+    dw DwLocked,$7071
+    dw DwPotion,$7071
+    dw DwBellToll,$7071
+; DEEPWARDEN's ray caster: STORM LIGHT's engine (NIGHT ROUNDS / The
+; Stacks: DDA, fish-eye, quarter-square products, half-view buffer and
+; mirror; feature faces) without fog, with three wall textures (rock,
+; timber posts at the edges of timbered faces, the iron gate) at four
+; light levels, and StMon: the monster's sprite pieces cut by the depth
+; buffer.
+; StRays: Hc[0..27], Sc[0..27], Zc[0..27] (distance in 1/16 cells, at most
+; 255), Pc[0..27] (feature tiles) for the player at Px, Py (8.8 cells)
+; facing Ang. CSlot/CZ: the feature slot (255 none) and depth of the
+; middle column.
+StRays:
+    ; the library's map
+    ld a,(AMY_UVAR_MapNo)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,StMapTab
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld (AMY_UVAR_MapBase),de
+    xor a
+    ld (AMY_UVAR_Rcol),a
+    ld (AMY_UVAR_PTim),a
+StRayLoop:
+    call StPoll
+    ld a,(AMY_UVAR_Rcol)
+    ld e,a
+    ld d,0
+    ld hl,StColOff
+    add hl,de
+    ld a,(AMY_UVAR_Ang)
+    add a,(hl)
+    ld (AMY_UVAR_Ra),a
+    ; dX = Delta[a], dY = Delta[a - 64] (1 / |cos|: a quarter table)
+    call StDq
+    ld (AMY_UVAR_RdX),de
+    ld a,(AMY_UVAR_Ra)
+    sub 64
+    call StDq
+    ld (AMY_UVAR_RdY),de
+    ; x: cos < 0 for angles 65..191
+    ld a,(AMY_UVAR_Ra)
+    sub 65
+    cp 127
+    jr nc,StXPos
+    ld a,$FF
+    ld (AMY_UVAR_RstX),a
+    ld a,(AMY_UVAR_Px)
+    ld de,(AMY_UVAR_RdX)
+    call StMulFD
+    ld (AMY_UVAR_RsdX),hl
+    jr StYDir
+StXPos:
+    ld a,1
+    ld (AMY_UVAR_RstX),a
+    ld a,(AMY_UVAR_Px)
+    neg
+    jr z,StXFull
+    ld de,(AMY_UVAR_RdX)
+    call StMulFD
+    ld (AMY_UVAR_RsdX),hl
+    jr StYDir
+StXFull:
+    ld hl,(AMY_UVAR_RdX)
+    ld (AMY_UVAR_RsdX),hl
+StYDir:
+    ; y: sin < 0 for angles 129..255
+    ld a,(AMY_UVAR_Ra)
+    sub 129
+    cp 127
+    jr nc,StYPos
+    ld a,$FF
+    ld (AMY_UVAR_RstY),a
+    ld a,(AMY_UVAR_Py)
+    ld de,(AMY_UVAR_RdY)
+    call StMulFD
+    ld (AMY_UVAR_RsdY),hl
+    jr StStart
+StYPos:
+    ld a,1
+    ld (AMY_UVAR_RstY),a
+    ld a,(AMY_UVAR_Py)
+    neg
+    jr z,StYFull
+    ld de,(AMY_UVAR_RdY)
+    call StMulFD
+    ld (AMY_UVAR_RsdY),hl
+    jr StStart
+StYFull:
+    ld hl,(AMY_UVAR_RdY)
+    ld (AMY_UVAR_RsdY),hl
+StStart:
+    ; the DDA in registers: HL the map cell, DE the x step (+-1), BC the
+    ; y step (+-16); in the other set HL' sdx, DE' sdy, BC' dX (dY in RAM)
+    ld hl,(AMY_UVAR_RsdX)
+    ld de,(AMY_UVAR_RsdY)
+    ld bc,(AMY_UVAR_RdX)
+    exx
+    ld a,(AMY_UVAR_Py+1)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_Px+1)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld de,(AMY_UVAR_MapBase)
+    add hl,de
+    ld de,1
+    ld a,(AMY_UVAR_RstX)
+    or a
+    jp p,StSxP
+    ld de,-1
+StSxP:
+    ld bc,16
+    ld a,(AMY_UVAR_RstY)
+    or a
+    jp p,StDda
+    ld bc,-16
+StDda:
+    exx
+    ld a,l
+    sub e
+    ld a,h
+    sbc a,d
+    jr nc,StStepY
+    add hl,bc
+    exx
+    add hl,de
+    ld a,(hl)
+    or a
+    jr z,StDda
+    cp 4
+    jr c,StHitX
+    call StOpenQ
+    jr nz,StDda
+StHitX:
+    ld (AMY_UVAR_Rcell),hl
+    ; the floor cell before it is seen too (the automap; every 4th ray is
+    ; enough as you walk)
+    ld a,(AMY_UVAR_Rcol)
+    and 3
+    jr nz,StHitXb
+    push hl
+    push de
+    push bc
+    or a
+    sbc hl,de
+    call StSeen
+    pop bc
+    pop de
+    pop hl
+StHitXb:
+    ; an x side: the distance is sdx before its last step
+    exx
+    or a
+    sbc hl,bc
+    push hl
+    exx
+    pop hl
+    xor a
+    jr StHit
+StStepY:
+    push hl
+    ld hl,(AMY_UVAR_RdY)
+    add hl,de
+    ex de,hl
+    pop hl
+    exx
+    add hl,bc
+    ld a,(hl)
+    or a
+    jr z,StDda
+    cp 4
+    jr c,StHitY
+    call StOpenQ
+    jr nz,StDda
+StHitY:
+    ld (AMY_UVAR_Rcell),hl
+    ; the floor cell before it is seen too (the automap; every 4th ray is
+    ; enough as you walk)
+    ld a,(AMY_UVAR_Rcol)
+    and 3
+    jr nz,StHitYb
+    push hl
+    push de
+    push bc
+    or a
+    sbc hl,bc
+    call StSeen
+    pop bc
+    pop de
+    pop hl
+StHitYb:
+    ; a y side
+    exx
+    ex de,hl
+    ld de,(AMY_UVAR_RdY)
+    or a
+    sbc hl,de
+    push hl
+    exx
+    pop hl
+    ld a,1
+StHit:
+    ld (AMY_UVAR_Rside),a
+    ; a painting here? (Rpc: 0 none, 1 its frame side, 2-5 its column u)
+    push hl
+    call StPaintHit
+    pop hl
+    ; the fish-eye: the distance in 1/8 cells (at most 255) times the
+    ; column's cosine: one 8 x 8 product
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,h
+    or a
+    jr z,StFeOk
+    ld l,255
+StFeOk:
+    ld a,(AMY_UVAR_Rcol)
+    ld c,a
+    ld b,0
+    push hl
+    ld hl,StCosOff
+    add hl,bc
+    ld e,(hl)
+    pop hl
+    ld h,l
+    call StMul8
+    ; HL = dist8 * cos: >> 7 gives the distance in 1/16 cells (at most 511)
+    add hl,hl
+    ld l,h
+    ld h,0
+    rl h
+    ld a,h
+    cp 2
+    jr c,StIdxOk
+    ld hl,511
+StIdxOk:
+    ; Zc[col] = min(255, it)
+    ld a,(AMY_UVAR_Rcol)
+    ld c,a
+    ld b,0
+    push hl
+    ld a,h
+    or a
+    ld a,l
+    jr z,StZOk
+    ld a,255
+StZOk:
+    ld hl,AMY_UVAR_Zc
+    add hl,bc
+    ld (hl),a
+    pop hl
+    ; Hc[col] = Height[min(255, it)]
+    push hl
+    ld a,h
+    or a
+    jr z,StHgOk
+    ld l,255
+    ld h,0
+StHgOk:
+    ld de,StHeight
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_Hc
+    add hl,bc
+    ld (hl),a
+    pop hl
+    ; Sc[col]: the level from the distance in 1/4 cells (at most 127)
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,h
+    or a
+    ld a,l
+    jr nz,StShBig
+    cp 64
+    jr c,StShOk
+StShBig:
+    ld a,63
+StShOk:
+    ld e,a
+    ld d,0
+    ; the light level (0-3) by distance, one darker for y faces
+    ld hl,StLvl
+    ld a,(AMY_UVAR_DimL)
+    or a
+    jr z,StLvOk
+    ld hl,StLvlD
+StLvOk:
+    add hl,de
+    ld a,(AMY_UVAR_Rside)
+    add a,(hl)
+    cp 4
+    jr c,StShLv
+    ld a,3
+StShLv:
+    ld e,a
+    ld (AMY_UVAR_RLv),a
+    ld a,(AMY_UVAR_Rtex)
+    add a,a
+    add a,a
+    add a,e
+    ld e,a
+    ld hl,StTexBase
+    add hl,de
+    ld e,(hl)
+StShSet:
+    ld a,e
+    ld hl,AMY_UVAR_Sc
+    add hl,bc
+    ld (hl),a
+    ; timber posts: where this column and the last hit two different
+    ; timbered cells on the same side, both columns show a post
+    ld a,(AMY_UVAR_RTim)
+    or a
+    jr z,StTbNo
+    ld a,(AMY_UVAR_PTim)
+    or a
+    jr z,StTbNo
+    ld a,(AMY_UVAR_Rside)
+    ld e,a
+    ld a,(AMY_UVAR_PSide)
+    cp e
+    jr nz,StTbNo
+    ld hl,(AMY_UVAR_Rcell)
+    ld de,(AMY_UVAR_PCell)
+    or a
+    sbc hl,de
+    jr z,StTbNo
+    ld a,(AMY_UVAR_RLv)
+    add a,4
+    ld e,a
+    ld d,0
+    ld hl,StTexBase
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_Sc
+    add hl,bc
+    ld (hl),a
+    ld a,(AMY_UVAR_PLv)
+    add a,4
+    ld e,a
+    ld hl,StTexBase
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_Sc-1
+    add hl,bc
+    ld (hl),a
+StTbNo:
+    ld a,(AMY_UVAR_RTim)
+    ld (AMY_UVAR_PTim),a
+    ld a,(AMY_UVAR_Rside)
+    ld (AMY_UVAR_PSide),a
+    ld hl,(AMY_UVAR_Rcell)
+    ld (AMY_UVAR_PCell),hl
+    ld a,(AMY_UVAR_RLv)
+    ld (AMY_UVAR_PLv),a
+    ; the feature column of this ray (Pc, 0: none): its column id,
+    ; StTexV0[texture * 3 + u] (pictures stay bright at any distance)
+    ld a,(AMY_UVAR_Rpc)
+    or a
+    jr z,StPcSet
+    sub 2
+    ld d,a
+    ld a,(AMY_UVAR_Rpic)
+    ld l,a
+    add a,a
+    add a,l
+    add a,d
+    ld l,a
+    ld h,0
+    ld de,StTexV0
+    add hl,de
+    ld a,(hl)
+StPcSet:
+    ld hl,AMY_UVAR_Pc
+    add hl,bc
+    ld (hl),a
+    ld a,c
+    cp 14
+    jr nz,StNotMid
+    ld a,(AMY_UVAR_Rfs)
+    ld (AMY_UVAR_CSlot),a
+    ld hl,AMY_UVAR_Zc
+    add hl,bc
+    ld a,(hl)
+    ld (AMY_UVAR_CZ),a
+    ld hl,(AMY_UVAR_Rcell)
+    ld (AMY_UVAR_CCell),hl
+StNotMid:
+    ; the next column
+    ld a,(AMY_UVAR_Rcol)
+    inc a
+    ld (AMY_UVAR_Rcol),a
+    cp 28
+    jp nz,StRayLoop
+    ret
+
+; StPaintHit: Rtex = the texture of the ray's hit (0 rock, 1 a timber
+; post: the outer 2/16 of a timbered face, 2 the gate); Rpc = the feature
+; code (0 none, 2-4 its column u): the wall cell carries slot v - 4
+; (v >= 4) on face SlotFace (+256 in the floor's block; 4 = every face),
+; its texture SlotTex[slot]. Rfs = the slot when its face is hit, else 255.
+; HL = the ray's length.
+StPaintHit:
+    xor a
+    ld (AMY_UVAR_Rpc),a
+    ld (AMY_UVAR_Rtex),a
+    ld (AMY_UVAR_RTim),a
+    dec a
+    ld (AMY_UVAR_Rfs),a
+    ld (AMY_UVAR_Rdist),hl
+    ld hl,(AMY_UVAR_Rcell)
+    ; the automap: this cell is seen
+    call StSeen
+    ld a,(hl)
+    cp 2
+    jr nz,StPhOre
+    ; timber within 5 cells: StRays puts the posts where two timbered
+    ; cells meet between neighbouring columns (no face position needed)
+    ld a,(AMY_UVAR_Rdist+1)
+    cp 5
+    ret nc
+    ld a,1
+    ld (AMY_UVAR_RTim),a
+    ret
+StPhOre:
+    cp 3
+    jr nz,StPhDc
+    ld a,3
+    ld (AMY_UVAR_Rtex),a
+    ret
+StPhDc:
+    ; decor (20 and up): rock with picture v - 20 on every face, nothing to
+    ; strike or walk into
+    cp 20
+    jr c,StPhSl
+    sub 20
+    ; a smashed burrow is plain rock
+    cp 18
+    jr nz,StPhD1
+    ld hl,(AMY_UVAR_Rcell)
+    call StBurGoneP
+    ret z
+    ld a,18
+StPhD1:
+    ld (AMY_UVAR_Rpic),a
+    ld a,255
+    ld (AMY_UVAR_Rslot),a
+    ld a,4
+    ld (AMY_UVAR_Rface),a
+    ld c,a
+    jr StPhFace
+StPhSl:
+    sub 4
+    ret c
+    ld (AMY_UVAR_Rslot),a
+    ; (any face of a slot is the slot for the sword button: a cracked wall
+    ; shows no picture before its first hit)
+    ld (AMY_UVAR_Rfs),a
+    ld e,a
+    ld d,0
+    ; the slot kind's wall texture
+    ld hl,(AMY_UVAR_MapBase)
+    inc h
+    ld bc,16
+    add hl,bc
+    add hl,de
+    ld a,(hl)
+    push de
+    ld e,a
+    ld hl,StKindTex
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Rtex),a
+    pop de
+    ld hl,AMY_UVAR_SlotTex
+    add hl,de
+    ld a,(hl)
+    cp 255
+    ret z
+    ld (AMY_UVAR_Rpic),a
+    ld hl,(AMY_UVAR_MapBase)
+    inc h
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Rface),a
+    ld c,a
+StPhFace:
+    ; the face the ray meets: side * 2, + 1 when it goes the negative way
+    ld a,(AMY_UVAR_Rside)
+    or a
+    ld a,(AMY_UVAR_RstX)
+    jr z,StPhX
+    ld a,(AMY_UVAR_RstY)
+StPhX:
+    rlca
+    and 1
+    ld b,a
+    ld a,(AMY_UVAR_Rside)
+    add a,a
+    add a,b
+    ld b,a
+    ld a,c
+    cp 4
+    jr z,StPhFound
+    cp b
+    ret nz
+StPhFound:
+    ld a,(AMY_UVAR_Rslot)
+    ld (AMY_UVAR_Rfs),a
+    call StPhWhere
+    ld e,a
+    ld d,0
+    ld a,(AMY_UVAR_Rface)
+    cp 4
+    jr nz,StPhF4
+    ld a,(AMY_UVAR_Rside)
+    add a,a
+    ld b,a
+    ld a,(AMY_UVAR_Rside)
+    or a
+    ld a,(AMY_UVAR_RstX)
+    jr z,StPhX2
+    ld a,(AMY_UVAR_RstY)
+StPhX2:
+    rlca
+    and 1
+    add a,b
+StPhF4:
+    dec a
+    cp 2
+    ld hl,StFracN
+    jr nc,StPhNrm
+    ld hl,StFracR
+StPhNrm:
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Rpc),a
+    ret
+
+
+; StPhWhere: A = where along the face the ray hits, in 1/16 cells (0-15)
+StPhWhere:
+    ; where on the face: the position along it, in 1/16 cells, mod 16:
+    ; (pos >> 4) +- (length >> 4) * |trig| >> 8 (sin for an x side,
+    ; cos for a y side)
+    ld hl,(AMY_UVAR_Rdist)
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,h
+    or a
+    jr z,StPhD
+    ld l,255
+StPhD:
+    ld a,(AMY_UVAR_Ra)
+    ld c,a
+    ld a,(AMY_UVAR_Rside)
+    or a
+    jr nz,StPhCos
+    ; an x side: |sin|, the y position, + when 1 <= a <= 127
+    ld a,c
+    sub 64
+    ld c,a
+StPhCos:
+    ; |cos(c)| from the table, its sign: + for c in 192..63
+    push bc
+    ld b,0
+    ld h,l
+    push hl
+    ld a,c
+    call StQi
+    ld hl,StAbsCos
+    add hl,de
+    ld e,(hl)
+    pop hl
+    call StMul8
+    pop bc
+    ld e,h
+    ; the position (>> 4, low byte)
+    ld a,(AMY_UVAR_Rside)
+    or a
+    ld hl,(AMY_UVAR_Py)
+    jr z,StPhPos
+    ld hl,(AMY_UVAR_Px)
+StPhPos:
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ; the sign of the trig: cos(c) >= 0 when c + 64 < 128
+    ld a,c
+    add a,64
+    cp 128
+    ld a,l
+    jr nc,StPhMinus
+    add a,e
+    jr StPhFrac
+StPhMinus:
+    sub e
+StPhFrac:
+    and 15
+    ret
+
+; StQi: DE = the quarter-table index of angle A (|cos| is the same at a,
+; -a, 128 - a): A & 127, folded at 64
+StQi:
+    and 127
+    cp 65
+    jr c,StQi1
+    neg
+    add a,128
+StQi1:
+    ld e,a
+    ld d,0
+    ret
+
+; StDq: DE = Delta[A] (the quarter table StDelta, 65 words)
+StDq:
+    call StQi
+    ld hl,StDelta
+    add hl,de
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ret
+
+; StPeekMap: Pk = byte Qc of floor MapNo's block (grid 0-255, then tables)
+StPeekMap:
+    ld a,(AMY_UVAR_MapNo)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,StMapTab
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld hl,(AMY_UVAR_Qc)
+    add hl,de
+    ld a,(hl)
+    cp 4
+    jr c,StPk0
+    ld e,a
+    ld a,(AMY_UVAR_Qc+1)
+    or a
+    ld a,e
+    jr nz,StPk0
+    call StOpenQ
+    ld a,e
+    jr z,StPk0
+    xor a
+StPk0:
+    ld (AMY_UVAR_Pk),a
+    ret
+
+; StOpenQ: A = a slot cell's value (4 + slot): NZ when the slot is open
+; (passable: bit 0 of SlotOpen[slot]; 2 is used but solid). Keeps BC, DE, HL.
+StOpenQ:
+    ; (decor cells, 20 and up, are rock: closed)
+    cp 20
+    jr c,StOq1
+    xor a
+    ret
+StOq1:
+    push hl
+    push de
+    sub 4
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_SlotOpen
+    add hl,de
+    ld a,(hl)
+    and 1
+    pop de
+    pop hl
+    ret
+
+; StSeen: the cell HL points at (in the floor's grid) is seen: its bit in
+; the floor's 32 seen bytes in spare VRAM ($1BB0 + MapNo x 32). Keeps HL.
+StSeen:
+    ; (neighbouring rays mostly meet the same two cells: done once)
+    ld de,(AMY_UVAR_SeenLast)
+    ld a,l
+    cp e
+    jr nz,StSnN1
+    ld a,h
+    cp d
+    ret z
+StSnN1:
+    ld de,(AMY_UVAR_SeenLast2)
+    ld a,l
+    cp e
+    jr nz,StSnNew
+    ld a,h
+    cp d
+    ret z
+StSnNew:
+    ld de,(AMY_UVAR_SeenLast)
+    ld (AMY_UVAR_SeenLast2),de
+    ld (AMY_UVAR_SeenLast),hl
+    push hl
+    ld de,(AMY_UVAR_MapBase)
+    or a
+    sbc hl,de
+    ld a,l
+    and 7
+    ld b,a
+    ld a,l
+    rrca
+    rrca
+    rrca
+    and 31
+    ld e,a
+    ld a,(AMY_UVAR_MapNo)
+    rrca
+    rrca
+    rrca
+    add a,e
+    add a,$B0
+    ld e,a
+    ld d,$1B
+    jr nc,StSn0
+    inc d
+StSn0:
+    ld a,1
+    inc b
+StSn1:
+    dec b
+    jr z,StSn2
+    add a,a
+    jr StSn1
+StSn2:
+    ld c,a
+    ld a,e
+    out ($BF),a
+    ld a,d
+    out ($BF),a
+    nop
+    nop
+    in a,($BE)
+    or c
+    ld c,a
+    ld a,e
+    out ($BF),a
+    ld a,d
+    or $40
+    out ($BF),a
+    ld a,c
+    out ($BE),a
+    pop hl
+    ret
+
+; StMulFD: HL = A * DE >> 8 (A and DE unsigned, DE < $8000), with one 8 x 8
+; product: DE >> 4 when it is below 16 cells (1/16 cell steps), else DE >> 8
+StMulFD:
+    ld h,a
+    ld a,d
+    cp 16
+    jr nc,StMulBig
+    ; (DE >> 4) * A >> 4
+    ld a,e
+    srl d
+    rra
+    srl d
+    rra
+    srl d
+    rra
+    srl d
+    rra
+    ld e,a
+    call StMul8
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ret
+StMulBig:
+    ; (DE >> 8) * A
+    ld e,d
+    jp StMul8
+
+; StMul8: HL = H * E, by quarter squares: (a+b)^2/4 - (a-b)^2/4
+StMul8:
+    ld a,h
+    ld c,e
+    ld l,a
+    ld h,0
+    ld d,0
+    add hl,de
+    add hl,hl
+    ld de,StSq
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    push de
+    sub c
+    jr nc,StMulPos
+    neg
+StMulPos:
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld de,StSq
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    pop hl
+    or a
+    sbc hl,de
+    ret
+
+; StDraw: the 16 view rows (screen rows 4-19, columns 2-29), in two
+; halves to keep RAM: pass 0 builds view rows 0-3 of every column in Tb
+; (4 rows of 28) and sends them, then rows 12-15 (their mirror, through
+; StMirror: ceiling -> floor, a top edge -> the bottom edge of the same
+; depth, solid -> solid); pass 1 the same for rows 4-7 (with the wall
+; pictures) and 8-11.
+StDraw:
+    push ix
+    xor a
+    ld (AMY_UVAR_DPass),a
+StDrPass:
+    ld de,AMY_UVAR_Sc
+    ld ix,AMY_UVAR_Tb
+    ld hl,AMY_UVAR_Hc
+    ld (AMY_UVAR_Rptr),hl
+    ld hl,AMY_UVAR_Pc
+    ld (AMY_UVAR_Rpptr),hl
+    ld a,28
+    ld (AMY_UVAR_Rrow),a
+StColLoop:
+    ; this half's 4 tiles: row r's offset from the level's base is
+    ; e = h - 56 + 8 r: 15 (the ceiling) when e <= 0, 0 (solid) when
+    ; e >= 8, else e (the wall's top edge, e pixels)
+    ld hl,(AMY_UVAR_Rptr)
+    ld a,(AMY_UVAR_DPass)
+    rrca
+    rrca
+    rrca
+    add a,(hl)
+    sub 56
+    ld h,a
+    ld a,(de)
+    ld c,a
+    ; (fast: all 4 tiles solid when e >= 8, all ceiling when e + 24 <= 0;
+    ; only the column's edge needs StEOff)
+    ld a,h
+    bit 7,a
+    jr nz,StDrNeg
+    cp 8
+    jr c,StDrSlow
+    ld a,c
+    jr StDrAll
+StDrNeg:
+    add a,24
+    jr z,StDrCeil
+    bit 7,a
+    jr z,StDrSlow
+StDrCeil:
+    ld a,c
+    add a,15
+StDrAll:
+    ld (ix+0),a
+    ld (ix+28),a
+    ld (ix+56),a
+    ld (ix+84),a
+    jr StDrTiles
+StDrSlow:
+    ld a,h
+    call StEOff
+    ld (ix+0),a
+    ld a,h
+    add a,8
+    ld h,a
+    call StEOff
+    ld (ix+28),a
+    ld a,h
+    add a,8
+    ld h,a
+    call StEOff
+    ld (ix+56),a
+    ld a,h
+    add a,8
+    call StEOff
+    ld (ix+84),a
+StDrTiles:
+    ld a,(AMY_UVAR_DPass)
+    or a
+    jr z,StNoPic
+    ; a painting: K rows (StPaintK by the height) up from the horizon:
+    ; K=1 frame; 2 v1, frame; 3 v1, v0, frame; 4 v1, v1, v0, frame (the
+    ; rows below the horizon come out of StMirror: v1 -> v2, v0 -> v3,
+    ; the top frame -> the bottom frame)
+    push de
+    ld hl,(AMY_UVAR_Rpptr)
+    ld a,(hl)
+    or a
+    jr z,StPpNone0
+    push bc
+    ld c,a
+    ld hl,(AMY_UVAR_Rptr)
+    ld l,(hl)
+    ld h,0
+    ld de,StPaintK
+    add hl,de
+    ld a,(hl)
+    or a
+    jr z,StPpDone
+    ld b,a
+    ld e,c
+    ld d,0
+    ld hl,StV0Of
+    add hl,de
+    ld c,(hl)
+    ld hl,StFrOf
+    add hl,de
+    ld a,(hl)
+    ld hl,StV1Of
+    add hl,de
+    ld e,(hl)
+    djnz StPk2
+    ld (ix+84),e
+    jr StPpDone
+StPk2:
+    djnz StPk3
+    ld (ix+84),e
+    ld (ix+56),c
+    jr StPpDone
+StPk3:
+    djnz StPk4
+    ld (ix+84),e
+    ld (ix+56),c
+    ld (ix+28),a
+    jr StPpDone
+StPk4:
+    ld (ix+84),e
+    ld (ix+56),e
+    ld (ix+28),c
+    ld (ix+0),a
+StPpDone:
+    pop bc
+StPpNone0:
+    pop de
+    jr StPicDone
+StNoPic:
+StPicDone:
+    ld hl,(AMY_UVAR_Rpptr)
+    inc hl
+    ld (AMY_UVAR_Rpptr),hl
+    inc ix
+    ld hl,(AMY_UVAR_Rptr)
+    inc hl
+    ld (AMY_UVAR_Rptr),hl
+    inc de
+    ld a,(AMY_UVAR_Rrow)
+    dec a
+    ld (AMY_UVAR_Rrow),a
+    jp nz,StColLoop
+    ; this half's 4 top rows: view rows 4 x pass ..
+    ld a,(AMY_UVAR_DPass)
+    add a,a
+    add a,a
+    ld (AMY_UVAR_Rrow),a
+    ld hl,AMY_UVAR_Tb
+    ld a,4
+    ld (AMY_UVAR_Rcol),a
+StTopRows:
+    call StPoll
+    push hl
+    ld a,(AMY_UVAR_Rrow)
+    call StRowAddr
+    pop hl
+    ld b,28
+StTopOut:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz StTopOut
+    ld a,(AMY_UVAR_Rrow)
+    inc a
+    ld (AMY_UVAR_Rrow),a
+    ld a,(AMY_UVAR_Rcol)
+    dec a
+    ld (AMY_UVAR_Rcol),a
+    jr nz,StTopRows
+    ; their mirrors: view rows 12 - 4 x pass .., from Tb row 3 up to 0
+    ld a,(AMY_UVAR_DPass)
+    add a,a
+    add a,a
+    ld b,a
+    ld a,12
+    sub b
+    ld (AMY_UVAR_Rrow),a
+    ld a,4
+    ld (AMY_UVAR_Rcol),a
+    ld hl,AMY_UVAR_Tb+84
+StBotRows:
+    call StPoll
+    push hl
+    ld a,(AMY_UVAR_Rrow)
+    call StRowAddr
+    pop hl
+    ld b,28
+    ld d,StMirror/256
+StBotOut:
+    ld e,(hl)
+    ld a,(de)
+    out ($BE),a
+    inc hl
+    djnz StBotOut
+    ld de,-56
+    add hl,de
+    ld a,(AMY_UVAR_Rrow)
+    inc a
+    ld (AMY_UVAR_Rrow),a
+    ld a,(AMY_UVAR_Rcol)
+    dec a
+    ld (AMY_UVAR_Rcol),a
+    jr nz,StBotRows
+    ld a,(AMY_UVAR_DPass)
+    inc a
+    ld (AMY_UVAR_DPass),a
+    cp 2
+    jp nz,StDrPass
+    pop ix
+    ret
+
+; StEOff: A = C + the tile offset for e = A (signed): 15 when e <= 0, 0
+; when e >= 8, else e
+StEOff:
+    or a
+    jp m,StEo15
+    jr z,StEo15
+    cp 8
+    jr c,StEo1
+    xor a
+StEo1:
+    add a,c
+    ret
+StEo15:
+    ld a,15
+    add a,c
+    ret
+
+; StRowAddr: the VDP write address of view row A (screen row A + 4, column 2)
+StRowAddr:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,130
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ret
+
+; StPoll: a vblank since the last look (the VDP status frame flag; the
+; interrupt is off during a pass) -> VbMiss + 1, and the sprite table of
+; the last pass (SatPend) goes up now, in that vblank. StPoll is called
+; between rays and rows, often enough to be inside the vblank (70 lines).
+; Each vblank also latches the buttons (StLatch): a pass can last
+; longer than a quick press. Keeps BC, DE, HL.
+StPoll:
+    in a,($BF)
+    rlca
+    ret nc
+    ld a,(AMY_UVAR_VbMiss)
+    inc a
+    ld (AMY_UVAR_VbMiss),a
+    call StLatch
+    ld a,(AMY_UVAR_SatPend)
+    or a
+    ret z
+StSatUp:
+    ; two sprite tables ($1B00, $1C80): the new one goes to the table not
+    ; shown, then register 5 switches in one write, so a frame never shows
+    ; a half-sent table (a late upload ran into the picture: 5 sprites on a
+    ; line for a frame)
+    xor a
+    ld (AMY_UVAR_SatPend),a
+    push bc
+    push de
+    push hl
+    ld a,(AMY_UVAR_SatBank)
+    xor 1
+    ld (AMY_UVAR_SatBank),a
+    ld de,$5B36
+    ld l,0
+    jr z,StSu1
+    ld de,$5C39
+    ld l,$80
+StSu1:
+    ld a,l
+    out ($BF),a
+    ld a,d
+    out ($BF),a
+    push de
+    ld a,(AMY_SPRITE_COUNT)
+    ld e,a
+    ld c,$BE
+    ld hl,AMY_SPRITE_TABLE
+    or a
+    jr z,StSu3
+StSu2:
+    outi
+    outi
+    outi
+    ld a,(hl)
+    and $8F
+    out (c),a
+    inc hl
+    dec e
+    jr nz,StSu2
+StSu3:
+    pop de
+    ld a,$D0
+    out ($BE),a
+    ld a,e
+    out ($BF),a
+    ld a,$85
+    out ($BF),a
+    pop hl
+    pop de
+    pop bc
+    ret
+
+; StWaitSat: a sprite table still pending: wait for the vblank, send it
+StWaitSat:
+    ld a,(AMY_UVAR_SatPend)
+    or a
+    ret z
+StWsLoop:
+    in a,($BF)
+    rlca
+    jr nc,StWsLoop
+    ld a,(AMY_UVAR_VbMiss)
+    inc a
+    ld (AMY_UVAR_VbMiss),a
+    jr StSatUp
+
+; StSoftNmi: one frame's NMI work done now (controllers, the frame
+; counter, the sound), through Amy's own NMI body, for a vblank the pass
+; ran through with the interrupt off: sound keeps its tempo and the pass
+; need not wait for the next vblank.
+StSoftNmi:
+    push af
+    jp AMY_NMI_CONTINUE
+
+; StIdName: the name table 0-255 three times (a Mode 2 picture); the
+; display is off
+StIdName:
+    xor a
+    out ($BF),a
+    ld a,$58
+    out ($BF),a
+    ld c,3
+StIdN1:
+    ld b,0
+    xor a
+StIdN2:
+    out ($BE),a
+    inc a
+    djnz StIdN2
+    dec c
+    jr nz,StIdN1
+    ret
+
+
+; StMon: the monster's sprite pieces for this view. A frame record (MonFr)
+; is N, then N pieces of 5 bytes: column offset (signed, 8-pixel screen
+; columns from the anchor), y offset (signed screen pixels from the floor,
+; the piece's top), colour, address of its 32 pattern bytes. The anchor
+; is screen column MonColB - 16 at floor line MonY; the monster's depth is
+; MonZ (1/16 cells). Each piece's four 8-pixel columns are kept only where
+; no wall is nearer (Zc) and inside the view (columns 2-29), its rows only
+; inside the view (lines 32-159). Pieces left with nothing are not used.
+; Patterns go to the buffer not on screen (MonBuf: 16 x 16 patterns 32-47
+; or 48-63; the sword has 0-31); the pieces are written straight into Amy's sprite table as
+; sprites 4-19 (SpN used, the rest hidden).
+StMon:
+    call StPoll
+    ; pieces from MonSp0 on (0 in play; the HOW TO PLAY page draws three
+    ; monsters one after another): VRAM $3C00 + MonBuf x 512 + MonSp0 x 32
+    ld a,(AMY_UVAR_MonSp0)
+    ld (AMY_UVAR_SpN),a
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_MonBuf)
+    add a,a
+    add a,$7C
+    add a,h
+    ld b,a
+    ld a,l
+    out ($BF),a
+    ld a,b
+    out ($BF),a
+    ld hl,(AMY_UVAR_MonFr)
+    ld a,(hl)
+    or a
+    jp z,StMnHide
+    ld (AMY_UVAR_MonK),a
+    inc hl
+StMnLoop:
+    ; the piece's column (signed) and top line
+    ld a,(AMY_UVAR_MonColB)
+    add a,(hl)
+    sub 16
+    ld (AMY_UVAR_MonC),a
+    inc hl
+    ld a,(AMY_UVAR_MonY)
+    add a,(hl)
+    ld (AMY_UVAR_MonPy),a
+    ld a,0
+    rla
+    ld (AMY_UVAR_MonOk),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_MonPc),a
+    inc hl
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld (AMY_UVAR_MonSrc),de
+    push hl
+    ; off the top (the y offset ran below 0) or left of the screen: unused
+    ld a,(AMY_UVAR_MonOk)
+    or a
+    jp z,StMnNext
+    ld a,(AMY_UVAR_MonC)
+    bit 7,a
+    jp nz,StMnNext
+    ; its four columns: bit 3 = the first .. bit 0 = the last
+    ld c,a
+    ld b,4
+    ld d,0
+StMnCol:
+    sla d
+    ld a,c
+    sub 2
+    cp 28
+    jr nc,StMnHid
+    ld hl,AMY_UVAR_Zc
+    add a,l
+    ld l,a
+    jr nc,StMnNc
+    inc h
+StMnNc:
+    ld a,(AMY_UVAR_MonZ)
+    cp (hl)
+    jr z,StMnVis
+    jr nc,StMnHid
+StMnVis:
+    inc d
+StMnHid:
+    inc c
+    djnz StMnCol
+    ld a,d
+    or a
+    jp z,StMnNext
+    ; the masks of the left and right halves
+    ld e,0
+    bit 1,a
+    jr z,StMnM1
+    ld e,$F0
+StMnM1:
+    bit 0,a
+    jr z,StMnM2
+    ld a,e
+    or $0F
+    ld e,a
+StMnM2:
+    ld a,d
+    ld d,0
+    bit 3,a
+    jr z,StMnM3
+    ld d,$F0
+StMnM3:
+    bit 2,a
+    jr z,StMnM4
+    ld a,d
+    or $0F
+    ld d,a
+StMnM4:
+    ld a,d
+    ld (AMY_UVAR_MonML),a
+    ld a,e
+    ld (AMY_UVAR_MonMR),a
+    ; its rows inside lines 32-159: RT rows cut at the top, RV kept, RB cut
+    ld a,(AMY_UVAR_MonPy)
+    cp 160
+    jp nc,StMnNext
+    ld b,0
+    cp 32
+    jr nc,StMnT1
+    ld b,a
+    ld a,33
+    sub b
+    srl a
+    ld b,a
+    cp 16
+    jp nc,StMnNext
+StMnT1:
+    ld a,b
+    ld (AMY_UVAR_MonRT),a
+    ; the rows above line 160: (160 - y) / 2, at most 16
+    ld a,(AMY_UVAR_MonPy)
+    ld c,a
+    ld a,160
+    sub c
+    srl a
+    cp 16
+    jr c,StMnT2
+    ld a,16
+StMnT2:
+    ld c,a
+    sub b
+    jr z,StMnNext0
+    jr c,StMnNext0
+    ld (AMY_UVAR_MonRV),a
+    ld a,16
+    sub c
+    ld (AMY_UVAR_MonRB),a
+    ; the 32 pattern bytes, masked
+    ld hl,(AMY_UVAR_MonSrc)
+    call StMnDec
+    push hl
+    ld hl,AMY_UVAR_Tb
+    ld a,(AMY_UVAR_MonML)
+    ld d,a
+    call StMnHalf
+    pop hl
+    call StMnDec
+    ld hl,AMY_UVAR_Tb
+    ld a,(AMY_UVAR_MonMR)
+    ld d,a
+    call StMnHalf
+    ; its sprite (4 + SpN) in Amy's sprite table: y - 1, x, pattern, colour
+    ld a,(AMY_UVAR_SpN)
+    add a,4
+    add a,a
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,AMY_SPRITE_TABLE
+    add hl,de
+    ld a,(AMY_UVAR_MonPy)
+    dec a
+    ld (hl),a
+    inc hl
+    ld a,(AMY_UVAR_MonC)
+    add a,a
+    add a,a
+    add a,a
+    ld (hl),a
+    inc hl
+    ld a,(AMY_UVAR_MonBuf)
+    add a,2
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld e,a
+    ld a,(AMY_UVAR_SpN)
+    add a,e
+    add a,a
+    add a,a
+    ld (hl),a
+    inc hl
+    ; MonFlash: 0 its colours; 1-15 every piece that colour (struck); 128
+    ; + c: its white pieces in colour c (the foreman's gold bones)
+    ld a,(AMY_UVAR_MonFlash)
+    or a
+    jr z,StMnPc
+    jp p,StMnFl
+    and 15
+    push bc
+    ld b,a
+    ld a,(AMY_UVAR_MonPc)
+    cp 15
+    jr nz,StMnTint
+    ld a,b
+StMnTint:
+    pop bc
+    jr StMnFl
+StMnPc:
+    ld a,(AMY_UVAR_MonPc)
+StMnFl:
+    ld (hl),a
+    ld a,(AMY_UVAR_SpN)
+    inc a
+    ld (AMY_UVAR_SpN),a
+    cp 16
+    jr nz,StMnNext
+    pop hl
+    ret
+StMnNext0:
+StMnNext:
+    pop hl
+    ld a,(AMY_UVAR_MonK)
+    dec a
+    ld (AMY_UVAR_MonK),a
+    jp nz,StMnLoop
+; StMnHide: sprites 4 + SpN .. 19 hidden (y 192)
+StMnHide:
+    ld a,(AMY_UVAR_SpN)
+    cp 16
+    ret nc
+    ld b,a
+    add a,4
+    add a,a
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,AMY_SPRITE_TABLE
+    add hl,de
+    ld a,16
+    sub b
+    ld b,a
+    ld de,4
+StMnHd1:
+    ld (hl),192
+    add hl,de
+    djnz StMnHd1
+    ret
+
+; StMnDec: one sparse half (first row, row count, the rows) from HL into
+; Tb[0..15] (the draw buffer is free after StDraw); HL moves past it
+StMnDec:
+    push hl
+    ld hl,AMY_UVAR_Tb
+    ld b,16
+    xor a
+StMd0:
+    ld (hl),a
+    inc hl
+    djnz StMd0
+    pop hl
+    ld e,(hl)
+    inc hl
+    ld a,(hl)
+    inc hl
+    or a
+    ret z
+    ld c,a
+    ld b,0
+    ld d,0
+    push hl
+    ld hl,AMY_UVAR_Tb
+    add hl,de
+    ex de,hl
+    pop hl
+    ldir
+    ret
+
+; StMnHalf: 16 pattern bytes from HL, ANDed with D, the RT top rows and
+; RB bottom rows blank (to the VDP, the address already set)
+StMnHalf:
+    ld a,(AMY_UVAR_MonRT)
+    or a
+    jr z,StMnH1
+    ld b,a
+StMnH0:
+    xor a
+    out ($BE),a
+    inc hl
+    djnz StMnH0
+StMnH1:
+    ld a,(AMY_UVAR_MonRV)
+    ld b,a
+StMnH2:
+    ld a,(hl)
+    and d
+    out ($BE),a
+    inc hl
+    djnz StMnH2
+    ld a,(AMY_UVAR_MonRB)
+    or a
+    ret z
+    ld b,a
+StMnH4:
+    xor a
+    out ($BE),a
+    inc hl
+    djnz StMnH4
+    ret
+
+; StHgt: MonH = the wall's half height (StHeight) at depth MonZ
+StHgt:
+    ld a,(AMY_UVAR_MonZ)
+    ld l,a
+    ld h,0
+    ld de,StHeight
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_MonH),a
+    ret
+
+; StSel: MonFr = MonDir[MonIx] (the frame record of monster kind x 20 +
+; state x 4 + size)
+StSel:
+    ld a,(AMY_UVAR_MonIx)
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld de,MonDir
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld (AMY_UVAR_MonFr),de
+    ret
+
+; StProj: a monster's place in view: Zf = (Dx cos + Dy sin) / 64 (depth)
+; and Xl = (Dy cos - Dx sin) / 64 (side), in 1/16 cells, from Dx, Dy
+; (i16, 1/16 cells, |v| < 256) and CsB, SnB (cos, sin x 64, signed bytes)
+StProj:
+    ld a,(AMY_UVAR_CsB)
+    ld de,(AMY_UVAR_Dx)
+    call StSMul
+    push hl
+    ld a,(AMY_UVAR_SnB)
+    ld de,(AMY_UVAR_Dy)
+    call StSMul
+    pop de
+    add hl,de
+    call StSra6
+    ld (AMY_UVAR_Zf),hl
+    ld a,(AMY_UVAR_CsB)
+    ld de,(AMY_UVAR_Dy)
+    call StSMul
+    push hl
+    ld a,(AMY_UVAR_SnB)
+    ld de,(AMY_UVAR_Dx)
+    call StSMul
+    ex de,hl
+    pop hl
+    or a
+    sbc hl,de
+    call StSra6
+    ld (AMY_UVAR_Xl),hl
+    ret
+
+; StSra6: HL = HL >> 6, keeping the sign
+StSra6:
+    ld b,6
+StSra6L:
+    sra h
+    rr l
+    djnz StSra6L
+    ret
+
+; StSMul: HL = A (signed byte) x DE (signed, |DE| < 256)
+StSMul:
+    ld c,0
+    or a
+    jp p,StSm1
+    neg
+    inc c
+StSm1:
+    ld b,a
+    bit 7,d
+    jr z,StSm2
+    xor a
+    sub e
+    ld e,a
+    inc c
+StSm2:
+    push bc
+    ld h,b
+    call StMul8
+    pop bc
+    bit 0,c
+    ret z
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+    ret
+
+; StScr: Lp = |Xl| x 194 / Zf (Zf 8-255, |Xl| < 256) by the reciprocal
+; table StRcp[Zf] = 194 x 256 / Zf
+StScr:
+    ld a,(AMY_UVAR_Zf)
+    sub 8
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld de,StRcp
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    push de
+    ld hl,(AMY_UVAR_Xl)
+    bit 7,h
+    jr z,StScP
+    xor a
+    sub l
+    ld l,a
+StScP:
+    ld a,l
+    ld (AMY_UVAR_MonK),a
+    ; |Xl| x low byte >> 8
+    ld h,a
+    call StMul8
+    ld a,h
+    pop de
+    push af
+    ld a,(AMY_UVAR_MonK)
+    ld h,a
+    ld e,d
+    call StMul8
+    pop af
+    ld e,a
+    ld d,0
+    add hl,de
+    ld (AMY_UVAR_Lp),hl
+    ret
+
+
+; StPrint: text TxN (txt.asm: column, row, length, characters... 255) to
+; the name table
+StPrint:
+    ld a,(AMY_UVAR_TxN)
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld de,TxTab
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+StTx1:
+    ld a,(hl)
+    cp 255
+    ret z
+    ld e,a
+    inc hl
+    ld a,(hl)
+    inc hl
+    push hl
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop hl
+    ld b,(hl)
+    inc hl
+StTx2:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    djnz StTx2
+    jr StTx1
+
+StColOff:
+    db 235,237,238,239,241,242,244,245,247,249,250,252,253,255,1,3
+    db 4,6,7,9,11,12,14,15,17,18,19,21
+StCosOff:
+    db 224,228,231,235,238,242,245,247,250,252,253,255,255,255,255,255
+    db 255,253,252,250,247,245,242,238,235,231,228,224
+StDelta:
+    db 0,1,0,1,0,1,1,1,1,1,2,1,3,1,4,1,5,1,6,1,8,1,10,1,12,1,14,1,16,1,18,1
+    db 21,1,24,1,27,1,31,1,34,1,38,1,42,1,47,1,52,1,57,1,63,1,69,1,75,1,82,1,90,1,97,1
+    db 106,1,115,1,125,1,136,1,148,1,160,1,174,1,189,1,205,1,223,1,242,1,7,2,31,2,57,2,87,2,120,2
+    db 157,2,199,2,248,2,48,3,114,3,192,3,30,4,144,4,32,5,217,5,209,6,43,8,52,10,152,13,97,20,191,40
+    db 0,64
+StHeight:
+    db 64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64
+    db 64,64,64,64,64,64,64,64,64,64,64,62,59,57,55,54
+    db 52,50,49,48,46,45,44,43,42,41,40,39,38,37,36,35
+    db 35,34,33,33,32,31,31,30,30,29,29,28,28,27,27,26
+    db 26,26,25,25,24,24,24,23,23,23,22,22,22,22,21,21
+    db 21,21,20,20,20,20,19,19,19,19,18,18,18,18,18,18
+    db 17,17,17,17,17,16,16,16,16,16,16,16,15,15,15,15
+    db 15,15,15,14,14,14,14,14,14,14,14,14,13,13,13,13
+    db 13,13,13,13,13,13,12,12,12,12,12,12,12,12,12,12
+    db 12,11,11,11,11,11,11,11,11,11,11,11,11,11,11,10
+    db 10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10
+    db 9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9
+    db 9,9,9,9,8,8,8,8,8,8,8,8,8,8,8,8
+    db 8,8,8,8,8,8,8,8,8,8,8,8,8,8,7,7
+    db 7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7
+    db 7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7
+StLvl:
+    db 0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1
+    db 1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2
+    db 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+    db 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+StLvlD:
+    db 1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3
+    db 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+    db 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+    db 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+StRcp:
+    db 64,24,142,21,102,19,163,17,43,16,236,14,219,13,239,12,32,12,105,11,199,10,54,10,179,9,61,9,209,8,111,8
+    db 21,8,195,7,118,7,47,7,238,6,177,6,119,6,66,6,16,6,225,5,181,5,139,5,100,5,62,5,27,5,249,4
+    db 218,4,187,4,158,4,131,4,105,4,80,4,56,4,33,4,11,4,246,3,225,3,206,3,187,3,169,3,152,3,135,3
+    db 119,3,103,3,88,3,74,3,60,3,46,3,33,3,20,3,8,3,252,2,240,2,229,2,218,2,208,2,197,2,187,2
+    db 178,2,168,2,159,2,150,2,141,2,133,2,125,2,117,2,109,2,101,2,94,2,86,2,79,2,72,2,65,2,59,2
+    db 52,2,46,2,40,2,34,2,28,2,22,2,16,2,11,2,5,2,0,2,251,1,246,1,241,1,236,1,231,1,226,1
+    db 222,1,217,1,213,1,208,1,204,1,200,1,195,1,191,1,187,1,184,1,180,1,176,1,172,1,168,1,165,1,161,1
+    db 158,1,154,1,151,1,148,1,145,1,141,1,138,1,135,1,132,1,129,1,126,1,123,1,120,1,117,1,115,1,112,1
+    db 109,1,107,1,104,1,101,1,99,1,96,1,94,1,91,1,89,1,87,1,84,1,82,1,80,1,77,1
+StTexBase:
+    db 96,112,128,144,160,176,128,144,224,240,240,144,192,208,128,144
+StKindTex:
+    db 0,0,0,0,2,2,0,3,0,0,0,1,0,0,0,0
+StFracN:
+    db 0,0,0,0,2,2,2,3,3,4,4,4,0,0,0,0
+StFracR:
+    db 0,0,0,0,4,4,4,3,3,2,2,2,0,0,0,0
+StAbsCos:
+    db 255,255,255,254,254,253,252,251,250,249,247,246,244,242,240,238
+    db 236,233,231,228,225,222,219,215,212,208,205,201,197,193,189,185
+    db 180,176,171,167,162,157,152,147,142,136,131,126,120,115,109,103
+    db 98,92,86,80,74,68,62,56,50,44,37,31,25,19,13,6
+    db 0
+StPaintK:
+    db 0,0,0,0,0,1,1,1,1,1,1,1,1,1,2,2
+    db 2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3
+    db 3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4
+    db 4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+    db 4
+StFrOf:
+    db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+    db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+    db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+    db 1,1,1,1,1,1,1,1,1,1,1,1,1
+StV1Of:
+    db 0,4,4,4,7,11,7,4,4,4,4,15,4,4,19,4
+    db 21,25,21,4,4,4,4,4,4,4,29,4,4,34,4,4
+    db 38,4,4,42,4,4,45,4,4,49,4,4,4,4,4,4
+    db 4,4,4,4,4,4,4,4,53,4,4,55,4
+StV0Of:
+    db 0,4,4,4,6,10,6,4,4,4,4,14,4,4,18,4
+    db 21,24,21,4,4,4,4,4,4,4,4,4,4,33,4,4
+    db 37,4,4,41,4,4,44,4,4,48,4,4,4,4,4,4
+    db 4,4,4,4,4,4,4,4,52,4,4,41,4
+StTexV0:
+    db 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16
+    db 17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32
+    db 33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48
+    db 49,50,51,52,53,54,55,56,57,58,59,60
+StMapTab:
+    dw StMap0,StMap0,StMap0
+StMap0:
+    db 1,1,1,1,1,1,1,1,38,1,1,1,1,1,1,1
+    db 1,0,0,0,0,0,0,0,0,0,0,0,0,4,1,1
+    db 1,0,2,2,2,2,0,2,2,2,2,2,0,2,1,1
+    db 1,0,1,1,1,2,0,2,1,1,1,1,0,1,1,1
+    db 1,0,1,1,1,2,0,2,1,5,1,1,0,1,1,1
+    db 1,0,0,0,6,2,0,2,1,0,1,1,0,1,1,1
+    db 1,0,1,1,1,2,0,2,1,0,1,1,0,1,1,1
+    db 1,0,1,1,1,2,0,0,0,0,0,0,0,1,1,1
+    db 1,0,1,1,1,2,2,2,7,1,38,1,0,1,1,1
+    db 1,0,0,0,8,1,1,1,0,1,1,1,0,9,0,1
+    db 38,0,1,1,10,1,11,12,0,1,1,1,0,1,0,1
+    db 1,0,1,1,0,1,0,13,14,1,1,1,0,1,0,1
+    db 1,0,1,1,0,1,1,15,1,1,1,1,1,1,16,1
+    db 1,0,0,0,0,0,0,0,0,0,17,0,0,0,18,1
+    db 1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1
+    db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+    db 0,3,0,4,0,4,3,4,4,4,4,4,2,4,0,0
+    db 3,3,3,10,3,7,3,3,9,9,12,8,3,4,1,15
+    db 1,4,3,0,9,0,2,0,0,0,0,9,8,0,0,0
+StSq:
+    db 0,0,0,0,1,0,2,0,4,0,6,0,9,0,12,0,16,0,20,0,25,0,30,0,36,0,42,0,49,0,56,0
+    db 64,0,72,0,81,0,90,0,100,0,110,0,121,0,132,0,144,0,156,0,169,0,182,0,196,0,210,0,225,0,240,0
+    db 0,1,16,1,33,1,50,1,68,1,86,1,105,1,124,1,144,1,164,1,185,1,206,1,228,1,250,1,17,2,40,2
+    db 64,2,88,2,113,2,138,2,164,2,190,2,217,2,244,2,16,3,44,3,73,3,102,3,132,3,162,3,193,3,224,3
+    db 0,4,32,4,65,4,98,4,132,4,166,4,201,4,236,4,16,5,52,5,89,5,126,5,164,5,202,5,241,5,24,6
+    db 64,6,104,6,145,6,186,6,228,6,14,7,57,7,100,7,144,7,188,7,233,7,22,8,68,8,114,8,161,8,208,8
+    db 0,9,48,9,97,9,146,9,196,9,246,9,41,10,92,10,144,10,196,10,249,10,46,11,100,11,154,11,209,11,8,12
+    db 64,12,120,12,177,12,234,12,36,13,94,13,153,13,212,13,16,14,76,14,137,14,198,14,4,15,66,15,129,15,192,15
+    db 0,16,64,16,129,16,194,16,4,17,70,17,137,17,204,17,16,18,84,18,153,18,222,18,36,19,106,19,177,19,248,19
+    db 64,20,136,20,209,20,26,21,100,21,174,21,249,21,68,22,144,22,220,22,41,23,118,23,196,23,18,24,97,24,176,24
+    db 0,25,80,25,161,25,242,25,68,26,150,26,233,26,60,27,144,27,228,27,57,28,142,28,228,28,58,29,145,29,232,29
+    db 64,30,152,30,241,30,74,31,164,31,254,31,89,32,180,32,16,33,108,33,201,33,38,34,132,34,226,34,65,35,160,35
+    db 0,36,96,36,193,36,34,37,132,37,230,37,73,38,172,38,16,39,116,39,217,39,62,40,164,40,10,41,113,41,216,41
+    db 64,42,168,42,17,43,122,43,228,43,78,44,185,44,36,45,144,45,252,45,105,46,214,46,68,47,178,47,33,48,144,48
+    db 0,49,112,49,225,49,82,50,196,50,54,51,169,51,28,52,144,52,4,53,121,53,238,53,100,54,218,54,81,55,200,55
+    db 64,56,184,56,49,57,170,57,36,58,158,58,25,59,148,59,16,60,140,60,9,61,134,61,4,62,130,62,1,63,128,63
+    db 0,64,128,64,1,65,130,65,4,66,134,66,9,67,140,67,16,68,148,68,25,69,158,69,36,70,170,70,49,71,184,71
+    db 64,72,200,72,81,73,218,73,100,74,238,74,121,75,4,76,144,76,28,77,169,77,54,78,196,78,82,79,225,79,112,80
+    db 0,81,144,81,33,82,178,82,68,83,214,83,105,84,252,84,144,85,36,86,185,86,78,87,228,87,122,88,17,89,168,89
+    db 64,90,216,90,113,91,10,92,164,92,62,93,217,93,116,94,16,95,172,95,73,96,230,96,132,97,34,98,193,98,96,99
+    db 0,100,160,100,65,101,226,101,132,102,38,103,201,103,108,104,16,105,180,105,89,106,254,106,164,107,74,108,241,108,152,109
+    db 64,110,232,110,145,111,58,112,228,112,142,113,57,114,228,114,144,115,60,116,233,116,150,117,68,118,242,118,161,119,80,120
+    db 0,121,176,121,97,122,18,123,196,123,118,124,41,125,220,125,144,126,68,127,249,127,174,128,100,129,26,130,209,130,136,131
+    db 64,132,248,132,177,133,106,134,36,135,222,135,153,136,84,137,16,138,204,138,137,139,70,140,4,141,194,141,129,142,64,143
+    db 0,144,192,144,129,145,66,146,4,147,198,147,137,148,76,149,16,150,212,150,153,151,94,152,36,153,234,153,177,154,120,155
+    db 64,156,8,157,209,157,154,158,100,159,46,160,249,160,196,161,144,162,92,163,41,164,246,164,196,165,146,166,97,167,48,168
+    db 0,169,208,169,161,170,114,171,68,172,22,173,233,173,188,174,144,175,100,176,57,177,14,178,228,178,186,179,145,180,104,181
+    db 64,182,24,183,241,183,202,184,164,185,126,186,89,187,52,188,16,189,236,189,201,190,166,191,132,192,98,193,65,194,32,195
+    db 0,196,224,196,193,197,162,198,132,199,102,200,73,201,44,202,16,203,244,203,217,204,190,205,164,206,138,207,113,208,88,209
+    db 64,210,40,211,17,212,250,212,228,213,206,214,185,215,164,216,144,217,124,218,105,219,86,220,68,221,50,222,33,223,16,224
+    db 0,225,240,225,225,226,210,227,196,228,182,229,169,230,156,231,144,232,132,233,121,234,110,235,100,236,90,237,81,238,72,239
+    db 64,240,56,241,49,242,42,243,36,244,30,245,25,246,20,247,16,248,12,249,9,250,6,251,4,252,2,253,1,254
+    align 256
+StMirror:
+    db 0,2,2,3,3,5,5,5,8,9,8,9,12,13,12,13
+    db 16,17,16,17,20,20,22,23,22,23,26,27,28,28,30,31
+    db 32,30,31,35,36,35,36,39,40,39,40,43,43,23,46,47
+    db 46,47,50,51,50,51,54,54,56,57,58,59,60,61,62,63
+    db 64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79
+    db 80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95
+    db 96,104,105,106,107,108,109,110,104,105,106,107,108,109,110,26
+    db 112,120,121,122,123,124,125,126,120,121,122,123,124,125,126,26
+    db 128,136,137,138,139,140,141,142,136,137,138,139,140,141,142,26
+    db 144,152,153,154,155,156,157,158,152,153,154,155,156,157,158,26
+    db 160,168,169,170,171,172,173,174,168,169,170,171,172,173,174,26
+    db 176,184,185,186,187,188,189,190,184,185,186,187,188,189,190,26
+    db 192,200,201,202,203,204,205,206,200,201,202,203,204,205,206,26
+    db 208,216,217,218,219,220,221,222,216,217,218,219,220,221,222,26
+    db 224,232,233,234,235,236,237,238,232,233,234,235,236,237,238,26
+    db 240,248,249,250,251,252,253,254,248,249,250,251,252,253,254,26
+MonDir:
+    dw MonF000,MonF001,MonF002,MonF003,MonF010,MonF010,MonF010,MonF010,MonF020,MonF020,MonF020,MonF020,MonF030,MonF030,MonF030,MonF030,MonF000,MonF001,MonF002,MonF003,MonF000,MonF001,MonF002,MonF003,MonF100,MonF101,MonF102,MonF103,MonF110,MonF110,MonF110,MonF110,MonF120,MonF120,MonF120,MonF120,MonF100,MonF101,MonF102,MonF103,MonF100,MonF101,MonF102,MonF103,MonF100,MonF101,MonF102,MonF103,MonF200,MonF201,MonF202,MonF203,MonF210,MonF210,MonF210,MonF210,MonF220,MonF220,MonF220,MonF220,MonF200,MonF201,MonF202,MonF203,MonF200,MonF201,MonF202,MonF203,MonF200,MonF201,MonF202,MonF203
+MonF000:
+    db 5
+    db 251,218,14
+    dw MonP0
+    db 255,218,14
+    dw MonP1
+    db 254,250,14
+    dw MonP2
+    db 2,250,14
+    dw MonP3
+    db 253,234,8
+    dw MonP4
+MonF001:
+    db 3
+    db 253,232,14
+    dw MonP5
+    db 1,232,14
+    dw MonP6
+    db 254,242,8
+    dw MonP7
+MonF002:
+    db 3
+    db 254,240,14
+    dw MonP8
+    db 255,246,8
+    dw MonP9
+    db 255,254,15
+    dw MonP7
+MonF003:
+    db 3
+    db 255,246,14
+    dw MonP10
+    db 255,250,8
+    dw MonP11
+    db 254,252,15
+    dw MonP12
+MonF010:
+    db 5
+    db 251,208,14
+    dw MonP13
+    db 255,208,14
+    dw MonP14
+    db 254,240,14
+    dw MonP15
+    db 2,240,14
+    dw MonP16
+    db 251,224,8
+    dw MonP17
+MonF020:
+    db 5
+    db 252,218,14
+    dw MonP18
+    db 0,218,14
+    dw MonP19
+    db 252,250,14
+    dw MonP20
+    db 0,250,14
+    dw MonP21
+    db 250,234,8
+    dw MonP22
+MonF030:
+    db 3
+    db 251,234,14
+    dw MonP23
+    db 255,234,14
+    dw MonP24
+    db 3,234,14
+    dw MonP25
+MonF100:
+    db 7
+    db 253,166,15
+    dw MonP26
+    db 1,166,15
+    dw MonP27
+    db 253,198,15
+    dw MonP28
+    db 1,198,15
+    dw MonP29
+    db 254,230,15
+    dw MonP30
+    db 254,156,10
+    dw MonP31
+    db 254,192,10
+    dw MonP32
+MonF101:
+    db 5
+    db 254,200,15
+    dw MonP33
+    db 254,232,15
+    dw MonP34
+    db 254,192,10
+    dw MonP35
+    db 0,224,10
+    dw MonP36
+    db 254,208,14
+    dw MonP37
+MonF102:
+    db 4
+    db 255,220,15
+    dw MonP38
+    db 255,252,15
+    dw MonP39
+    db 255,214,10
+    dw MonP40
+    db 254,224,14
+    dw MonP41
+MonF103:
+    db 3
+    db 255,236,15
+    dw MonP42
+    db 255,232,10
+    dw MonP43
+    db 255,236,14
+    dw MonP44
+MonF110:
+    db 8
+    db 253,150,15
+    dw MonP45
+    db 1,150,15
+    dw MonP46
+    db 253,182,15
+    dw MonP47
+    db 1,182,15
+    dw MonP48
+    db 254,214,15
+    dw MonP49
+    db 254,246,15
+    dw MonP50
+    db 254,128,10
+    dw MonP51
+    db 254,160,10
+    dw MonP52
+MonF120:
+    db 8
+    db 253,164,15
+    dw MonP53
+    db 1,164,15
+    dw MonP54
+    db 254,196,15
+    dw MonP55
+    db 253,228,15
+    dw MonP56
+    db 1,228,15
+    dw MonP57
+    db 254,154,10
+    dw MonP58
+    db 253,190,10
+    dw MonP59
+    db 251,210,14
+    dw MonP60
+MonF200:
+    db 7
+    db 254,152,7
+    dw MonP61
+    db 252,184,7
+    dw MonP62
+    db 0,184,7
+    dw MonP63
+    db 252,216,7
+    dw MonP64
+    db 0,216,7
+    dw MonP65
+    db 255,164,4
+    dw MonP66
+    db 2,202,11
+    dw MonP67
+MonF201:
+    db 5
+    db 253,192,7
+    dw MonP68
+    db 1,192,7
+    dw MonP69
+    db 254,224,7
+    dw MonP70
+    db 2,224,7
+    dw MonP71
+    db 255,198,4
+    dw MonP72
+MonF202:
+    db 4
+    db 254,214,7
+    dw MonP73
+    db 254,246,7
+    dw MonP74
+    db 255,218,4
+    dw MonP75
+    db 255,220,15
+    dw MonP76
+MonF203:
+    db 3
+    db 255,230,7
+    dw MonP77
+    db 255,232,4
+    dw MonP78
+    db 255,234,15
+    dw MonP79
+MonF210:
+    db 8
+    db 251,150,7
+    dw MonP80
+    db 255,150,7
+    dw MonP81
+    db 3,150,7
+    dw MonP82
+    db 251,182,7
+    dw MonP83
+    db 255,182,7
+    dw MonP84
+    db 3,182,7
+    dw MonP85
+    db 252,214,7
+    dw MonP86
+    db 0,214,7
+    dw MonP87
+MonF220:
+    db 10
+    db 254,144,7
+    dw MonP88
+    db 253,176,7
+    dw MonP89
+    db 1,176,7
+    dw MonP90
+    db 252,208,7
+    dw MonP91
+    db 0,208,7
+    dw MonP92
+    db 254,240,7
+    dw MonP93
+    db 2,240,7
+    dw MonP94
+    db 254,156,4
+    dw MonP95
+    db 253,194,11
+    dw MonP96
+    db 255,226,11
+    dw MonP97
+MonP0:
+    db 8,6,1,3,7,63,39,16,3,13,2,7,15,63,255,223
+    db 223,255,255,255,127,31,1
+MonP1:
+    db 1,15,1,3,15,127,255,255,255,255,255,255,255,255,255,255
+    db 255,0,16,96,248,252,254,254,254,255,255,255,255,255,255,255
+    db 254,254,254
+MonP2:
+    db 0,3,27,56,56,0,1,254
+MonP3:
+    db 0,3,224,224,224,0,0
+MonP4:
+    db 0,2,32,32,0,0
+MonP5:
+    db 2,7,1,1,7,9,31,255,71,0,12,3,7,159,255,255
+    db 255,255,255,255,127,95,192
+MonP6:
+    db 0,12,128,192,224,224,224,240,240,240,227,224,96,96,8,3
+    db 128,240,31
+MonP7:
+    db 0,1,96,0,0
+MonP8:
+    db 2,5,7,23,63,159,3,0,8,32,240,248,248,248,248,248
+    db 16
+MonP9:
+    db 0,1,128,2,3,48,30,3
+MonP10:
+    db 0,5,4,62,190,126,10,0,0
+MonP11:
+    db 0,1,64,1,2,192,120
+MonP12:
+    db 0,2,16,3,0,0
+MonP13:
+    db 0,12,7,7,1,0,1,1,7,47,31,16,16,16,0,16
+    db 135,207,255,255,255,255,255,255,255,255,63,7,15,7,7,7
+MonP14:
+    db 2,14,3,135,223,255,255,255,255,255,255,255,255,255,255,255
+    db 1,15,240,248,252,254,254,254,255,255,255,255,255,255,255,255
+    db 254
+MonP15:
+    db 0,4,63,63,15,7,0,5,255,255,255,255,248
+MonP16:
+    db 0,8,224,224,224,224,224,224,224,224,2,3,224,60,7
+MonP17:
+    db 0,2,96,46,0,0
+MonP18:
+    db 6,10,7,31,59,123,255,31,63,31,7,15,3,13,64,239
+    db 255,255,255,255,255,255,255,255,255,255,255
+MonP19:
+    db 0,16,14,63,127,255,255,255,255,255,255,255,255,255,255,255
+    db 255,255,1,15,128,192,192,224,224,224,224,240,240,240,240,240
+    db 224,224,224
+MonP20:
+    db 0,3,63,124,240,0,3,63,49,112
+MonP21:
+    db 0,2,255,248,0,3,224,224,224
+MonP22:
+    db 2,5,62,63,63,62,56,0,5,4,4,0,224,192
+MonP23:
+    db 5,5,3,7,63,255,3,0,11,1,1,1,1,239,255,255
+    db 255,255,255,224
+MonP24:
+    db 0,11,48,48,144,255,255,255,255,255,255,255,255,0,11,54
+    db 54,18,255,255,255,255,255,255,255,248
+MonP25:
+    db 4,6,192,224,240,240,254,135,9,1,255
+MonP26:
+    db 7,9,24,31,27,31,31,63,61,56,63,0,16,255,153,153
+    db 153,231,255,126,0,255,152,24,255,126,153,127,25
+MonP27:
+    db 7,9,24,248,24,216,152,156,156,28,140,0,0
+MonP28:
+    db 0,16,127,120,224,64,0,1,1,0,0,0,0,1,1,1
+    db 1,1,0,16,143,199,211,120,254,219,195,255,255,195,195,195
+    db 195,195,129,129
+MonP29:
+    db 0,16,12,28,124,240,64,0,128,8,8,0,0,128,128,128
+    db 128,128,0,0
+MonP30:
+    db 0,13,56,56,24,24,24,24,24,24,24,24,120,248,224,0
+    db 13,28,28,24,24,24,24,24,24,24,24,30,31,7
+MonP31:
+    db 0,5,7,31,31,63,255,0,5,224,248,248,252,255
+MonP32:
+    db 0,5,32,56,12,7,3,4,7,128,192,112,24,14,7,1
+MonP33:
+    db 0,16,5,4,6,0,56,49,39,39,3,25,22,7,3,6
+    db 7,6,0,16,160,32,96,0,60,140,252,228,228,228,108,56
+    db 128,96,224,96
+MonP34:
+    db 0,12,6,6,4,4,12,4,4,4,4,4,28,24,0,12
+    db 96,96,32,32,48,32,32,32,32,32,56,24
+MonP35:
+    db 0,15,3,7,15,31,0,0,0,0,0,0,0,8,12,6
+    db 1,0,16,192,224,240,248,0,0,0,0,0,0,0,0,0
+    db 0,128,192
+MonP36:
+    db 0,3,112,24,12,0,0
+MonP37:
+    db 0,8,6,12,8,16,48,32,96,64,0,0
+MonP38:
+    db 0,16,36,36,199,159,189,29,101,50,56,60,36,36,36,36
+    db 36,36,0,0
+MonP39:
+    db 0,2,36,231,0,0
+MonP40:
+    db 0,13,24,60,126,0,0,0,0,0,96,24,12,6,1,0
+    db 0
+MonP41:
+    db 0,6,2,6,4,8,24,16,0,0
+MonP42:
+    db 0,10,70,30,6,16,24,60,60,60,60,126,0,0
+MonP43:
+    db 0,7,60,0,0,0,56,12,6,0,0
+MonP44:
+    db 0,4,48,96,64,64,0,0
+MonP45:
+    db 3,13,1,2,2,0,0,14,12,12,12,12,28,28,24,0
+    db 16,102,102,231,0,0,0,0,0,255,153,153,219,231,126,0
+    db 60
+MonP46:
+    db 3,13,128,64,64,0,0,112,48,48,48,48,56,56,24,0
+    db 0
+MonP47:
+    db 0,15,31,8,3,1,1,1,0,1,0,0,0,0,0,1
+    db 1,0,16,255,24,24,255,126,153,255,153,255,255,219,126,255
+    db 219,195,255
+MonP48:
+    db 0,15,248,16,192,128,128,128,0,128,0,0,0,0,0,128
+    db 128,0,0
+MonP49:
+    db 0,16,15,12,12,28,28,28,24,24,56,56,24,24,24,24
+    db 24,24,0,16,240,48,48,56,56,56,24,24,28,28,24,24
+    db 24,24,24,24
+MonP50:
+    db 0,5,24,24,120,248,224,0,5,24,24,30,31,7
+MonP51:
+    db 0,16,252,134,6,6,2,2,2,3,3,1,1,1,1,1
+    db 15,31,12,4,128,128,240,248
+MonP52:
+    db 0,7,31,127,255,0,6,6,2,0,7,248,254,255,0,96
+    db 96,64
+MonP53:
+    db 1,15,1,1,1,1,0,0,31,63,28,31,15,15,7,3
+    db 1,0,16,255,153,153,153,231,231,126,255,129,126,24,255,255
+    db 255,254,124
+MonP54:
+    db 1,15,128,128,128,128,0,0,248,252,12,206,206,254,252,192
+    db 128,0,0
+MonP55:
+    db 0,16,29,15,8,12,1,19,37,12,31,29,24,24,56,56
+    db 48,48,0,16,152,48,16,240,224,248,188,56,248,184,24,24
+    db 28,28,12,12
+MonP56:
+    db 0,14,7,3,1,1,0,1,3,3,3,3,3,15,31,28
+    db 9,3,129,129,129
+MonP57:
+    db 0,14,224,224,224,224,224,192,192,192,192,192,192,240,248,56
+    db 0,0
+MonP58:
+    db 0,9,15,31,63,63,255,0,6,6,6,0,9,240,248,252
+    db 252,255,0,96,96,96
+MonP59:
+    db 9,7,1,3,6,12,56,112,32,1,9,1,3,6,12,24
+    db 48,96,192,128
+MonP60:
+    db 0,6,48,60,30,7,3,1,4,11,128,192,224,240,112,56
+    db 28,14,6,7,2
+MonP61:
+    db 0,16,1,1,7,31,31,63,124,120,112,112,118,118,112,48
+    db 120,252,0,16,128,128,224,248,248,252,62,30,14,14,110,110
+    db 14,12,30,63
+MonP62:
+    db 0,16,1,1,3,3,7,15,15,31,31,63,63,31,3,3
+    db 7,7,0,16,255,255,255,255,255,251,251,251,243,243,247,247
+    db 247,247,247,231
+MonP63:
+    db 0,16,255,255,255,255,255,255,255,255,207,239,239,239,239,239
+    db 231,247,0,16,128,192,224,224,240,248,252,252,190,178,192,192
+    db 192,192,192,192
+MonP64:
+    db 0,11,7,7,15,15,15,15,31,31,31,24,32,0,13,231
+    db 239,239,239,255,255,255,255,127,63,31,14,4
+MonP65:
+    db 0,12,247,247,247,247,243,255,255,255,191,190,28,12,2,8
+    db 240,240,240,240,248,120,56,8
+MonP66:
+    db 0,10,60,126,255,255,153,153,255,255,126,60,0,0
+MonP67:
+    db 0,11,12,30,30,31,63,63,63,255,255,12,4,6,3,128
+    db 224,192
+MonP68:
+    db 8,8,1,1,3,7,7,15,31,31,0,16,60,126,255,195
+    db 195,189,129,195,195,255,255,255,223,223,219,153
+MonP69:
+    db 8,8,128,192,224,224,240,248,248,220,0,0
+MonP70:
+    db 0,11,251,59,123,123,123,123,255,255,239,135,6,0,11,221
+    db 221,223,223,206,207,239,255,251,48,16
+MonP71:
+    db 0,10,192,192,192,240,128,128,0,0,0,128,0,0
+MonP72:
+    db 0,6,60,60,66,126,60,60,0,0
+MonP73:
+    db 0,16,1,3,6,4,4,2,15,15,28,29,61,13,13,29
+    db 29,31,0,16,128,192,96,32,32,64,240,248,248,188,184,176
+    db 160,160,152,248
+MonP74:
+    db 0,2,19,2,0,1,96
+MonP75:
+    db 0,4,24,36,60,24,0,0
+MonP76:
+    db 0,11,24,0,0,0,0,0,0,0,0,1,1,7,4,64
+    db 192,240,240
+MonP77:
+    db 0,11,24,36,36,60,110,103,226,64,88,122,148,0,0
+MonP78:
+    db 0,1,24,0,0
+MonP79:
+    db 0,7,24,0,0,0,1,3,3,5,2,128,128
+MonP80:
+    db 14,2,64,240,3,13,1,1,3,7,7,7,7,7,7,7
+    db 3,3,5
+MonP81:
+    db 0,16,24,24,126,255,255,255,255,255,255,255,255,255,255,255
+    db 255,255,3,13,128,128,192,224,224,224,224,224,224,224,192,192
+    db 191
+MonP82:
+    db 15,1,248,0,0
+MonP83:
+    db 0,6,252,255,255,63,31,7,0,16,63,255,255,255,255,143
+    db 31,31,31,63,63,63,63,127,127,127
+MonP84:
+    db 0,16,255,255,255,255,255,255,191,191,191,60,62,126,126,126
+    db 126,126,0,16,255,255,255,255,240,240,248,248,248,252,252,252
+    db 254,254,254,126
+MonP85:
+    db 0,12,254,254,255,255,31,31,63,63,255,127,6,4,6,4
+    db 128,128,224,224
+MonP86:
+    db 0,12,15,15,15,31,31,31,31,63,63,62,120,64,0,14
+    db 231,231,239,239,239,255,255,255,255,127,63,31,14,4
+MonP87:
+    db 0,13,247,247,247,247,247,243,255,255,255,191,190,28,12,0
+    db 11,240,240,240,248,248,248,252,252,124,30,6
+MonP88:
+    db 0,16,1,1,7,31,63,63,126,120,112,240,247,239,102,112
+    db 112,120,0,16,128,128,224,248,252,252,126,30,14,15,239,247
+    db 102,14,14,30
+MonP89:
+    db 0,16,31,31,31,31,31,31,31,31,63,63,63,127,127,127
+    db 255,254,0,14,195,255,255,255,255,255,255,191,191,225,192,128
+    db 192,128
+MonP90:
+    db 0,16,248,248,248,248,248,248,248,248,252,252,252,254,254,254
+    db 255,255,0,0
+MonP91:
+    db 0,16,15,15,31,31,31,63,62,62,127,127,127,254,252,206
+    db 7,3,0,16,224,224,224,224,224,0,0,0,255,254,254,255
+    db 127,63,15,204
+MonP92:
+    db 0,16,15,15,15,15,15,15,15,15,63,31,31,63,159,255
+    db 252,4,0,16,240,248,248,248,252,252,252,252,254,255,255,239
+    db 135,28,56,240
+MonP93:
+    db 0,3,248,63,7,0,3,7,255,248
+MonP94:
+    db 0,1,192,0,0
+MonP95:
+    db 0,11,1,7,15,15,8,16,25,15,15,7,3,0,11,128
+    db 224,240,240,16,8,152,240,240,224,192
+MonP96:
+    db 9,6,1,1,1,15,31,31,0,16,30,63,127,63,127,127
+    db 255,255,255,255,255,255,255,255,255,12
+MonP97:
+    db 0,3,30,30,12,0,0
+; DEEPWARDEN: the monsters' rules, one pass (hand asm: the Amy version
+; compiled to 4 KB). Arrays MK, MX, MY, MSt, MT, MHp, MRet, MStn (9 each,
+; Amy RAM); the monster being stepped is copied to Qk..Qn (8 bytes in the
+; same order) and back. Amy subs called from here: Blow (a blow lands on
+; you), Killed (a monster dies: XP, gold, the dead list, the Servant).
+; Rules (the rules model checks them):
+;  - Dist = the larger axis distance to you (1/16 cells); Reach: <= 30.
+;  - Moving (state 0): sees you along a clear row or column within 96:
+;    comes to 22 at its pace (rat 3/16 a pass, skeleton and the Servant 1,
+;    wraith 1 every other pass), else wanders 1/16 every other pass;
+;    backing off (MRet) after a blow. At <= 26, rested (MT >= RestT) and
+;    not backing off: wind-up (sound WarnT).
+;  - Wind-up: WindT passes, then attack (AtkSndT); the attack's pass 2
+;    lands (Blow) when in reach; after 8 passes back to moving (rat and
+;    wraith back off 8 passes).
+;  - Struck (3): 6 passes; at 0 hit points it dies (4: 30 passes, 5 gone).
+;  - Stunned (MStn): stands still.
+;  - The Servant: phase 1 above 8 hit points, 2 above 4, else 3; phase 2
+;    calls two rats every 150 passes (state 6, 20 passes); phase 3 hides in
+;    its bell (state 7) unless stunned; in the bell it tolls every 90
+;    passes (a blow within 40). It never leaves rows 12-14.
+
+StMonsters:
+    xor a
+    ld (AMY_UVAR_SeeAny),a
+    ld (AMY_UVAR_Boss),a
+    ld (AMY_UVAR_Mi),a
+    ld hl,(AMY_UVAR_Px)
+    call StSh4
+    ld (AMY_UVAR_PX16),a
+    ld hl,(AMY_UVAR_Py)
+    call StSh4
+    ld (AMY_UVAR_PY16),a
+StMsLoop:
+    ld a,(AMY_UVAR_Mi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_MK
+    add hl,de
+    ld a,(hl)
+    cp 4
+    jr nc,StMsNext
+    call StMLoad
+    call StMOne
+    call StMSave
+StMsNext:
+    ld a,(AMY_UVAR_Mi)
+    inc a
+    ld (AMY_UVAR_Mi),a
+    cp 9
+    jr nz,StMsLoop
+    ; the boss music: BossT passes left
+    ld hl,AMY_UVAR_BossT
+    ld a,(hl)
+    or a
+    ret z
+    dec (hl)
+    ld a,1
+    ld (AMY_UVAR_Boss),a
+    ret
+
+; StSh4: A = low byte of HL >> 4
+StSh4:
+    ld a,l
+    srl h
+    rra
+    srl h
+    rra
+    srl h
+    rra
+    srl h
+    rra
+    ret
+
+; StMLoad / StMSave: monster Mi's 8 fields <-> Qk..Qn
+StMLoad:
+    call StMAddr
+StMl1:
+    ld a,(hl)
+    ld (de),a
+    inc de
+    ld a,l
+    add a,9
+    ld l,a
+    jr nc,StMl1c
+    inc h
+StMl1c:
+    djnz StMl1
+    ret
+StMSave:
+    call StMAddr
+StMs1:
+    ld a,(de)
+    ld (hl),a
+    inc de
+    ld a,l
+    add a,9
+    ld l,a
+    jr nc,StMs1c
+    inc h
+StMs1c:
+    djnz StMs1
+    ret
+StMAddr:
+    ld a,(AMY_UVAR_Mi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_MK
+    add hl,de
+    ld de,AMY_UVAR_Qk
+    ld b,8
+    ret
+
+; StAbsD: A = |A - B|
+StAbsD:
+    sub b
+    ret nc
+    neg
+    ret
+
+; StSnd: play sound A (over the music areas)
+StSnd:
+    push bc
+    push de
+    push hl
+    ld b,a
+    ld a,1
+    ld (AMY_SOUND_ENABLED),a
+    call AMY_PLAY_SOUND
+    pop hl
+    pop de
+    pop bc
+    ret
+
+; StKTab: A = table HL [Qk]
+StKTab:
+    ld a,(AMY_UVAR_Qk)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld a,(hl)
+    ret
+
+; StMOne: one monster's pass (Qk..Qn)
+StMOne:
+    ld a,(AMY_UVAR_Qx)
+    ld b,a
+    ld a,(AMY_UVAR_PX16)
+    call StAbsD
+    ld (AMY_UVAR_Ox),a
+    ld c,a
+    ld a,(AMY_UVAR_Qy)
+    ld b,a
+    ld a,(AMY_UVAR_PY16)
+    call StAbsD
+    ld (AMY_UVAR_Oy),a
+    cp c
+    jr nc,StMo1
+    ld a,c
+StMo1:
+    ld (AMY_UVAR_Dist),a
+    ld b,0
+    cp 31
+    jr nc,StMo2
+    inc b
+StMo2:
+    ld a,b
+    ld (AMY_UVAR_Reach),a
+    ld a,(AMY_UVAR_Qs)
+    cp 5
+    jp z,StGone
+    ; the foreman: the boss music while he fights (any state but moving);
+    ; none once he falls (seeing you refreshes it too: StS0)
+    call StWave
+    cp 64
+    jr nz,StMoF
+    ld a,(AMY_UVAR_Qs)
+    or a
+    jr z,StMoF
+    ld b,100
+    cp 4
+    jr c,StMoB
+    ld b,0
+StMoB:
+    ld a,b
+    ld (AMY_UVAR_BossT),a
+StMoF:
+    ; the Servant: in its chamber's music, its phase
+    ld a,(AMY_UVAR_Qk)
+    cp 3
+    jr nz,StMo4
+    ld a,(AMY_UVAR_Dist)
+    cp 112
+    jr nc,StMo3
+    ld a,1
+    ld (AMY_UVAR_Boss),a
+StMo3:
+    ld a,(AMY_UVAR_Qh)
+    ld b,1
+    cp 9
+    jr nc,StMoP
+    inc b
+    cp 5
+    jr nc,StMoP
+    inc b
+StMoP:
+    ld a,b
+    ld (AMY_UVAR_Phase),a
+StMo4:
+    ld hl,AMY_UVAR_Qt
+    inc (hl)
+    ; stunned: it stands
+    ld a,(AMY_UVAR_Qn)
+    or a
+    jr z,StMo5
+    dec a
+    ld (AMY_UVAR_Qn),a
+    ld a,(AMY_UVAR_Qs)
+    cp 3
+    ret c
+StMo5:
+    ld a,(AMY_UVAR_Qs)
+    or a
+    jp z,StS0
+    dec a
+    jp z,StS1
+    dec a
+    jp z,StS2
+    dec a
+    jp z,StS3
+    dec a
+    jp z,StS4
+    dec a
+    ret z
+    dec a
+    jp z,StS6
+    jp StS7
+
+; moving
+StS0:
+    call StMove
+    ld a,(AMY_UVAR_MSee)
+    or a
+    jr z,StS0a
+    ld (AMY_UVAR_SeeAny),a
+    ; the foreman has seen you: the boss music for ~8 s more
+    call StWave
+    cp 64
+    jr nz,StS0a
+    ld a,100
+    ld (AMY_UVAR_BossT),a
+StS0a:
+    ld a,(AMY_UVAR_Qk)
+    cp 3
+    jr nz,StS0c
+    ld a,(AMY_UVAR_Phase)
+    cp 3
+    jr nz,StS0b
+    ld a,(AMY_UVAR_Qn)
+    or a
+    jr nz,StS0c
+    ld a,7
+    jp StNewSt
+StS0b:
+    cp 2
+    jr nz,StS0c
+    ld hl,AMY_UVAR_CallT
+    inc (hl)
+    ld a,(hl)
+    cp 150
+    jr c,StS0c
+    ld (hl),0
+    ld a,AMY_UCONST_SndRatSqueak
+    call StSnd
+    ld a,6
+    jp StNewSt
+StS0c:
+    ld a,(AMY_UVAR_Dist)
+    cp 27
+    ret nc
+    ld a,(AMY_UVAR_Qr)
+    or a
+    ret nz
+    ld hl,AMY_UDATA_RestT
+    call StKTab
+    ld b,a
+    ld a,(AMY_UVAR_Qt)
+    cp b
+    ret c
+    ; only one you can see may raise its weapon at you
+    call StCanHit
+    ret nz
+    ld hl,AMY_UDATA_WarnT
+    call StKTab
+    call StSnd
+    ld a,1
+StNewSt:
+    ld (AMY_UVAR_Qs),a
+    xor a
+    ld (AMY_UVAR_Qt),a
+    ret
+
+; wind-up
+StS1:
+    ld hl,AMY_UDATA_WindT
+    call StKTab
+    ld b,a
+    ld a,(AMY_UVAR_Qt)
+    cp b
+    ret c
+    ld hl,AMY_UDATA_AtkSndT
+    call StKTab
+    call StSnd
+    ld a,2
+    jr StNewSt
+
+; attack
+StS2:
+    ld a,(AMY_UVAR_Qt)
+    cp 2
+    jr nz,StS2a
+    ld a,(AMY_UVAR_Reach)
+    or a
+    jr z,StS2a
+    call StCanHit
+    call z,StBlow
+StS2a:
+    ld a,(AMY_UVAR_Qt)
+    cp 8
+    ret c
+    ld a,(AMY_UVAR_Qk)
+    cp 1
+    jr z,StS2b
+    ld a,8
+    ld (AMY_UVAR_Qr),a
+StS2b:
+    xor a
+    jr StNewSt
+
+; struck
+StS3:
+    ld a,(AMY_UVAR_Qt)
+    cp 6
+    ret c
+    ld a,(AMY_UVAR_Qh)
+    or a
+    jr nz,StS2b
+    ld a,AMY_UCONST_SndMonDeath
+    call StSnd
+    call StMSave
+    push ix
+    push iy
+    call AMY_UPROC_Killed
+    pop iy
+    pop ix
+    ld a,4
+    jr StNewSt
+
+; dying
+StS4:
+    ld a,(AMY_UVAR_Qt)
+    cp 30
+    ret c
+    ld a,(AMY_UVAR_Won)
+    cp 2
+    jr nz,StS4a
+    ld a,1
+    ld (AMY_UVAR_Won),a
+StS4a:
+    ; gone: it waits at its home (a rat's burrow), unseen
+    call StHome
+    ld a,5
+    jr StNewSt
+
+; the Servant calls two rats (monsters 7 and 8, when gone)
+StS6:
+    ld a,(AMY_UVAR_Qt)
+    cp 20
+    ret c
+    ld c,7
+StS6a:
+    ld b,0
+    ld hl,AMY_UVAR_MSt
+    add hl,bc
+    ld a,(hl)
+    cp 4
+    jr c,StS6b
+    xor a
+    ld (hl),a
+    ld hl,AMY_UVAR_MK
+    add hl,bc
+    ld (hl),a
+    ld hl,AMY_UVAR_MT
+    add hl,bc
+    ld (hl),a
+    ld hl,AMY_UVAR_MRet
+    add hl,bc
+    ld (hl),a
+    ld hl,AMY_UVAR_MStn
+    add hl,bc
+    ld (hl),a
+    ld hl,AMY_UVAR_MHp
+    add hl,bc
+    ld (hl),2
+    ld hl,AMY_UVAR_MY
+    add hl,bc
+    ld (hl),216
+    ld hl,AMY_UVAR_MX
+    add hl,bc
+    ld (hl),40
+    ld a,c
+    cp 8
+    jr nz,StS6b
+    ld (hl),216
+StS6b:
+    inc c
+    ld a,c
+    cp 9
+    jr nz,StS6a
+    xor a
+    jp StNewSt
+
+; in the bell: out when stunned; it tolls
+StS7:
+    ld a,(AMY_UVAR_Qn)
+    or a
+    jr z,StS7a
+    xor a
+    jp StNewSt
+StS7a:
+    ld a,(AMY_UVAR_Qt)
+    cp 90
+    ret c
+    xor a
+    ld (AMY_UVAR_Qt),a
+    ld a,AMY_UCONST_SndBellToll
+    call StSnd
+    ld a,(AMY_UVAR_Dist)
+    cp 41
+    ret nc
+StBlow:
+    call StMSave
+    push ix
+    push iy
+    call AMY_UPROC_Blow
+    pop iy
+    pop ix
+    ret
+
+; StMove: moving (state 0): sight, backing off, coming at you, wandering
+StMove:
+    xor a
+    ld (AMY_UVAR_MSee),a
+    ld a,(AMY_UVAR_Dist)
+    cp 113
+    ret nc
+    ; the pace
+    ld b,1
+    ld a,(AMY_UVAR_Qk)
+    or a
+    jr nz,StMv1
+    ld b,3
+StMv1:
+    cp 2
+    jr nz,StMv2
+    ld a,(AMY_UVAR_Tick)
+    and 1
+    jr z,StMv2
+    ld b,0
+StMv2:
+    ld a,b
+    ld (AMY_UVAR_Sp),a
+    call StSees
+    ld a,(AMY_UVAR_Qr)
+    or a
+    jr z,StMv3
+    dec a
+    ld (AMY_UVAR_Qr),a
+    ; away from you, along the longer axis
+    call StToward
+    ld a,(AMY_UVAR_Km)
+    neg
+    ld (AMY_UVAR_Km),a
+    ld a,(AMY_UVAR_Jm)
+    neg
+    ld (AMY_UVAR_Jm),a
+    jr StStepSp
+StMv3:
+    ld a,(AMY_UVAR_MSee)
+    or a
+    jr z,StWander
+    ld a,(AMY_UVAR_Dist)
+    sub 22
+    ret c
+    ret z
+    ld b,a
+    ld a,(AMY_UVAR_Sp)
+    cp b
+    jr c,StMv4
+    ld a,b
+    ld (AMY_UVAR_Sp),a
+StMv4:
+    call StToward
+StStepSp:
+    ; Km, Jm (-1, 0, 1) times the pace
+    ld a,(AMY_UVAR_Sp)
+    or a
+    ret z
+    ld b,a
+    ld a,(AMY_UVAR_Km)
+    ld c,a
+    xor a
+StSp1:
+    add a,c
+    djnz StSp1
+    ld (AMY_UVAR_Km),a
+    ld a,(AMY_UVAR_Sp)
+    ld b,a
+    ld a,(AMY_UVAR_Jm)
+    ld c,a
+    xor a
+StSp2:
+    add a,c
+    djnz StSp2
+    ld (AMY_UVAR_Jm),a
+    jp StStep
+StWander:
+    ld a,(AMY_UVAR_Tick)
+    ld c,a
+    and 1
+    ret nz
+    ld a,c
+    and 63
+    jr nz,StWd1
+    ; a new way every 64 passes (the jitter: from the pass counter)
+    ld a,(AMY_UVAR_Mi)
+    add a,c
+    ld b,a
+    add a,a
+    add a,a
+    add a,b
+    rrca
+    rrca
+    and 3
+    ld (AMY_UVAR_Qt),a
+    xor a
+    ld (AMY_UVAR_Qr),a
+    ld (AMY_UVAR_Qn),a
+StWd1:
+    ld a,(AMY_UVAR_Qt)
+    and 3
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_DirX
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Km),a
+    ld hl,AMY_UDATA_DirY
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Jm),a
+    call StStep
+    ld a,(AMY_UVAR_Ok)
+    or a
+    ret nz
+    ld hl,AMY_UVAR_Qt
+    inc (hl)
+    ret
+
+; StToward: Km, Jm = the unit step toward you along the longer axis
+StToward:
+    xor a
+    ld (AMY_UVAR_Km),a
+    ld (AMY_UVAR_Jm),a
+    ld a,(AMY_UVAR_Ox)
+    ld b,a
+    ld a,(AMY_UVAR_Oy)
+    cp b
+    jr nc,StTwY
+    ld a,(AMY_UVAR_Qx)
+    ld b,a
+    ld a,(AMY_UVAR_PX16)
+    cp b
+    ld a,1
+    jr nc,StTwX1
+    ld a,255
+StTwX1:
+    ld (AMY_UVAR_Km),a
+    ret
+StTwY:
+    ld a,(AMY_UVAR_Qy)
+    ld b,a
+    ld a,(AMY_UVAR_PY16)
+    cp b
+    ld a,1
+    jr nc,StTwY1
+    ld a,255
+StTwY1:
+    ld (AMY_UVAR_Jm),a
+    ret
+
+; StSees: MSee = 1 when you share a row or a column of cells with it,
+; within 96, with no closed cell between
+StSees:
+    ld a,(AMY_UVAR_Dist)
+    cp 97
+    ret nc
+    ld a,(AMY_UVAR_Qx)
+    rrca
+    rrca
+    rrca
+    rrca
+    and 15
+    ld c,a
+    ld a,(AMY_UVAR_Qy)
+    and $F0
+    or c
+    ld c,a
+    ld a,(AMY_UVAR_PX16)
+    rrca
+    rrca
+    rrca
+    rrca
+    and 15
+    ld b,a
+    ld a,(AMY_UVAR_PY16)
+    and $F0
+    or b
+    ld b,a
+    ; c = its cell, b = yours
+    ld a,c
+    xor b
+    and $F0
+    jr nz,StSe1
+    ; the same row
+    ld d,1
+    ld a,c
+    cp b
+    jr c,StSe3
+    ld d,255
+    jr StSe3
+StSe1:
+    ld a,c
+    xor b
+    and $0F
+    ret nz
+    ld d,16
+    ld a,c
+    cp b
+    jr c,StSe3
+    ld d,240
+StSe3:
+    ld a,c
+    add a,d
+    ld c,a
+    cp b
+    jr z,StSe4
+    push bc
+    push de
+    ld l,a
+    ld h,0
+    ld (AMY_UVAR_Qc),hl
+    call StPeekMap
+    pop de
+    pop bc
+    ld a,(AMY_UVAR_Pk)
+    or a
+    ret nz
+    jr StSe3
+StSe4:
+    ld a,1
+    ld (AMY_UVAR_MSee),a
+    ret
+
+; StStep: a step of Km, Jm (signed 1/16 cells), sliding to the middle of
+; the tunnel on the other axis; Ok = 0 when a wall (5/16 margin), another
+; monster (within 16) or you (within 20) is in the way; the Servant keeps
+; to its chamber (y >= 200)
+StStep:
+    xor a
+    ld (AMY_UVAR_Ok),a
+    ld a,(AMY_UVAR_Km)
+    ld b,a
+    ld a,(AMY_UVAR_Qx)
+    add a,b
+    ld (AMY_UVAR_Nx8),a
+    ld a,(AMY_UVAR_Jm)
+    ld b,a
+    ld a,(AMY_UVAR_Qy)
+    add a,b
+    ld (AMY_UVAR_Ny8),a
+    ld a,(AMY_UVAR_Km)
+    or a
+    jr z,StSt2
+    ld a,(AMY_UVAR_Qk)
+    cp 3
+    jr z,StSt2
+    ld hl,AMY_UVAR_Ny8
+    call StCentre
+StSt2:
+    ld a,(AMY_UVAR_Jm)
+    or a
+    jr z,StSt3
+    ld hl,AMY_UVAR_Nx8
+    call StCentre
+StSt3:
+    ld a,(AMY_UVAR_Qk)
+    cp 3
+    jr nz,StSt4
+    ld a,(AMY_UVAR_Ny8)
+    cp 200
+    ret c
+StSt4:
+    ; the leading edge's cell
+    ld a,(AMY_UVAR_Km)
+    ld b,0
+    or a
+    jr z,StSt5
+    ld b,5
+    jp p,StSt5
+    ld b,251
+StSt5:
+    ld a,(AMY_UVAR_Nx8)
+    add a,b
+    rrca
+    rrca
+    rrca
+    rrca
+    and 15
+    ld c,a
+    ld a,(AMY_UVAR_Jm)
+    ld b,0
+    or a
+    jr z,StSt6
+    ld b,5
+    jp p,StSt6
+    ld b,251
+StSt6:
+    ld a,(AMY_UVAR_Ny8)
+    add a,b
+    and $F0
+    or c
+    ld l,a
+    ld h,0
+    ld (AMY_UVAR_Qc),hl
+    call StPeekMap
+    ld a,(AMY_UVAR_Pk)
+    or a
+    ret nz
+    ; the others
+    ld c,0
+StSt7:
+    ld a,(AMY_UVAR_Mi)
+    cp c
+    jr z,StSt8
+    ld b,0
+    ld hl,AMY_UVAR_MSt
+    add hl,bc
+    ld a,(hl)
+    cp 4
+    jr nc,StSt8
+    ld hl,AMY_UVAR_MX
+    add hl,bc
+    ld a,(AMY_UVAR_Nx8)
+    sub (hl)
+    jr nc,StSt7a
+    neg
+StSt7a:
+    cp 16
+    jr nc,StSt8
+    ld hl,AMY_UVAR_MY
+    add hl,bc
+    ld a,(AMY_UVAR_Ny8)
+    sub (hl)
+    jr nc,StSt7b
+    neg
+StSt7b:
+    cp 16
+    ret c
+StSt8:
+    inc c
+    ld a,c
+    cp 9
+    jr nz,StSt7
+    ; you
+    ld a,(AMY_UVAR_PX16)
+    ld b,a
+    ld a,(AMY_UVAR_Nx8)
+    call StAbsD
+    cp 20
+    jr nc,StSt9
+    ld a,(AMY_UVAR_PY16)
+    ld b,a
+    ld a,(AMY_UVAR_Ny8)
+    call StAbsD
+    cp 20
+    ret c
+StSt9:
+    ld a,(AMY_UVAR_Nx8)
+    ld (AMY_UVAR_Qx),a
+    ld a,(AMY_UVAR_Ny8)
+    ld (AMY_UVAR_Qy),a
+    ld a,1
+    ld (AMY_UVAR_Ok),a
+    ret
+
+; StCentre: (HL) one step toward the middle of its cell (x16 + 8)
+StCentre:
+    ld a,(hl)
+    and $F0
+    add a,8
+    cp (hl)
+    ret z
+    jr c,StCe1
+    inc (hl)
+    ret
+StCe1:
+    dec (hl)
+    ret
+
+; StMonBlock: K = 1 when (Nx8, Ny8) (1/16 cells: where you would step) is
+; within 20 of a standing monster; walking into the cart starts it rolling
+; along the nearer axis (CartDx/CartDy, 3/16 a pass)
+StMonBlock:
+    xor a
+    ld (AMY_UVAR_K),a
+    ld c,0
+StMb1:
+    ld b,0
+    ld hl,AMY_UVAR_MSt
+    add hl,bc
+    ld a,(hl)
+    cp 4
+    jr nc,StMb9
+    ld hl,AMY_UVAR_MX
+    add hl,bc
+    ld a,(AMY_UVAR_Nx8)
+    sub (hl)
+    jr nc,StMb2
+    neg
+StMb2:
+    cp 20
+    jr nc,StMb9
+    ld d,a
+    ld hl,AMY_UVAR_MY
+    add hl,bc
+    ld a,(AMY_UVAR_Ny8)
+    sub (hl)
+    jr nc,StMb3
+    neg
+StMb3:
+    cp 20
+    jr nc,StMb9
+    ld e,a
+    ld a,1
+    ld (AMY_UVAR_K),a
+    ld hl,AMY_UVAR_MK
+    add hl,bc
+    ld a,(hl)
+    cp 4
+    jr nz,StMb9
+    ld a,(AMY_UVAR_CartDx)
+    ld hl,AMY_UVAR_CartDy
+    or (hl)
+    jr nz,StMb9
+    ; push it: away from you along the axis you are farther apart on
+    ld a,d
+    cp e
+    jr c,StMb5
+    ld hl,AMY_UVAR_MX
+    add hl,bc
+    ld a,(AMY_UVAR_Nx8)
+    cp (hl)
+    ld a,3
+    jr c,StMb4
+    ld a,253
+StMb4:
+    ld (AMY_UVAR_CartDx),a
+    jr StMb6
+StMb5:
+    ld hl,AMY_UVAR_MY
+    add hl,bc
+    ld a,(AMY_UVAR_Ny8)
+    cp (hl)
+    ld a,3
+    jr c,StMb5a
+    ld a,253
+StMb5a:
+    ld (AMY_UVAR_CartDy),a
+StMb6:
+    ld a,AMY_UCONST_SndGate
+    call StSnd
+StMb9:
+    inc c
+    ld a,c
+    cp 9
+    jr nz,StMb1
+    ret
+
+; StWave: A = this monster's wave byte (MonWT; DE = its index in the
+; floor tables)
+StWave:
+    ld a,(AMY_UVAR_MapNo)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_MonFirst
+    add hl,de
+    ld a,(AMY_UVAR_Mi)
+    add a,(hl)
+    ld e,a
+    ld hl,AMY_UDATA_MonWT
+    add hl,de
+    ld a,(hl)
+    ret
+
+; StGone: a gone monster. A rat (wave 1-63) comes back from its burrow
+; after wave x 4 passes, once you are 6 cells away; a sleeper (128 + d)
+; rises when you come within d / 2 cells, unless it was killed already
+StGone:
+    call StWave
+    or a
+    ret z
+    jp m,StGSleep
+    cp 64
+    ret nc
+    add a,a
+    add a,a
+    ld b,a
+    ; its burrow smashed: never
+    push bc
+    ld hl,AMY_UDATA_BurrowT
+    add hl,de
+    ld a,(hl)
+    call StBurGone
+    pop bc
+    ret z
+    ld hl,AMY_UVAR_Qt
+    ld a,(hl)
+    inc a
+    jr z,StGo1
+    ld (hl),a
+StGo1:
+    cp b
+    ret c
+    ld a,(AMY_UVAR_Dist)
+    cp 96
+    ret c
+    ; back from the burrow: worth nothing (Back, bit Mi)
+    call StBackBit
+    or (hl)
+    ld (hl),a
+    jr StRise
+StGSleep:
+    and $7F
+    add a,a
+    add a,a
+    add a,a
+    ld b,a
+    ld a,(AMY_UVAR_Dist)
+    cp b
+    ret nc
+    ; killed already (the floor's record)
+    ld a,(AMY_UVAR_MapNo)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_Dead
+    add hl,de
+    ld b,(hl)
+    ld a,(AMY_UVAR_Mi)
+    ld e,a
+    ld hl,AMY_UDATA_Bits
+    add hl,de
+    ld a,(hl)
+    and b
+    ret nz
+; StRise: back at its home, full hit points, a moment's stagger (state 3),
+; its warning sound
+StRise:
+    call StHome
+    ld hl,AMY_UDATA_HpT
+    call StKTab
+    ld (AMY_UVAR_Qh),a
+    xor a
+    ld (AMY_UVAR_Qn),a
+    ld a,4
+    ld (AMY_UVAR_Qr),a
+    ld hl,AMY_UDATA_WarnT
+    call StKTab
+    call StSnd
+    ld a,3
+    jp StNewSt
+
+; StCanHit: Z when this monster may strike you: it is the one drawn on
+; screen (MDr) and has a clear straight line to you (StSees); never through
+; a wall or a corner, never unseen
+StCanHit:
+    ld a,(AMY_UVAR_MDr)
+    ld b,a
+    ld a,(AMY_UVAR_Mi)
+    cp b
+    ret nz
+    xor a
+    ld (AMY_UVAR_MSee),a
+    call StSees
+    ld a,(AMY_UVAR_MSee)
+    cp 1
+    ret
+
+; StBackBit: HL = the Back byte of monster Mi, A = its bit (9 monsters:
+; Back and Back + 1)
+StBackBit:
+    ld a,(AMY_UVAR_Mi)
+    ld hl,AMY_UVAR_Back
+    cp 8
+    jr c,StBb1
+    inc hl
+    sub 8
+StBb1:
+    ld b,a
+    inc b
+    ld a,1
+StBb2:
+    dec b
+    ret z
+    add a,a
+    jr StBb2
+
+; StBackQ: V = 1 when monster Mi came back from a burrow (the bit is
+; cleared), else 0
+StBackQ:
+    call StBackBit
+    ld b,a
+    and (hl)
+    jr z,StBq1
+    ld a,b
+    cpl
+    and (hl)
+    ld (hl),a
+    ld a,1
+StBq1:
+    ld (AMY_UVAR_V),a
+    ret
+
+; StHome: Qx, Qy = this monster's home (MonXT, MonYT)
+StHome:
+    call StWave
+    ld hl,AMY_UDATA_MonXT
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Qx),a
+    ld hl,AMY_UDATA_MonYT
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Qy),a
+    ret
+; DEEPWARDEN: more of the game in hand asm (the Amy versions were too big
+; for the 32 KB cartridge): projecting monsters into the view, choosing
+; the one to draw, setting up a floor's monsters, the ore cart, the
+; automap page, HUD bars.
+
+; StProjOne: monster Mi into the view: POn = 1 when in front within 150,
+; inside the view's width (plus a half monster); PZ its depth, PCol its
+; screen column (rounded). CsB, SnB: the view's cos, sin (x 64).
+StProjOne:
+    xor a
+    ld (AMY_UVAR_POn),a
+    ld a,(AMY_UVAR_Mi)
+    ld c,a
+    ld b,0
+    ld hl,AMY_UVAR_MX
+    add hl,bc
+    ld a,(AMY_UVAR_PX16)
+    call StSub8
+    ld (AMY_UVAR_Dx),hl
+    ld hl,AMY_UVAR_MY
+    add hl,bc
+    ld a,(AMY_UVAR_PY16)
+    call StSub8
+    ld (AMY_UVAR_Dy),hl
+    call StProj
+    ; 8 <= Zf < 150
+    ld hl,(AMY_UVAR_Zf)
+    ld a,h
+    or a
+    ret nz
+    ld a,l
+    cp 8
+    ret c
+    cp 150
+    ret nc
+    ; |Xl| <= Zf + 16
+    ld hl,(AMY_UVAR_Xl)
+    bit 7,h
+    jr z,StPj2
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+StPj2:
+    ld a,h
+    or a
+    ret nz
+    ld a,(AMY_UVAR_Zf)
+    add a,16
+    jr c,StPj3
+    cp l
+    ret c
+StPj3:
+    call StScr
+    ; Lp = 132 +- |Xl| x 194 / Zf; 0..380
+    ld hl,(AMY_UVAR_Lp)
+    ld a,(AMY_UVAR_Xl+1)
+    bit 7,a
+    ld de,132
+    jr z,StPj4
+    ex de,hl
+    or a
+    sbc hl,de
+    ret c
+    jr StPj5
+StPj4:
+    add hl,de
+StPj5:
+    ld de,381
+    ld a,l
+    sub e
+    ld a,h
+    sbc a,d
+    ret nc
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,l
+    ld (AMY_UVAR_PCol),a
+    ld a,(AMY_UVAR_Zf)
+    ld (AMY_UVAR_PZ),a
+    ld a,1
+    ld (AMY_UVAR_POn),a
+    ret
+
+; StSub8: HL = (HL) - A as a signed 16-bit difference (both 0-255)
+StSub8:
+    ld e,a
+    ld d,0
+    ld l,(hl)
+    ld h,0
+    or a
+    sbc hl,de
+    ret
+
+; StViewTrig: CsB, SnB from Ang (cos x 64: StCosV)
+StViewTrig:
+    ld a,(AMY_UVAR_Ang)
+    ld (AMY_UVAR_V),a
+    call StCosV
+    ld (AMY_UVAR_CsB),a
+    ld a,(AMY_UVAR_Ang)
+    sub 64
+    ld (AMY_UVAR_V),a
+    call StCosV
+    ld (AMY_UVAR_SnB),a
+    ld hl,(AMY_UVAR_Px)
+    call StSh4
+    ld (AMY_UVAR_PX16),a
+    ld hl,(AMY_UVAR_Py)
+    call StSh4
+    ld (AMY_UVAR_PY16),a
+    ret
+
+; StPickMon: MDr = the nearest monster shown (standing, struck, calling,
+; in the bell, or dying for 26 passes), MZ its depth, MCol its column
+StPickMon:
+    call StViewTrig
+    ld a,255
+    ld (AMY_UVAR_MDr),a
+    ld (AMY_UVAR_BestZ),a
+    xor a
+    ld (AMY_UVAR_Mi),a
+StPm1:
+    ld a,(AMY_UVAR_Mi)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_MK
+    add hl,de
+    ld a,(hl)
+    cp 255
+    jr z,StPm9
+    ld hl,AMY_UVAR_MSt
+    add hl,de
+    ld a,(hl)
+    cp 4
+    jr c,StPm2
+    cp 6
+    jr nc,StPm2
+    cp 5
+    jr z,StPm9
+    ld hl,AMY_UVAR_MT
+    add hl,de
+    ld a,(hl)
+    cp 26
+    jr nc,StPm9
+StPm2:
+    call StProjOne
+    ld a,(AMY_UVAR_POn)
+    or a
+    jr z,StPm9
+    ld a,(AMY_UVAR_BestZ)
+    ld b,a
+    ld a,(AMY_UVAR_PZ)
+    cp b
+    jr nc,StPm9
+    ld (AMY_UVAR_BestZ),a
+    ld (AMY_UVAR_MZ),a
+    ld a,(AMY_UVAR_PCol)
+    ld (AMY_UVAR_MCol),a
+    ld a,(AMY_UVAR_Mi)
+    ld (AMY_UVAR_MDr),a
+StPm9:
+    ld a,(AMY_UVAR_Mi)
+    inc a
+    ld (AMY_UVAR_Mi),a
+    cp 9
+    jr nz,StPm1
+    ret
+
+; StInitMons: floor MapNo's monsters (MonFirst/MonCount, the dead list):
+; kind, place, hit points (HpT + the floor; the Servant 12); the others
+; (and the Servant's two callable rats) none
+StInitMons:
+    ld a,(AMY_UVAR_MapNo)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_MonFirst
+    add hl,de
+    ld c,(hl)
+    ld hl,AMY_UDATA_MonCount
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_N),a
+    ld hl,AMY_UVAR_Dead
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_V),a
+    ld b,0
+StIm1:
+    ; clear monster b
+    push bc
+    ld c,b
+    ld b,0
+    ld hl,AMY_UVAR_MK
+    add hl,bc
+    ld (hl),255
+    ld hl,AMY_UVAR_MSt
+    add hl,bc
+    ld (hl),5
+    xor a
+    ld hl,AMY_UVAR_MStn
+    add hl,bc
+    ld (hl),a
+    ld hl,AMY_UVAR_MRet
+    add hl,bc
+    ld (hl),a
+    ld hl,AMY_UVAR_MT
+    add hl,bc
+    ld (hl),a
+    pop bc
+    ; placed?
+    ld a,(AMY_UVAR_N)
+    cp b
+    jr z,StIm8
+    jr c,StIm8
+    push bc
+    ld a,c
+    add a,b
+    ld e,a
+    ld d,0
+    ld c,b
+    ld b,0
+    ld hl,AMY_UDATA_MonKT
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_MK
+    add hl,bc
+    ld (hl),a
+    push af
+    ld hl,AMY_UDATA_MonXT
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_MX
+    add hl,bc
+    ld (hl),a
+    ld hl,AMY_UDATA_MonYT
+    add hl,de
+    ld a,(hl)
+    ld hl,AMY_UVAR_MY
+    add hl,bc
+    ld (hl),a
+    ; dead on this floor already?
+    ld hl,AMY_UDATA_Bits
+    add hl,bc
+    ld a,(AMY_UVAR_V)
+    and (hl)
+    jr nz,StIm7
+    ld hl,AMY_UVAR_MSt
+    add hl,bc
+    ld (hl),0
+    ; a sleeper starts gone (it rises later: StGone); the foreman has 10
+    ; hit points
+    ld hl,AMY_UDATA_MonWT
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_Qn),a
+    or a
+    jp p,StImW
+    ld hl,AMY_UVAR_MSt
+    add hl,bc
+    ld (hl),5
+StImW:
+    pop af
+    push af
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_HpT
+    add hl,de
+    ld a,(AMY_UVAR_MapNo)
+    add a,(hl)
+    ld d,a
+    ld a,e
+    cp 3
+    jr nz,StIm6
+    ld d,12
+StIm6:
+    ld a,(AMY_UVAR_Qn)
+    cp 64
+    jr nz,StIm6a
+    ld d,10
+    xor a
+    ld (AMY_UVAR_FmDead),a
+StIm6a:
+    ld hl,AMY_UVAR_MHp
+    add hl,bc
+    ld (hl),d
+StIm7:
+    pop af
+    pop bc
+StIm8:
+    inc b
+    ld a,b
+    cp 9
+    jr nz,StIm1
+    ret
+
+
+; StMapDraw: the automap: every cell seen (or all, with the floor's map
+; scrap: MapAll = 1) as a tile at column 8 + x, row 4 + y: rock, floor,
+; and for slots MapTileT[kind] (the secrets as "?" only with the scrap)
+StMapDraw:
+    ld c,0
+StMd1:
+    ; seen? (VRAM $1BB0 + MapNo x 32 + c / 8, bit c & 7)
+    ld a,(AMY_UVAR_MapAll)
+    or a
+    jr nz,StMd2
+    ld a,c
+    rrca
+    rrca
+    rrca
+    and 31
+    ld e,a
+    ld a,(AMY_UVAR_MapNo)
+    rrca
+    rrca
+    rrca
+    add a,e
+    add a,$B0
+    ld e,a
+    ld d,$1B
+    jr nc,StMd1a
+    inc d
+StMd1a:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    out ($BF),a
+    ld a,c
+    and 7
+    ld b,a
+    inc b
+    in a,($BE)
+StMd1b:
+    rrca
+    djnz StMd1b
+    jr nc,StMd9
+StMd2:
+    push bc
+    ld l,c
+    ld h,0
+    ld (AMY_UVAR_Qc),hl
+    call StPeekMap
+    pop bc
+    ld a,(AMY_UVAR_Pk)
+    ld e,AMY_UCONST_HMfloor
+    or a
+    jr z,StMd5
+    ld e,AMY_UCONST_HMwall
+    cp 4
+    jr c,StMd5
+    cp 20
+    jr nc,StMd5
+    ; a slot: its kind's map tile (decor cells, 20 and up, are walls)
+    sub 4
+    push bc
+    ld l,a
+    ld h,1
+    ld de,16
+    add hl,de
+    ld (AMY_UVAR_Qc),hl
+    call StPeekMap
+    pop bc
+    ld a,(AMY_UVAR_Pk)
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_MapTileT
+    ld a,(AMY_UVAR_MapAll)
+    or a
+    jr nz,StMd2s
+    ; (an opened slot shows what it is: a found secret is a "?")
+    ld a,(AMY_UVAR_Qc)
+    sub 16
+    push hl
+    push bc
+    ld l,a
+    ld h,0
+    ld bc,AMY_UVAR_SlotOpen
+    add hl,bc
+    ld a,(hl)
+    pop bc
+    pop hl
+    and 1
+    jr z,StMd3
+StMd2s:
+    ld hl,AMY_UDATA_MapTileS
+StMd3:
+    add hl,de
+    ld e,(hl)
+StMd5:
+    ; the name table: row 4 + c / 16, column 8 + c & 15
+    ld a,c
+    and $F0
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld a,c
+    and 15
+    add a,8
+    add a,l
+    ld l,a
+    ld a,h
+    adc a,0
+    ld h,a
+    push de
+    ld de,128
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    pop de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,e
+    out ($BE),a
+StMd9:
+    inc c
+    jp nz,StMd1
+    ret
+
+; StBar: BarN tiles from (BarX, BarY) on: the first BarV are BarF, the
+; others BarE
+StBar:
+    ld a,(AMY_UVAR_BarY)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_BarX)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld de,(VDP_NAME_SHADOW)
+    add hl,de
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(AMY_UVAR_BarN)
+    ld b,a
+    ld a,(AMY_UVAR_BarV)
+    ld c,a
+StBr1:
+    ld a,c
+    or a
+    ld a,(AMY_UVAR_BarE)
+    jr z,StBr2
+    dec c
+    ld a,(AMY_UVAR_BarF)
+StBr2:
+    out ($BE),a
+    djnz StBr1
+    ret
+
+; StMode2: `mode 2 screen` keeping IX/IY (the runtime's routine ends in the
+; BIOS INIT_TABLE, which changes IX; amyc's ABI table says it does not)
+StMode2:
+    ; (the sprite table back at $1B00: register 5 is set again here)
+    xor a
+    ld (AMY_UVAR_SatBank),a
+    push ix
+    push iy
+    call AMY_SET_GRAPHICS_MODE2_RAW
+    call AMY_LOAD_DEFAULT_ASCII
+    pop iy
+    pop ix
+    ret
+
+; StLatch: the controllers polled as Amy's NMI does (BIOS
+; UPDATE_CONTROLLERS, copied to JOYPAD_1.., AMY_DECODE_CONTROLLERS), then a
+; press of fire, purple or blue (bits $F0, both controllers) is ORed into
+; LatchJ and a keypad key kept in LatchK; ReadPad takes and clears them.
+; Keeps BC, DE, HL (and IX, IY).
+StLatch:
+    push bc
+    push de
+    push hl
+    push ix
+    push iy
+    call UPDATE_CONTROLLERS
+    ld hl,JOYPAD_1
+    ld a,($73EE)
+    and $4F
+    ld (hl),a
+    inc hl
+    ld a,($73F0)
+    and $4F
+    ld (hl),a
+    inc hl
+    ld a,($73EF)
+    and $4F
+    ld (hl),a
+    inc hl
+    ld a,($73F1)
+    and $4F
+    ld (hl),a
+    call AMY_DECODE_CONTROLLERS
+    ld hl,JOYPAD_1
+    ld a,(hl)
+    inc hl
+    inc hl
+    or (hl)
+    and $F0
+    ld hl,AMY_UVAR_LatchJ
+    or (hl)
+    ld (hl),a
+    ld a,(JOYPAD_1+1)
+    cp $FF
+    jr z,StLat9
+    ld (AMY_UVAR_LatchK),a
+StLat9:
+    pop iy
+    pop ix
+    pop hl
+    pop de
+    pop bc
+    ; interrupts back on for the speed roller: Amy's NMI leaves with them
+    ; off when the NMI is held off (its NO_NMI exit has no EI)
+    ei
+    ret
+
+; StCosV: V = cos(V) x 64 (signed; the angle in 256ths), from the quarter
+; table StAbsCos (|cos| x 255)
+StCosV:
+    ld a,(AMY_UVAR_V)
+    ld c,a
+    and 127
+    cp 65
+    jr c,StCo1
+    neg
+    add a,128
+StCo1:
+    ld e,a
+    ld d,0
+    ld hl,StAbsCos
+    add hl,de
+    ld a,(hl)
+    srl a
+    srl a
+    ld b,a
+    ld a,c
+    sub 65
+    cp 127
+    ld a,b
+    jr nc,StCo2
+    neg
+StCo2:
+    ld (AMY_UVAR_V),a
+    ret
+
+; StHint: facing a rune wall not yet open within 3 cells: TxN = MDraft
+; (and the wraith's warning) the first time, MRune once it glows (the
+; flare); else TxN = 255
+StHint:
+    ld a,255
+    ld (AMY_UVAR_TxN),a
+    ld a,(AMY_UVAR_CSlot)
+    cp 16
+    ret nc
+    ld c,a
+    ld a,(AMY_UVAR_CZ)
+    cp 48
+    ret nc
+    ld b,0
+    ld hl,AMY_UVAR_SlotOpen
+    add hl,bc
+    ld a,(hl)
+    or a
+    ret nz
+    ld hl,272
+    add hl,bc
+    ld (AMY_UVAR_Qc),hl
+    call StPeekMap
+    ld a,(AMY_UVAR_Pk)
+    cp AMY_UCONST_KRune
+    ret nz
+    ld hl,AMY_UVAR_Hint
+    ld a,(AMY_UVAR_RuneT)
+    or a
+    jr z,StHi1
+    ld a,(hl)
+    cp 2
+    ret nc
+    ld (hl),2
+    ld a,AMY_UCONST_TxMRune
+    ld (AMY_UVAR_TxN),a
+    ret
+StHi1:
+    ld a,(hl)
+    or a
+    ret nz
+    inc (hl)
+    ld a,AMY_UCONST_TxMDraft
+    ld (AMY_UVAR_TxN),a
+    ld a,1
+    ld (AMY_SOUND_ENABLED),a
+    ld b,AMY_UCONST_SndWarnWraith
+    jp AMY_PLAY_SOUND
+
+; StBurGone: A = a cell index (StBurGoneP: HL its grid address); Z when it
+; is a smashed burrow (BurD)
+StBurGoneP:
+    ; (HL a grid address: its cell index first)
+    ld a,(AMY_UVAR_MapBase)
+    ld b,a
+    ld a,l
+    sub b
+StBurGone:
+    ld hl,AMY_UVAR_BurD
+    cp (hl)
+    ret z
+    inc hl
+    cp (hl)
+    ret z
+    inc hl
+    cp (hl)
+    ret
+
+; StBurrow: the sword button facing a rat burrow (the middle ray's cell,
+; within reach): TxN = 255, or MBurrow once it breaks (3 hits, 2 with the
+; pick: BurHit); it goes into BurD
+StBurrow:
+    ld a,255
+    ld (AMY_UVAR_TxN),a
+    ld a,(AMY_UVAR_CZ)
+    cp 31
+    ret nc
+    ld hl,(AMY_UVAR_CCell)
+    ld a,(hl)
+    cp 38
+    ret nz
+    call StBurGoneP
+    ret z
+    ld a,(AMY_UVAR_MapBase)
+    ld b,a
+    ld a,(AMY_UVAR_CCell)
+    sub b
+    ld hl,AMY_UVAR_BurCell
+    cp (hl)
+    jr z,StBu1
+    ld (hl),a
+    xor a
+    ld (AMY_UVAR_BurHit),a
+StBu1:
+    ld hl,AMY_UVAR_BurHit
+    inc (hl)
+    ld a,(AMY_UVAR_Wpn)
+    cp 1
+    ld a,3
+    jr nz,StBu2
+    dec a
+StBu2:
+    cp (hl)
+    jr z,StBu3
+    jr nc,StBuSnd
+StBu3:
+    ld a,(AMY_UVAR_BurCell)
+    ld hl,AMY_UVAR_BurD
+    ld b,3
+StBu4:
+    ld c,(hl)
+    inc c
+    jr z,StBu5
+    inc hl
+    djnz StBu4
+    ret
+StBu5:
+    ld (hl),a
+    ld a,AMY_UCONST_TxMBurrow
+    ld (AMY_UVAR_TxN),a
+    ld b,AMY_UCONST_SndMonDeath
+    jr StBuS
+StBuSnd:
+    ld b,AMY_UCONST_SndHitBone
+StBuS:
+    ld a,1
+    ld (AMY_SOUND_ENABLED),a
+    jp AMY_PLAY_SOUND
+TxTab:
+    dw TxDStory0,TxDNone,TxDNone,TxDOver,TxDEnd,TxDCredits,TxDHow1,TxDHow2,TxDSheet,TxDSheet1,TxDMap,TxDMGate,TxDMLocked,TxDNone,TxDNone,TxDMShrine,TxDMCracked,TxDMLoose,TxDMSecret,TxDMLevelUp,TxDMI0,TxDMI1,TxDMI2,TxDMI3,TxDMI4,TxDNone,TxDNone,TxDNone,TxDMI8,TxDMI9,TxDNone,TxDMNoOil,TxDMForeman,TxDMDraft,TxDMRune,TxDMBurrow
+TxDNone:
+    db 255
+TxDStory0:
+    db 3,3,27,84,72,69,32,66,69,76,76,32,66,69,78,69,65,84,72,32,72,79,76,76
+    db 79,87,77,69,82,69,4,5,25,82,73,78,71,83,32,66,89,32,73,84,83,69,76,70
+    db 32,65,84,32,78,73,71,72,84,44,4,7,23,65,78,68,32,84,72,73,78,71,83,32
+    db 67,76,73,77,66,32,79,85,84,32,79,70,4,9,14,84,72,69,32,79,76,68,32,77
+    db 73,78,69,83,46,4,12,23,89,79,85,32,65,82,69,32,84,72,69,32,84,79,87,78
+    db 39,83,32,76,65,83,84,4,14,20,87,65,82,68,69,78,46,32,71,79,32,68,79,87
+    db 78,44,32,65,78,68,4,16,11,83,73,76,69,78,67,69,32,73,84,46,8,20,16,80
+    db 82,69,83,83,32,84,72,69,32,66,85,84,84,79,78,255
+TxDOver:
+    db 8,8,15,89,79,85,32,72,65,86,69,32,70,65,76,76,69,78,8,19,16,80,82,69
+    db 83,83,32,84,72,69,32,66,85,84,84,79,78,255
+TxDEnd:
+    db 4,2,18,84,72,69,32,70,79,82,69,77,65,78,32,70,65,76,76,83,46,4,4,18
+    db 84,72,69,32,68,69,69,80,32,65,87,65,73,84,83,46,46,46,4,7,13,83,69,67
+    db 82,69,84,83,32,70,79,85,78,68,4,9,4,84,73,77,69,4,11,5,76,69,86,69
+    db 76,4,13,4,71,79,76,68,5,17,20,68,69,69,80,87,65,82,68,69,78,32,73,83
+    db 32,67,79,77,73,78,71,8,19,11,84,79,32,77,69,71,65,67,65,82,84,255
+TxDCredits:
+    db 10,2,10,68,69,69,80,87,65,82,68,69,78,3,5,26,65,78,32,79,82,73,71,73
+    db 78,65,76,32,71,65,77,69,32,66,89,32,67,76,65,85,68,69,3,7,21,70,79,82
+    db 32,65,77,89,32,83,84,85,68,73,79,44,32,50,48,50,54,46,3,10,19,87,82,73
+    db 84,84,69,78,32,73,78,32,65,77,89,44,32,84,72,69,3,12,25,76,65,78,71,85
+    db 65,71,69,32,66,89,32,65,77,89,32,66,73,69,78,86,69,78,85,46,3,15,25,80
+    db 73,67,84,85,82,69,83,44,32,77,85,83,73,67,32,65,78,68,32,67,79,68,69,58
+    db 3,17,18,67,76,65,85,68,69,32,40,65,78,84,72,82,79,80,73,67,41,8,21,16
+    db 80,82,69,83,83,32,84,72,69,32,66,85,84,84,79,78,255
+TxDHow1:
+    db 7,1,16,72,79,87,32,84,79,32,80,76,65,89,32,32,49,47,50,2,3,10,67,79
+    db 78,84,82,79,76,76,69,82,3,5,17,83,84,73,67,75,32,32,87,65,76,75,44,32
+    db 84,85,82,78,3,6,12,66,65,67,75,32,32,32,71,85,65,82,68,3,7,12,76,69
+    db 70,84,32,32,32,83,87,73,78,71,3,8,20,82,73,71,72,84,32,32,76,65,78,84
+    db 69,82,78,32,70,76,65,82,69,3,9,24,42,32,83,72,69,69,84,32,32,35,32,77
+    db 65,80,32,32,49,32,80,79,84,73,79,78,2,11,23,83,85,80,69,82,32,65,67,84
+    db 73,79,78,32,67,79,78,84,82,79,76,76,69,82,3,13,12,89,69,76,76,79,87,32
+    db 83,87,73,78,71,3,14,12,79,82,65,78,71,69,32,70,76,65,82,69,3,15,13,80
+    db 85,82,80,76,69,32,80,79,84,73,79,78,3,16,10,66,76,85,69,32,32,32,77,65
+    db 80,3,17,21,82,79,76,76,69,82,32,84,85,82,78,83,32,32,42,32,83,72,69,69
+    db 84,3,19,23,87,65,76,75,32,73,78,84,79,32,84,72,73,78,71,83,32,84,79,32
+    db 85,83,69,3,20,22,84,72,69,77,46,32,84,72,69,32,70,76,65,82,69,32,83,84
+    db 85,78,83,46,255
+TxDHow2:
+    db 7,1,16,72,79,87,32,84,79,32,80,76,65,89,32,32,50,47,50,2,3,21,82,65
+    db 84,32,32,83,75,69,76,69,84,79,78,32,32,87,82,65,73,84,72,2,13,25,87,72
+    db 69,78,32,79,78,69,32,82,65,73,83,69,83,32,65,32,87,69,65,80,79,78,44,2
+    db 14,19,80,85,76,76,32,66,65,67,75,32,84,79,32,71,85,65,82,68,46,2,15,23
+    db 87,82,65,73,84,72,83,32,72,65,84,69,32,84,72,69,32,70,76,65,82,69,46,4
+    db 17,19,80,79,84,73,79,78,58,32,49,32,79,82,32,80,85,82,80,76,69,4,18,21
+    db 79,73,76,58,32,76,73,71,72,84,32,65,78,68,32,70,76,65,82,69,83,4,19,17
+    db 75,69,89,58,32,79,80,69,78,83,32,65,32,71,65,84,69,4,20,19,80,73,67,75
+    db 58,32,66,82,69,65,75,83,32,67,82,65,67,75,83,4,21,22,83,69,67,82,69,84
+    db 83,58,32,67,82,65,67,75,83,44,32,76,79,79,83,69,4,22,16,83,84,79,78,69
+    db 83,32,65,78,68,32,82,85,78,69,83,255
+TxDSheet:
+    db 10,1,10,84,72,69,32,87,65,82,68,69,78,3,3,5,76,69,86,69,76,3,5,6
+    db 72,69,65,82,84,83,3,7,8,83,84,82,69,78,71,84,72,3,9,2,88,80,13,13
+    db 7,83,69,67,82,69,84,83,5,20,15,67,76,79,67,75,32,79,78,32,83,67,82,69
+    db 69,78,5,22,4,66,65,67,75,255
+TxDSheet1:
+    db 3,14,16,76,69,86,69,76,32,85,80,58,32,67,72,79,79,83,69,5,16,11,43,49
+    db 32,83,84,82,69,78,71,84,72,5,18,8,43,49,32,72,69,65,82,84,255
+TxDMap:
+    db 6,1,16,70,76,79,79,82,32,32,32,45,32,70,65,67,73,78,71,2,21,24,19,32
+    db 82,79,67,75,32,32,21,32,71,65,84,69,32,32,22,32,83,84,65,73,82,83,2,22
+    db 27,25,32,66,79,88,32,63,32,83,69,67,82,69,84,32,24,32,66,79,83,83,32,94
+    db 32,89,79,85,255
+TxDMGate:
+    db 2,22,14,84,72,69,32,71,65,84,69,32,79,80,69,78,83,255
+TxDMLocked:
+    db 2,22,18,76,79,67,75,69,68,58,32,70,73,78,68,32,65,32,75,69,89,255
+TxDMShrine:
+    db 2,22,18,84,72,69,32,83,72,82,73,78,69,58,32,43,49,50,32,88,80,255
+TxDMCracked:
+    db 2,22,18,65,32,80,73,67,75,32,66,82,69,65,75,83,32,84,72,73,83,255
+TxDMLoose:
+    db 2,22,22,76,79,79,83,69,32,83,84,79,78,69,58,32,83,84,82,73,75,69,32,73
+    db 84,255
+TxDMSecret:
+    db 2,22,9,65,32,83,69,67,82,69,84,33,255
+TxDMLevelUp:
+    db 2,22,25,76,69,86,69,76,32,85,80,33,32,80,82,69,83,83,32,42,32,40,83,72
+    db 69,69,84,41,255
+TxDMI0:
+    db 2,22,7,53,48,32,71,79,76,68,255
+TxDMI1:
+    db 2,22,8,65,32,80,79,84,73,79,78,255
+TxDMI2:
+    db 2,22,11,76,65,78,84,69,82,78,32,79,73,76,255
+TxDMI3:
+    db 2,22,5,65,32,75,69,89,255
+TxDMI4:
+    db 2,22,8,84,72,69,32,80,73,67,75,255
+TxDMI8:
+    db 2,22,13,65,32,72,69,65,82,84,32,83,84,79,78,69,255
+TxDMI9:
+    db 2,22,15,65,32,77,65,80,32,83,67,82,65,80,32,40,35,41,255
+TxDMNoOil:
+    db 2,22,18,78,79,32,79,73,76,32,70,79,82,32,65,32,70,76,65,82,69,255
+TxDMForeman:
+    db 2,22,24,84,72,69,32,70,79,82,69,77,65,78,32,66,65,82,83,32,84,72,69,32
+    db 87,65,89,255
+TxDMDraft:
+    db 2,22,15,65,32,67,79,76,68,32,68,82,65,70,84,46,46,46,255
+TxDMRune:
+    db 2,22,15,84,72,69,32,82,85,78,69,32,71,76,79,87,83,33,255
+TxDMBurrow:
+    db 2,22,14,66,85,82,82,79,87,32,83,77,65,83,72,69,68,255
+}

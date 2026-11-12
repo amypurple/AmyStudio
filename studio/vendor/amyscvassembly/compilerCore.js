@@ -802,7 +802,6 @@ function isIxIyDisplacementOperandText(value) {
 
                 } catch (e) {
                     log(`Assembly failed on pass ${this.currentPass} in file '${this.currentFile}': ${e.message}`, 'error');
-                    console.error(e);
                     return null;
                 }
             }

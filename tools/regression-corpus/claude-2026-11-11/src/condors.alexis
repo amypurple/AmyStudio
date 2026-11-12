@@ -1,0 +1,1363 @@
+cartridge "SPACE CONDORS/AUTHOR UNKNOWN/1989"
+' SPACE CONDORS - ColecoVision port of the C-64 game from RUN magazine's
+' ReRUN disk (May/June 1989; the author is not named in the files).
+' Port in Amy by Claude (Anthropic), 2026, from the kit's port template.
+'
+' The game (from the original's 6502 code, orig/condors.dis): your ship
+' flies anywhere in the field (8 directions, 1 px per pass) and fires one
+' shot at a time (5 px per pass; hold the button for auto fire). Six
+' condors start at the field's edges (Y 60, 90 .. 210, alternately from the
+' left going right/down and from the right going left/up). Each flies
+' sideways until its X equals your ship's X, then up/down until its Y
+' equals your Y, then sideways again (positions wrap round, 8-bit). The
+' four upper condors (colour cycling) die to a shot: 10 points, then they
+' start again from their edge. The two lower ones (red) only stop shots.
+' A condor touching your ship: the ship explodes (40 passes), all condors
+' go back to their edges; 3 men. Every 60 condors the game speeds up (the
+' original's delay loop shrinks by 1280 cycles). Endless: no waves.
+'
+' Units: the logic keeps the C-64's coordinates (sprite X 0-255, Y 0-255)
+' and runs whole passes against a C-64 cycle budget per frame (the
+' original's pass costs 13,900 cycles at the start, measured in jsc64:
+' c64/cyc.mjs; a free NTSC frame is ~14,000); the drawing maps the
+' coordinates through two tables into columns 2-28, rows 1-22.
+' Collisions: the C-64's sprite-sprite register is emulated with boxes
+' around each sprite's visible pixels; like the original, a shot that hits
+' anything kills every killable condor touching any sprite at that moment.
+
+const TBar = 128
+const TStar = 129
+const SShipw = 0
+const SShipg = 4
+const SShiplw = 8
+const SShiplg = 12
+const SShiprw = 16
+const SShiprg = 20
+const SShot = 24
+const SCondor0 = 28
+const SCondor1 = 32
+const SCondor2 = 36
+const SCondor3 = 40
+const SCondorb0 = 44
+const SCondorb1 = 48
+const SCondorb2 = 52
+const SCondorb3 = 56
+const SBoom0 = 60
+const SBoom1 = 64
+const SBoom2 = 68
+const NTiles8 = 16
+const SprBytes = 576
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndPlayA = 5
+const SndPlayB = 6
+const SndPlayC = 7
+const SndPlayD = 8
+const SndClick = 9
+const SndShot = 10
+const SndHit = 11
+const SndDie = 12
+const SndFaster = 13
+const SndOver = 14
+const TuneFrames = 512
+const TxtCredits = 0
+const PlayFrames = 640
+const NSpr = 16
+const HideY = 192
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+' C-64 cycle budget per frame and per pass, in units of 10 cycles
+const Budget = 1400
+const PassBase = 1390
+const PassStep = 128
+const MaxPass = 2
+
+' six condors (the original's sprites 2-7)
+u8 CX[6]
+u8 CY[6]
+u8 CI[6]
+u8 CP[6]
+u8 CE[6]
+u16 Score = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Acc = 0
+u16 PlayLeft = 0
+u8 TzOn = 0
+u8 State = 0
+' the ship, the shot
+u8 Px = 0
+u8 Py = 0
+u8 Pf = 0
+u8 Sa = 0
+u8 Sf = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Men = 0
+u8 Dying = 0
+u8 DieT = 0
+u8 DieF = 0
+u8 Grace = 0
+u8 GraceOn = 0
+u8 Spd = 0
+u8 Kills = 0
+u8 Anim = 0
+u8 AnimF = 0
+u8 Mask = 0
+u8 Passes = 0
+u8 Over = 0
+u8 HudOld = 0
+u8 HudDirty = 0
+' cosmetic burst where a condor was shot (does not touch the rules)
+u8 Bx = 0
+u8 By = 0
+u8 Bt = 0
+u8 ColI = 0
+u8 ColT = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Oi = 0
+u8 Li = 0
+u8 Qi = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 A = 0
+u8 B = 0
+u8 D = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 6
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  if Over = 0 then goto play_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (the original's main loop at $C4E5, one call = one pass)
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub NewGame:
+  Score = 0
+  Men = 3
+  Spd = 0
+  Kills = 0
+  Grace = 0
+  GraceOn = 0
+  Anim = 0
+  AnimF = 0
+  Over = 0
+  Bt = 0
+  Acc = 0
+  ColI = 0
+  ColT = 0
+  ResetShip
+  ResetCondors
+  fill array CE with 0
+  DrawPlay
+  State = StPlay
+  PlayTune
+  return
+end sub
+
+sub PlayTune:
+  play sound SndPlayA
+  play sound SndPlayB
+  play sound SndPlayC
+  play sound SndPlayD
+  PlayLeft = PlayFrames
+  return
+end sub
+
+sub ResetShip:
+  Px = $92
+  Py = $E8
+  Pf = 0
+  Dying = 0
+  DieT = 0
+  DieF = 0
+  ResetShot
+  return
+end sub
+
+' $C7C4: the shot back to the ship
+sub ResetShot:
+  Sa = 0
+  Sf = 0
+  Sx = Px
+  Sy = Py
+  return
+end sub
+
+' $CBF0: every condor back to its edge on the next pass
+sub ResetCondors:
+  fill array CI with 0
+  fill array CP with 0
+  return
+end sub
+
+' one frame: whole passes while the C-64 cycle budget lasts
+sub PlayFrame:
+  Acc += Budget
+  Passes = 0
+pf_loop:
+  W16 = Spd * PassStep
+  W16 = PassBase - W16
+  if Acc >= W16 then
+    Acc -= W16
+    OnePass
+    inc Passes
+    if Over = 1 then goto pf_end
+    if Passes < MaxPass then goto pf_loop
+    Acc = 0
+  end if
+pf_end:
+  ' the in-game tune loops
+  dec PlayLeft
+  if PlayLeft = 0 then PlayTune
+  ' condor colours: the original cycles them every pass; here every 20
+  ' frames (3 Hz rule)
+  inc ColT
+  if ColT >= 20 then
+    ColT = 0
+    inc ColI
+    if ColI >= 13 then ColI = 0
+  end if
+  if Bt > 0 then dec Bt
+  DrawSprites
+  if HudOld <> Men then ShowHud
+  if HudDirty = 1 then ShowHud
+  return
+end sub
+
+sub OnePass:
+  if Dying = 0 then
+    MoveShip
+    if Sf = 1 then
+      if Sa = 0 then play sound SndShot
+      Sa = 1
+    end if
+  end if
+  ' the shot, 5 px per pass; back to the ship at Y=$28
+  if Sa = 1 then
+    for Qi = 1 to 5
+      dec Sy
+      if Sy = $28 then
+        ResetShot
+        Qi = 5
+      end if
+    next
+  else
+    Sx = Px
+    Sy = Py
+  end if
+  Collide
+  V = Mask & 2
+  if V > 0 then ResetShot
+  if Dying = 1 then
+    DeathStep
+  else
+    if GraceOn = 0 then
+      inc Grace
+      if Grace = 20 then GraceOn = 1
+    end if
+    if GraceOn = 1 then
+      V = Mask & 1
+      if V > 0 then
+        Dying = 1
+        play sound SndDie
+      end if
+    end if
+    if Men = 0 then
+      Over = 1
+      return
+    end if
+  end if
+  for Oi = 0 to 5
+    MoveCondor
+  next
+  Kill
+  inc Anim
+  if Anim = 13 then
+    Anim = 0
+    inc AnimF
+    AnimF = AnimF & 3
+  end if
+  return
+end sub
+
+' the stick: exact directions as the original decodes $DC00
+sub MoveShip:
+  V = Jk & 15
+  if Btn > 0 then Sf = 1
+  if V = 0 then
+    if Btn = 0 then Pf = 0
+    return
+  end if
+  if V = 8 then
+    if Px <> $FF then
+      inc Px
+      Pf = 2
+    end if
+  end if
+  if V = 4 then
+    if Px <> $19 then
+      dec Px
+      Pf = 1
+    end if
+  end if
+  if V = 2 then
+    if Py <> $E9 then
+      inc Py
+      Pf = 0
+    end if
+  end if
+  if V = 1 then
+    if Py <> $2E then
+      dec Py
+      Pf = 0
+    end if
+  end if
+  if V = 9 then
+    if Px <> $FF then
+      if Py <> $2E then
+        inc Px
+        dec Py
+        Pf = 2
+      end if
+    end if
+  end if
+  if V = 10 then
+    if Py <> $E9 then
+      if Px <> $FF then
+        inc Px
+        inc Py
+        Pf = 2
+      end if
+    end if
+  end if
+  if V = 5 then
+    if Px <> $19 then
+      if Py <> $2E then
+        dec Px
+        dec Py
+        Pf = 1
+      end if
+    end if
+  end if
+  if V = 6 then
+    if Py <> $E9 then
+      if Px <> $19 then
+        dec Px
+        inc Py
+        Pf = 1
+      end if
+    end if
+  end if
+  return
+end sub
+
+' $C888: condor Oi (even: rightwards and down; odd: leftwards and up)
+sub MoveCondor:
+  A = CX[Oi]
+  B = CY[Oi]
+  D = Oi & 1
+  K = CP[Oi]
+  if K = 0 then
+    if CI[Oi] = 0 then
+      CI[Oi] = 1
+      B = StartY[Oi]
+      A = 1
+      if D = 1 then A = $FE
+    end if
+    if D = 0 then
+      inc A
+    else
+      dec A
+    end if
+    if A = Px then K = 1
+  end if
+  if K = 1 then
+    if D = 0 then
+      inc B
+    else
+      dec B
+    end if
+    if B = Py then K = 0
+  end if
+  CP[Oi] = K
+  CX[Oi] = A
+  CY[Oi] = B
+  return
+end sub
+
+' the C-64's sprite-sprite collision register, from boxes around the
+' visible pixels (C-64 coordinates): ship x+2..x+19, y+4..y+16; shot
+' x+10..x+11, y..y+1; condor x..x+21, y+3..y+11. Bit 0 ship, bit 1 shot,
+' bit 2+i condor i. Only sprites inside the visible field collide.
+sub Collide:
+  Mask = 0
+  for Li = 0 to 5
+    A = CX[Li]
+    B = CY[Li]
+    C = Bit[Li]
+    if A >= 24 then
+      if B >= 40 then
+        if B < 247 then
+          ' ship: Cx - Px in -19..19 and Cy - Py in -7..13, as u8 sums (a
+          ' visible condor and the ship are never 237 px apart, so the u8
+          ' wrap cannot fake an overlap)
+          T = A - Px
+          T += 19
+          if T < 39 then
+            T = B - Py
+            T += 7
+            if T < 21 then Mask = Mask | C | 1
+          end if
+          ' shot (only while it flies): Cx - Sx in -11..11, Cy - Sy in -11..-2
+          if Sa = 1 then
+            T = A - Sx
+            T += 11
+            if T < 23 then
+              T = B - Sy
+              T += 11
+              if T < 10 then Mask = Mask | C | 2
+            end if
+          end if
+          ' the other condors: boxes 22 x 9
+          T = Li + 1
+          for Oi = T to 5
+            CondorPair
+          next
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' condors Li and Oi: Cx difference -21..21, Cy difference -8..8
+sub CondorPair:
+  J = CX[Oi]
+  if J < 24 then return
+  K = CY[Oi]
+  if K < 40 then return
+  if K >= 247 then return
+  V = A - J
+  V += 21
+  if V < 43 then
+    V = B - K
+    V += 8
+    if V < 17 then
+      V = Bit[Oi]
+      Mask = Mask | C | V
+    end if
+  end if
+  return
+end sub
+
+' $CAAC/$CAF1: shot + killable condor (0-3) -> 10 points, 3-pass
+' explosion, then back to its edge; every 60: faster
+sub Kill:
+  V = Mask & 2
+  for Li = 0 to 3
+    if V > 0 then
+      C = Bit[Li]
+      T = Mask & C
+      if T > 0 then
+        CE[Li] = 1
+        Score += 10
+        HudDirty = 1
+        play sound SndHit
+        Bx = CX[Li]
+        By = CY[Li]
+        Bt = 18
+        inc Kills
+        if Kills = 60 then
+          Kills = 0
+          if Spd < 10 then
+            inc Spd
+            play sound SndFaster
+          end if
+        end if
+      end if
+    end if
+    T = CE[Li]
+    if T > 0 then
+      inc T
+      if T = 4 then
+        T = 0
+        CI[Li] = 0
+        CP[Li] = 0
+      end if
+      CE[Li] = T
+    end if
+  next
+  return
+end sub
+
+' $C7F2: the ship explodes, a frame every 10 passes; then one man less,
+' the ship and the condors start again
+sub DeathStep:
+  inc DieT
+  if DieT = 10 then
+    DieT = 0
+    inc DieF
+    if DieF = 4 then
+      dec Men
+      ResetShip
+      ResetCondors
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: C-64 coordinates -> screen through XT / YT (0 = hidden)
+
+sub DrawSprites:
+  A = Px + 0
+  A = XT[A]
+  B = Py + 3
+  B = YT[B]
+  if DieF = 0 then
+    T = SShipw
+    K = SShipg
+    if Pf = 1 then
+      T = SShiplw
+      K = SShiplg
+    end if
+    if Pf = 2 then
+      T = SShiprw
+      K = SShiprg
+    end if
+    set sprite 0 to B,A,T,15
+    set sprite 1 to B,A,K,14
+  else
+    T = DieF - 1
+    T = T << 2
+    T += SBoom0
+    B = Py + 4
+    B = YT[B]
+    set sprite 0 to B,A,T,11
+    set sprite 1 to HideY,0,0,0
+  end if
+  ' the shot (the original steps its colour every pass; here with the
+  ' condors' 3 Hz cycle, half a cycle ahead)
+  V = ColI + 6
+  if V >= 13 then V -= 13
+  V = ColTab[V]
+  if Sa = 1 then
+    A = XT[Sx]
+    B = YT[Sy]
+    if B = 0 then
+      set sprite 2 to HideY,0,0,0
+    else
+      set sprite 2 to B,A,SShot,V
+    end if
+  else
+    set sprite 2 to HideY,0,0,0
+  end if
+  ' condor i: wings in sprite 3+2i (cycling colour or red), white body in
+  ' 4+2i (hidden while it explodes: the explosion is wing colour only).
+  ' Written straight into the sprite shadow table in asm: the Amy loop of
+  ' 12 set sprite cost ~6k cycles and pushed 2-pass frames over the frame.
+  V = ColTab[ColI]
+  asm {
+    push ix
+    push iy
+    ld ix,AMY_SPRITE_TABLE+12
+    ld iy,0
+dc_loop:
+    push iy
+    pop de
+    ld hl,AMY_UVAR_CX
+    add hl,de
+    ld e,(hl)
+    ld d,0
+    ld hl,AMY_UDATA_XT
+    add hl,de
+    ld c,(hl)
+    push iy
+    pop de
+    ld hl,AMY_UVAR_CY
+    add hl,de
+    ld a,(hl)
+    add a,2
+    ld e,a
+    ld d,0
+    ld hl,AMY_UDATA_YT
+    add hl,de
+    ld b,(hl)
+    ld a,c
+    or a
+    jr z,dc_hide
+    ld a,b
+    or a
+    jr z,dc_hide
+    push iy
+    pop de
+    ld hl,AMY_UVAR_CE
+    add hl,de
+    ld a,(hl)
+    cp 2
+    jr c,dc_alive
+    sub 2
+    add a,a
+    add a,a
+    add a,AMY_UCONST_SBoom0
+    ld d,a
+    ld e,0
+    jr dc_col
+dc_alive:
+    ld a,(AMY_UVAR_AnimF)
+    add a,a
+    add a,a
+    ld e,a
+    add a,AMY_UCONST_SCondor0
+    ld d,a
+    ld a,e
+    add a,AMY_UCONST_SCondorb0
+    ld e,a
+dc_col:
+    ld a,6
+    push bc
+    push iy
+    pop bc
+    ld h,a
+    ld a,c
+    cp 4
+    ld a,h
+    jr nc,dc_red
+    ld a,(AMY_UVAR_V)
+dc_red:
+    pop bc
+    ld (ix+0),b
+    ld (ix+1),c
+    ld (ix+2),d
+    ld (ix+3),a
+    ld a,e
+    or a
+    jr z,dc_nobody
+    ld (ix+4),b
+    ld (ix+5),c
+    ld (ix+6),e
+    ld (ix+7),15
+    jr dc_next
+dc_hide:
+    ld (ix+0),192
+    ld (ix+1),0
+    ld (ix+2),0
+    ld (ix+3),0
+dc_nobody:
+    ld (ix+4),192
+    ld (ix+5),0
+    ld (ix+6),0
+    ld (ix+7),0
+dc_next:
+    ld de,8
+    add ix,de
+    inc iy
+    push iy
+    pop de
+    ld a,e
+    cp 6
+    jr nz,dc_loop
+    pop iy
+    pop ix
+  }
+  ' cosmetic burst where a condor was hit (the original's lasts 3 passes)
+  if Bt > 0 then
+    A = XT[Bx]
+    B = By + 4
+    B = YT[B]
+    T = 18 - Bt
+    T = T / 6
+    T = T << 2
+    T += SBoom0
+    if A = 0 then B = 0
+    if B = 0 then
+      set sprite 15 to HideY,0,0,0
+    else
+      set sprite 15 to B,A,T,8
+    end if
+  else
+    set sprite 15 to HideY,0,0,0
+  end if
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  HudOld = Men
+  HudDirty = 0
+  ' as the C-64: SCORE (purple) top left, the score below it once it is
+  ' above 0 (no leading zeros), MEN (yellow) and the count (purple). HUD
+  ' glyphs are coloured copies in chars 1-8 and 10-19 (HudColours): the
+  ' colour table is shared by the three thirds, so the ASCII font stays white
+  NumU = Score
+  if NumU > 0 then
+    if NumU < 10 then
+      print at 3,2, digits$(NumU, 1)
+    else
+      if NumU < 100 then
+        print at 3,2, digits$(NumU, 2)
+      else
+        if NumU < 1000 then
+          print at 3,2, digits$(NumU, 3)
+        else
+          if NumU < 10000 then
+            print at 3,2, digits$(NumU, 4)
+          else
+            print at 3,2, digits$(NumU, 5)
+          end if
+        end if
+      end if
+    end if
+    ' ASCII digits -> the purple copies
+    for J = 67 to 71
+      vpeek vram.name + J into V
+      if V >= 48 then
+        V -= 38
+        vpoke vram.name + J, V
+      end if
+    next
+  end if
+  put char 10 + Men at 23,1
+  return
+end sub
+
+' the HUD labels, once a screen
+sub HudLabels:
+  put char 1 at 2,1
+  put char 2 at 3,1
+  put char 3 at 4,1
+  put char 4 at 5,1
+  put char 5 at 6,1
+  put char 6 at 19,1
+  put char 7 at 20,1
+  put char 8 at 21,1
+  return
+end sub
+
+' HUD glyphs: copies of the font in chars 1-5 (S C O R E, purple), 6-8
+' (M E N, yellow) and 10-19 (digits, purple); NewScreen reloads the font
+sub HudColours:
+  copy vram.pattern + 664 count 8 to vram.pattern + 8
+  copy vram.pattern + 536 count 8 to vram.pattern + 16
+  copy vram.pattern + 632 count 8 to vram.pattern + 24
+  copy vram.pattern + 656 count 8 to vram.pattern + 32
+  copy vram.pattern + 552 count 8 to vram.pattern + 40
+  copy vram.pattern + 616 count 8 to vram.pattern + 48
+  copy vram.pattern + 552 count 8 to vram.pattern + 56
+  copy vram.pattern + 624 count 8 to vram.pattern + 64
+  copy vram.pattern + 384 count 32 to vram.pattern + 80
+  copy vram.pattern + 416 count 32 to vram.pattern + 112
+  copy vram.pattern + 448 count 16 to vram.pattern + 144
+  fill $D1 count 40 to vram.color + 8
+  fill $B1 count 24 to vram.color + 48
+  fill $D1 count 80 to vram.color + 80
+  return
+end sub
+
+sub DrawField:
+  for Li = 1 to 22
+    put char TBar at 29,Li
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  HudColours
+  DrawField
+  HudLabels
+  ShowHud
+  ShowScreen
+  DrawSprites
+  return
+end sub
+
+sub GameOver:
+  stop sound SndPlayA
+  stop sound SndPlayB
+  stop sound SndPlayC
+  stop sound SndPlayD
+  mute all
+  HideSprites
+  print at 10,9, "GAME OVER"
+  print at 8,11, "SCORE"
+  NumU = Score
+  print at 14,11, digits$(NumU, 5)
+  print at 8,13, "PRESS BUTTON"
+  play sound SndOver
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 15
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: banner, name, menu (cursor back on START), the tune once
+' the title: name, a picture from the game's sprites, menu (cursor back on
+' START), the tune once
+sub TitlePage:
+  NewScreen
+  DrawField
+  print at 9,3, "SPACE CONDORS"
+  set sprite 3 to 38,48,SCondor0,13
+  set sprite 4 to 38,48,SCondorb0,15
+  set sprite 5 to 54,184,SCondor2,4
+  set sprite 6 to 54,184,SCondorb2,15
+  set sprite 7 to 66,104,SCondor1,6
+  set sprite 8 to 66,104,SCondorb1,15
+  set sprite 0 to 76,140,SShipw,15
+  set sprite 1 to 76,140,SShipg,14
+  update sprites
+  print at 11,12, "START"
+  print at 11,14, "HOW TO PLAY"
+  print at 11,16, "CREDITS"
+  print at 4,19, "C-64 ORIGINAL: RUN, 1989"
+  print at 7,21, "PORT IN AMY, 2026"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,12
+  put char 32 at 9,14
+  put char 32 at 9,16
+  C = Menu << 1
+  C += 12
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 9,2, "SPACE CONDORS"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: two pages with pictures from the game's sprites
+sub HowTo:
+  Page = 1
+  NewScreen
+  print at 7,1, "HOW TO PLAY  1/2"
+  print at 2,3, "CONDORS SWOOP AT YOUR SHIP:"
+  print at 2,5, "EACH FLIES SIDEWAYS UNTIL"
+  print at 2,7, "IT IS IN LINE WITH YOU,"
+  print at 2,9, "THEN STRAIGHT AT YOU."
+  set sprite 3 to 80,40,SCondor1,13
+  set sprite 4 to 80,40,SCondorb1,15
+  set sprite 5 to 98,190,SCondor3,6
+  set sprite 6 to 98,190,SCondorb3,15
+  set sprite 0 to 108,116,SShipw,15
+  set sprite 1 to 108,116,SShipg,14
+  set sprite 2 to 92,118,SShot,7
+  update sprites
+  print at 2,17, "STICK: FLY ANYWHERE."
+  print at 2,19, "BUTTON: FIRE (HOLD IT)."
+  print at 8,21, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 7,1, "HOW TO PLAY  2/2"
+    print at 2,3, "SHOOT THE COLOURED CONDORS:"
+    print at 2,5, "10 POINTS EACH."
+    set sprite 3 to 49,64,SCondor0,13
+    set sprite 4 to 49,64,SCondorb0,15
+    set sprite 5 to 49,128,SCondor2,4
+    set sprite 6 to 49,128,SCondorb2,15
+    print at 2,9, "THE RED ONES CANNOT BE HURT"
+    print at 2,11, "AND THEY STOP YOUR SHOTS."
+    set sprite 7 to 94,72,SCondor0,6
+    set sprite 8 to 94,72,SCondorb0,15
+    set sprite 9 to 94,120,SCondor3,6
+    set sprite 10 to 94,120,SCondorb3,15
+    update sprites
+    print at 2,15, "A CONDOR THAT TOUCHES YOU"
+    print at 2,17, "COSTS ONE OF YOUR 3 MEN."
+    print at 2,19, "EVERY 60 CONDORS: FASTER!"
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+data XT bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,16,16,17,18,19,20,21,21
+  22,23,24,25,26,26,27,28,29,30,31,32,32,33,34,35
+  36,37,37,38,39,40,41,42,43,43,44,45,46,47,48,48
+  49,50,51,52,53,53,54,55,56,57,58,59,59,60,61,62
+  63,64,64,65,66,67,68,69,70,70,71,72,73,74,75,75
+  76,77,78,79,80,80,81,82,83,84,85,86,86,87,88,89
+  90,91,91,92,93,94,95,96,97,97,98,99,100,101,102,102
+  103,104,105,106,107,107,108,109,110,111,112,113,113,114,115,116
+  117,118,118,119,120,121,122,123,124,124,125,126,127,128,129,129
+  130,131,132,133,134,134,135,136,137,138,139,140,140,141,142,143
+  144,145,145,146,147,148,149,150,151,151,152,153,154,155,156,156
+  157,158,159,160,161,161,162,163,164,165,166,167,167,168,169,170
+  171,172,172,173,174,175,176,177,178,178,179,180,181,182,183,183
+  184,185,186,187,188,188,189,190,191,192,193,194,194,195,196,197
+  198,199,199,200,201,202,203,204,205,205,206,207,208,209,210,210
+end data
+data YT bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,13,13
+  14,15,16,17,17,18,19,20,21,21,22,23,24,25,26,26
+  27,28,29,30,30,31,32,33,34,34,35,36,37,38,39,39
+  40,41,42,43,43,44,45,46,47,47,48,49,50,51,52,52
+  53,54,55,56,56,57,58,59,60,60,61,62,63,64,65,65
+  66,67,68,69,69,70,71,72,73,73,74,75,76,77,78,78
+  79,80,81,82,82,83,84,85,86,86,87,88,89,90,91,91
+  92,93,94,95,95,96,97,98,99,99,100,101,102,103,104,104
+  105,106,107,108,108,109,110,111,112,112,113,114,115,116,117,117
+  118,119,120,121,121,122,123,124,125,125,126,127,128,129,130,130
+  131,132,133,134,134,135,136,137,138,138,139,140,141,142,143,143
+  144,145,146,147,147,148,149,150,151,151,152,153,154,155,156,156
+  157,158,159,160,160,161,162,163,164,164,165,166,167,168,169,169
+  170,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data StartY bytes 60,90,120,150,180,210
+data Bit bytes 4,8,16,32,64,128
+data ColTab bytes 15,6,7,13,12,4,11,10,6,9,14,14,3
+
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $84,$00,$BF,$10,$F6,$55,$55,$80
+end data
+data TileColZ bytes
+  $96,$0D,$88,$01,$9D,$F1,$01,$55,$56
+end data
+data SpritePatZ bytes
+  $80,$00,$82,$0D,$3D,$FD,$00,$42,$08,$20,$3C,$3E,$00,$2A,$01,$8A,$03,$0F,$22,$32,$02,$A4,$00,$A2
+  $C0,$8B,$E0,$DC,$F0,$F5,$A0,$9F,$02,$12,$32,$80,$09,$91,$C0,$F0,$F0,$BF,$0D,$FF,$CC,$78,$FE,$9F
+  $30,$00,$0C,$80,$18,$94,$1E,$1E,$88,$D0,$DC,$1F,$FE,$9F,$1D,$01,$21,$00,$0B,$20,$A0,$FF,$00,$AA
+  $03,$00,$51,$E7,$A9,$F0,$3C,$1C,$96,$30,$A3,$0E,$3C,$30,$71,$2C,$8D,$F0,$1C,$C2,$EC,$BC,$0C,$C0
+  $7A,$BD,$3C,$A4,$C0,$6A,$3C,$91,$02,$BD,$FC,$00,$28,$3E,$5D,$89,$83,$02,$01,$98,$0E,$00,$00,$1D
+  $8E,$7C,$C0,$15,$FF,$BE,$C2,$7D,$BE,$FE,$C2,$C0,$40,$F2,$BF,$06,$F9,$BD,$80,$62,$30,$30,$A1,$C0
+  $24,$81,$0D,$1D,$1D,$1D,$13,$0F,$CB,$46,$AE,$C1,$30,$C2,$19,$60,$1C,$3C,$3C,$31,$01,$03,$0F,$75
+  $EB,$4F,$DC,$1C,$CD,$BE,$55,$56
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43
+  $29,$2C,$05,$31,$39,$38,$39,$2E,$05,$32,$30,$32,$36,$2C,$06,$41,$55,$54,$48,$4F,$52,$02,$42,$59
+  $04,$43,$2D,$36,$34,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F
+  $4E,$05,$44,$49,$53,$4B,$2C,$05,$47,$41,$4D,$45,$3A,$02,$49,$4E,$0A,$4D,$41,$47,$41,$5A,$49,$4E
+  $45,$27,$53,$08,$4D,$41,$59,$2F,$4A,$55,$4E,$45,$06,$4D,$55,$53,$49,$43,$3A
+end data
+data TxD_1 bytes
+  $04,$50,$4F,$52,$54,$05,$52,$45,$52,$55,$4E,$03,$52,$55,$4E,$07,$53,$54,$55,$44,$49,$4F,$2E,$06
+  $54,$55,$4E,$45,$53,$2E,$08,$55,$4E,$4B,$4E,$4F,$57,$4E,$2C,$04,$57,$49,$54,$48
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $01,$07,$0B,$FE,$05,$15,$12,$FE,$0D,$11,$0A,$FE,$0E,$03,$FE,$09,$10,$0C,$00,$FE,$06,$08,$02,$FE
+  $04,$16,$00,$13,$FE,$0F,$01,$14,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScShot:
+    db $00,$00,$24,$02,$00,$00,$25,$02,$00,$00,$36,$03,$00,$00,$56,$03,$10
+ScHit:
+    db $00,$00,$15,$02,$00,$00,$26,$03,$00,$00,$36,$04,$00,$00,$57,$06,$10
+ScDie:
+    db $00,$00,$06,$06,$00,$00,$16,$08,$00,$00,$27,$08,$00,$00,$37,$0A,$00,$00,$57,$0A,$00,$00,$67,$08
+    db $10
+ScFaster:
+    db $40,$8F,$20,$04,$40,$71,$20,$04,$40,$5F,$20,$04,$40,$47,$20,$08,$50
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScPlayMel,$702B
+    dw ScPlayHarm,$7035
+    dw ScPlayBassVol,$703F
+    dw ScPlayBassPitch,$7049
+    dw ScClick,$705D
+    dw ScShot,$7053
+    dw ScHit,$7053
+    dw ScDie,$7053
+    dw ScFaster,$705D
+    dw ScOver,$705D
+; Condor Sky (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$1C,$01,$1F,$01,$23,$01,$01,$01,$21,$01,$1F,$01
+    db $1E,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$28,$01,$26,$01,$01,$01
+    db $23,$01,$01,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$1E,$01,$1A,$01
+    db $1E,$01,$01,$01,$1F,$01,$1E,$01,$1B,$01,$1E,$01,$1C,$01,$01,$01
+    db $00,$00,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$10,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01
+    db $17,$01,$01,$01,$10,$01,$01,$01,$13,$01,$01,$01,$17,$01,$01,$01
+    db $13,$01,$01,$01,$15,$01,$01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01
+    db $15,$01,$01,$01,$17,$01,$01,$01,$17,$01,$01,$01,$13,$01,$01,$01
+    db $00,$00,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$88,$F0,$25,$C0,$5A,$F0,$1F,$C0,$98,$F0,$21,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$72,$F0,$1F
+    db $C0,$5A,$F0,$21,$C0,$72,$F0,$1F,$C0,$66,$F0,$21,$C0,$88,$F0,$1F,$C0,$98,$F0,$21,$C0,$66,$F0,$1F
+    db $C0,$5A,$F0,$40,$C0,$88,$F0,$1A,$FF,$E3
+    db $D0
+; Condor Patrol (original, in game) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScPlayMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$80,$18,$32,$17,$01,$01,$1A,$1C,$01,$01,$01,$1F,$01,$1E,$01
+    db $1C,$01,$01,$01,$1A,$01,$01,$17,$15,$01,$17,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01,$1C,$01,$01,$1F,$21,$01,$01,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$1E,$01,$01,$1A,$1C,$01,$01,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ScPlayHarm:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$60,$1A,$21,$10,$01,$01,$01,$01,$01,$01,$01,$0C,$01,$01,$01
+    db $01,$01,$01,$01,$0E,$01,$01,$01,$01,$01,$01,$01,$0B,$01,$01,$01
+    db $01,$01,$01,$01,$0C,$01,$01,$01,$01,$01,$01,$01,$13,$01,$01,$01
+    db $01,$01,$01,$01,$15,$01,$01,$01,$17,$01,$01,$01,$10,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScPlayBassVol:
+    db $02,$36,$04,$13,$11,$02,$63,$22,$14,$66,$22,$02,$63,$26,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$63,$22,$14,$66,$22,$02,$63,$26,$14,$66,$22,$02,$36,$04,$13,$11,$02,$63,$22,$14,$66
+    db $22,$02,$63,$26,$14,$66,$22,$02,$36,$04,$13,$11,$02,$63,$22,$14,$66,$22
+    db $02,$63,$26,$14,$66,$22,$02,$36,$04,$13,$11,$02,$63,$22,$14,$66,$22,$02,$63,$26,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$63,$22,$14,$66,$22,$02,$63,$26,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$22,$14,$66,$22,$02,$63,$26,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$63,$22,$14,$66,$22,$02,$63,$26,$14,$66,$22
+    db $10
+ScPlayBassPitch:
+    db $C0,$88,$F0,$54,$C0,$AB,$F0,$50,$C0,$98,$F0,$50,$C0,$B5,$F0,$50,$C0,$AB,$F0,$50,$C0,$72,$F0,$50
+    db $C0,$66,$F0,$24,$C0,$5A,$F0,$2C,$C0,$88,$F0,$4A,$E2
+    db $D0
+}

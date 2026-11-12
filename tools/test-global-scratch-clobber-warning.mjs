@@ -74,4 +74,28 @@ done:
 `, strip);
 assert.deepEqual(explicitOutput, []);
 
+const inlineThenWriteIsNotConditionRead = analyzeGlobalScratchClobbers(`
+u8 Dy = 0
+u8 Lv = 1
+Dy = 2
+ScreenXY
+if Lv = 0 then Dy = 192
+sub ScreenXY:
+  Dy = 7
+end sub
+`, strip);
+assert.deepEqual(inlineThenWriteIsNotConditionRead, []);
+
+const inlineThenConditionStillWarns = analyzeGlobalScratchClobbers(`
+u8 Dy = 0
+Dy = 2
+ScreenXY
+if Dy = 0 then Dy = 192
+sub ScreenXY:
+  Dy = 7
+end sub
+`, strip);
+assert.equal(inlineThenConditionStillWarns.length, 1);
+assert.match(inlineThenConditionStillWarns[0], /Dy controls a decision after a call to screenxy/i);
+
 console.log("Global scratch clobber warning tests: PASS");

@@ -1,0 +1,1636 @@
+cartridge "GRID RUN/AUTHOR UNKNOWN (RERUN)/1990"
+' GRID RUN - ColecoVision port of the C64 machine-code game GRID RUN
+' (ReRUN, November/December 1990; the disk names no author).
+'
+' The game: your ship runs along a 13 x 11 grid and never stops; it turns
+' only at a crossing. Pick up the 25 dots to clear the level. Four guns
+' crawl along the frame; one fires when you are in line with it. A hit
+' costs a ship and the level starts again with new dots.
+'
+' The rules run in the ORIGINAL's units: positions are the C64 sprite
+' coordinates, and every frame runs the original's main-loop body 47 times
+' (the C64 runs ~46.7 passes of 333 cycles in the free cycles of an NTSC
+' frame; README). Player: 1 px every 32 passes. Guns' missiles: 1 px every
+' 60 - 2 x level passes; the guns themselves move every 8th of those.
+' Drawing maps C64 cell (c, r) to x = 8c + 8, y = 40 + 6(r - 1): columns
+' 1:1, rows squeezed 3/4 so the 23-row field fits rows 5-22 under the HUD.
+'
+' House rules: menu by joystick (START / HOW TO PLAY / CREDITS), one press
+' to start, game over -> one press -> title; safe area cols 2-29, rows 1-22;
+' nothing flashes faster than 3 Hz; music quieter than the effects.
+
+const TLaneL5 = 128
+const TLaneL6 = 129
+const TLaneL7 = 130
+const TLaneL8 = 131
+const TLaneL9 = 132
+const TLaneL10 = 133
+const TLaneL11 = 134
+const TLaneL12 = 135
+const TLaneL13 = 136
+const TLaneL14 = 137
+const TLaneL15 = 138
+const TLaneL16 = 139
+const TLaneL17 = 140
+const TLaneL18 = 141
+const TLaneL19 = 142
+const TLaneL20 = 143
+const TLaneL21 = 144
+const TLaneL22 = 145
+const TLaneR5 = 146
+const TLaneR6 = 147
+const TLaneR7 = 148
+const TLaneR8 = 149
+const TLaneR9 = 150
+const TLaneR10 = 151
+const TLaneR11 = 152
+const TLaneR12 = 153
+const TLaneR13 = 154
+const TLaneR14 = 155
+const TLaneR15 = 156
+const TLaneR16 = 157
+const TLaneR17 = 158
+const TLaneR18 = 159
+const TLaneR19 = 160
+const TLaneR20 = 161
+const TLaneR21 = 162
+const TLaneR22 = 163
+const TDot = 176
+const TShipicon = 182
+const SShipup = 0
+const SShipright = 4
+const SShipdown = 8
+const SShipleft = 12
+const SMis1 = 16
+const SMis2 = 20
+const NTiles8 = 440
+const SprBytes = 192
+const TCross = 170
+const NField = 54
+const TLaneL = 128
+const TLaneR = 146
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndHum0 = 6
+const SndHum1 = 7
+const SndHum2 = 8
+const SndHum3 = 9
+const SndHum4 = 10
+const SndHum5 = 11
+const SndHum6 = 12
+const SndHum7 = 13
+const SndDot = 14
+const SndBoom = 15
+const SndLevelUp = 16
+const SndOver = 17
+const TuneFrames = 448
+const TxtHow1 = 0
+const TxtHow2 = 1
+const TxtHow3 = 2
+const TxtCredits = 3
+const TBar = 144
+const LogoGridW = 15
+const LogoRunW = 11
+const NSpr = 5
+const HideY = 208 - 16
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StReady = 5
+const StDone = 6
+const StLost = 7
+const StOver = 9
+' passes of the original's main loop per frame (README: 46.7 measured)
+const NPass = 47
+' events ending a pass loop
+const EvNone = 0
+const EvLost = 1
+const EvDone = 2
+
+' --- the original's variables (C64 address in brackets)
+u8 PX = 0          ' ship sprite X ($0FD5)
+u8 PY = 0          ' ship sprite Y ($0FD0)
+u8 PDir = 0        ' 0 up 1 right 2 down 3 left ($0FE6)
+u8 DeathT = 0      ' explosion countdown ($0FE7)
+u8 Got = 0         ' dots taken this level ($0FE8)
+u8 C03 = 0         ' pass counter ($03)
+u8 CFB = 0         ' gun timer ($FB)
+u8 C04 = 0         ' gun move divider ($04)
+u8 Level = 1       ' ($0FCE)
+u8 Ships = 3       ' ($0FCF)
+u8 ShipPtr = 0     ' ship picture: direction 0-3 ($07F8 - $FA)
+u8 CrR[4]          ' gun cell row ($0FDA)
+u8 CrC[4]          ' gun cell column ($0FDE)
+u8 CrD[4]          ' gun direction ($0FE2)
+u8 MY[4]           ' missile Y, 0 = none ($0FD1)
+u8 MX[4]           ' missile X ($0FD6)
+u8 Sc[6]           ' score digits ($05D7)
+u8 Hi[6]           ' high score digits ($073F)
+u8 Perm[11]        ' dot column shuffle ($0FC3), kept from level to level
+u8 DotMap[55]      ' 5 dot rows x 11 columns: 1 = dot still there
+u8 Latch = 0       ' sprite collision latch ($D01E bit 0)
+u8 Ev = 0
+u8 GCol = 8
+u8 HumIx = 255
+u8 HudDirty = 0
+u16 Rs = 1
+u8 RsH = 1
+u8 RsL = 1
+u8 Rt = 0
+u8 Ru = 0
+u8 ColPh = 0
+u8 ColT = 0
+u16 W16 = 0
+u16 A16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (each loop that calls subs has its own)
+u8 Pc = 0
+u8 Ci = 0
+u8 Li = 0
+u8 Ri = 0
+u8 Di = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 R = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Sr = 0
+u8 Mr = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Ys = 0
+u8 Ty = 0
+u8 Side = 0
+u8 Rr = 0
+u8 Lit = 0
+u8 Gi = 0
+u8 Fl = 0
+u8 Nr = 0
+u8 Nc = 0
+u8 GCol16 = 0
+u8 DrR[4]
+u8 PatBuf[6]
+u8 HudBuf[6]
+u8 GunsDirty = 0
+u8 DrC[4]
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+' the original's tables
+data DirY bytes $FF,$00,$01,$00
+data DirX bytes $00,$01,$00,$FF
+data JoyMask bytes 1,8,2,4
+data GunDY bytes 1,$FF,0,0
+data GunDX bytes 0,0,1,$FF
+data GunR0 bytes 1,23,17,7
+data GunC0 bytes 7,21,1,27
+data LevCol bytes 5,6,13,2,14,10,9,4
+' the original's 8x8 sprite shapes (collisions are pixel-exact on these)
+data ShipShp bytes $00,$18,$18,$7E,$FF,$DB,$C3,$00, $00,$F0,$38,$7F,$7F,$38,$F0,$00, $00,$C3,$DB,$FF,$7E,$18,$18,$00, $00,$0F,$1C,$FE,$FE,$1C,$0F,$00
+data MisShp bytes $3C,$3C,$C3,$DB,$DB,$C3,$3C,$3C, $42,$E7,$66,$18,$18,$66,$E7,$42
+data MisPal bytes 9,11,7,13
+data PermInit bytes 4,6,8,10,12,14,16,18,20,22,24
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  for Li = 0 to 10
+    Perm[Li] = PermInit[Li]
+  next
+  for Li = 0 to 5
+    Hi[Li] = 0
+  next
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+life:
+  StartLevel
+  WaitStick
+play_loop:
+  Frame1
+  ReadPad
+  ' NPass passes of the original's loop; the quiet passes in between events
+  ' only count, so they are counted in one go (same result, less work)
+  Ev = EvNone
+  Pc = NPass
+pl_pass:
+  T = C03 & 31
+  K = 32 - T
+  V = 60 - CFB
+  if V < K then K = V
+  if Pc < K then K = Pc
+  Pc -= K
+  dec K
+  C03 += K
+  CFB += K
+  Pass
+  if Ev <> EvNone then goto pl_out
+  if Pc > 0 then goto pl_pass
+pl_out:
+  if Ev = EvDone then
+    LevelDone
+    goto life
+  end if
+  if Ev = EvLost then
+    State = StLost
+    if Ships > 0 then goto life
+    GameOver
+    State = StOver
+    Rearm
+    wait 30 frames
+    nmi on
+    pause until press and release sleep after 30 seconds
+    nmi off
+    goto title
+  end if
+  Collide
+  DrawSprites
+  ' a dot's numbers first; guns that moved in the same frame are drawn on
+  ' the next one (both in one frame would overrun it)
+  if HudDirty > 0 then
+    ShowNums
+  else
+    if GunsDirty > 0 then FlushGuns
+  end if
+  goto play_loop
+
+' ---------------------------------------------------------------------------
+' the rules: one pass of the original's main loop ($08EB-$0988)
+
+sub Pass:
+  inc C03
+  T = C03 & 31
+  if T = 0 then
+    if DeathT = 0 then
+      if Latch = 0 then
+        PlayerStep
+        ' motor hum: pitch (pass counter / 32) + 2, a new step every 256 passes
+        T = C03 >> 5
+        if T <> HumIx then
+          HumIx = T
+          PlayHum
+        end if
+      else
+        ' hit: the explosion starts ($8C steps of 32 passes)
+        Latch = 0
+        DeathT = 140
+        HumIx = 255
+        play sound SndBoom
+        Spin
+      end if
+    else
+      Spin
+    end if
+    if Ev <> EvNone then return
+  end if
+  inc CFB
+  if CFB >= 60 then
+    CFB = Level << 1
+    GunsMove
+    Missiles
+  end if
+  if Got >= 25 then Ev = EvDone
+  return
+end sub
+
+' the explosion: the ship spins; at 0 the ship is lost
+sub Spin:
+  T = DeathT >> 1
+  ShipPtr = T & 3
+  dec DeathT
+  if DeathT = 0 then
+    if Ships > 0 then dec Ships
+    Ev = EvLost
+  end if
+  return
+end sub
+
+' $09F1: at a crossing take the dot and read the stick; then one pixel on
+sub PlayerStep:
+  T = PX - $28
+  T = T & 15
+  V = PY - $42
+  V = V & 15
+  if T = 0 then
+    if V = 0 then
+      EatDot
+      ' the stick: directions 3 down to 0, the current one skipped
+      R = 3
+ps_dir:
+      if R <> PDir then
+        K = JoyMask[R]
+        K = K & Jk
+        if K <> 0 then
+          PDir = R
+          goto ps_move
+        end if
+      end if
+      if R = 0 then goto ps_move
+      dec R
+      goto ps_dir
+    end if
+  end if
+ps_move:
+  Nx = DirX[PDir]
+  Nx += PX
+  if Nx >= $28 then
+    if Nx < $E9 then
+      Ny = DirY[PDir]
+      Ny += PY
+      if Ny >= $42 then
+        if Ny < $E3 then
+          PX = Nx
+          PY = Ny
+        end if
+      end if
+    end if
+  end if
+  ShipPtr = PDir
+  return
+end sub
+
+' $0A54: a dot under the ship (cell rows 4, 8 .. 20, columns 4, 6 .. 24)
+sub EatDot:
+  Rr = PY - $32
+  Rr = Rr >> 3
+  C = PX - $18
+  C = C >> 3
+  T = Rr & 3
+  if T <> 0 then return
+  if Rr < 4 then return
+  if Rr > 20 then return
+  if C < 4 then return
+  if C > 24 then return
+  Di = Rr >> 2
+  Di -= 1
+  Di = Di * 11
+  T = C >> 1
+  Di += T
+  Di -= 2
+  if DotMap[Di] = 0 then return
+  DotMap[Di] = 0
+  ' the screen: the crossing again (tile row of cell row Rr)
+  Ty = Rr * 6
+  Ty += 34
+  Ty = Ty >> 3
+  C += 1
+  put char TCross at C,Ty
+  AddScore
+  play sound SndDot
+  inc Got
+  HudDirty = 1
+  return
+end sub
+
+' $0BAF: level x 10 points (the tens digit, level times); a ship each time
+' the thousands digit turns to 0 or 5; the high score follows
+sub AddScore:
+  V = Sc[2]
+  ' + level on the tens digit, carries rippling up (same sum as the
+  ' original's level single steps; past 999999 it wraps the same way)
+  K = Level
+  for Ri = 0 to 4
+    J = 4 - Ri
+    T = Sc[J] + K
+    K = 0
+as_carry:
+    if T >= 10 then
+      T -= 10
+      inc K
+      goto as_carry
+    end if
+    Sc[J] = T
+    if K = 0 then exit for
+  next
+  T = Sc[2]
+  if T <> V then
+    if T = 0 then GainShip
+    if T = 5 then GainShip
+  end if
+  ' high score: digit by digit
+  for Li = 0 to 5
+    if Sc[Li] < Hi[Li] then return
+    if Sc[Li] > Hi[Li] then
+      for Ri = 0 to 5
+        Hi[Ri] = Sc[Ri]
+      next
+      return
+    end if
+  next
+  return
+end sub
+
+sub GainShip:
+  if Ships < 99 then inc Ships
+  return
+end sub
+
+' $0AAF: every 8th tick the four guns crawl along their lanes
+sub GunsMove:
+  inc C04
+  T = C04 & 7
+  if T <> 0 then return
+  for Ci = 0 to 3
+    Gi = 3 - Ci
+    T = RandBelow(16)
+    if T = 0 then
+      CrD[Gi] = RandBelow(4)
+    else
+      K = CrD[Gi]
+      Ny = DirY[K]
+      Ny += CrR[Gi]
+      Nx = DirX[K]
+      Nx += CrC[Gi]
+      if OnLane(Gi) = 1 then
+        CrR[Gi] = Ny
+        CrC[Gi] = Nx
+        GunsDirty = 1
+      else
+        CrD[Gi] = RandBelow(4)
+      end if
+    end if
+  next
+  return
+end sub
+
+' is (Ny, Nx) on gun G's lane? top row 1 / bottom row 23 (columns 2-26),
+' left column 1 / right column 27 (rows 2-22)
+function OnLane(u8 G) as u8
+  u8 Ok = 0
+  if G < 2 then
+    Ok = 1
+    if G = 0 then
+      if Ny <> 1 then Ok = 0
+    else
+      if Ny <> 23 then Ok = 0
+    end if
+    if Nx < 2 then Ok = 0
+    if Nx > 26 then Ok = 0
+  else
+    Ok = 1
+    if G = 2 then
+      if Nx <> 1 then Ok = 0
+    else
+      if Nx <> 27 then Ok = 0
+    end if
+    if Ny < 2 then Ok = 0
+    if Ny > 22 then Ok = 0
+  end if
+  return Ok
+
+' $0B1D: a gun with no missile fires when the ship's cell (both even) shares
+' its row or column; missiles fly 1 px a tick and vanish off the field
+sub Missiles:
+  Rr = PY - $32
+  Rr = Rr >> 3
+  C = PX - $18
+  C = C >> 3
+  for Ci = 0 to 3
+    K = 3 - Ci
+    if MY[K] = 0 then
+      T = Rr | C
+      T = T & 1
+      if T = 0 then
+        Lit = 0
+        if Rr = CrR[K] then Lit = 1
+        if C = CrC[K] then Lit = 1
+        if Lit = 1 then
+          T = CrR[K] << 3
+          MY[K] = T + $32
+          T = CrC[K] << 3
+          MX[K] = T + $18
+        end if
+      end if
+    end if
+    if MY[K] <> 0 then
+      Ny = MY[K] + GunDY[K]
+      Nx = MX[K] + GunDX[K]
+      Lit = 1
+      if Ny < $38 then Lit = 0
+      if Ny >= $EC then Lit = 0
+      if Nx < $1E then Lit = 0
+      if Nx >= $F2 then Lit = 0
+      if Lit = 1 then
+        MY[K] = Ny
+        MX[K] = Nx
+      else
+        MY[K] = 0
+        MX[K] = 0
+      end if
+    end if
+  next
+  return
+end sub
+
+' the sprite collision as the VIC-II sees it on the displayed frame: the
+' ship's 8x8 shape against each missile's (shape of this frame's pointer)
+sub Collide:
+  if DeathT > 0 then return
+  K = C03 >> 4
+  K = K & 1
+  K = K << 3
+  J = PDir << 3
+  for Ci = 0 to 3
+    if MY[Ci] <> 0 then
+      Dy = MY[Ci] - PY
+      Dx = MX[Ci] - PX
+      V = Dy + 7
+      T = Dx + 7
+      if V < 15 then
+        if T < 15 then
+          for Ri = 0 to 7
+            ' ship row Ri meets missile row Ri - Dy
+            Mr = Ri - Dy
+            if Mr < 8 then
+              Sr = ShipShp[J + Ri]
+              Mr = MisShp[K + Mr]
+              if Dx < 8 then
+                Mr = Mr >> Dx
+              else
+                Dx = 0 - Dx
+                Mr = Mr << Dx
+                Dx = 0 - Dx
+              end if
+              Sr = Sr & Mr
+              if Sr <> 0 then Latch = 1
+            end if
+          next
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' a new game: score 0, level 1, three ships ($088D)
+sub NewGame:
+  for Li = 0 to 5
+    Sc[Li] = 0
+  next
+  Level = 1
+  Ships = 3
+  return
+end sub
+
+' $08A6: the level (again): everything cleared, new dots, guns home
+sub StartLevel:
+  for Li = 0 to 3
+    MY[Li] = 0
+    MX[Li] = 0
+    CrR[Li] = GunR0[Li]
+    CrC[Li] = GunC0[Li]
+  next
+  PDir = 0
+  DeathT = 0
+  Got = 0
+  Latch = 0
+  HumIx = 255
+  PX = $88
+  PY = $E2
+  ShipPtr = 0
+  DrawPlay
+  ' the guns' first directions
+  for Li = 0 to 3
+    CrD[Li] = RandBelow(4)
+  next
+  DrawSprites
+  return
+end sub
+
+' the original waits for a stick direction before each life
+sub WaitStick:
+  State = StReady
+  print at 13,3, "READY"
+ws_loop:
+  Frame1
+  Rand
+  ReadPad
+  if Jk = 0 then goto ws_loop
+  print at 13,3, "     "
+  State = StPlay
+  return
+end sub
+
+sub LevelDone:
+  State = StDone
+  ShowHud
+  mute all
+  HideSprites
+  MsgBox
+  print at 8,13, "LEVEL COMPLETED"
+  play sound SndLevelUp
+  for Li = 0 to 199
+    Frame1
+  next
+  if Level < 20 then inc Level
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' random numbers: 16-bit xorshift, stepped every title / ready frame
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random number 0 .. M - 1 for M a power of two (the SID's noise byte
+' masked, like the original)
+function RandBelow(u8 M) as u8
+  u8 Rv = 0
+  RandB
+  Rv = RsL
+  M -= 1
+  Rv = Rv & M
+  return Rv
+
+' xorshift16 (7, 9, 8) in byte operations (cheap enough for the play loop)
+sub RandB:
+  Rt = RsH & 1
+  Rt = Rt << 7
+  Ru = RsL >> 1
+  Rt = Rt | Ru
+  Ru = RsL & 1
+  Ru = Ru << 7
+  RsH = RsH ^ Rt
+  RsL = RsL ^ Ru
+  Rt = RsH >> 1
+  RsL = RsL ^ Rt
+  RsH = RsH ^ RsL
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub PlayHum:
+  if HumIx = 0 then play sound SndHum0
+  if HumIx = 1 then play sound SndHum1
+  if HumIx = 2 then play sound SndHum2
+  if HumIx = 3 then play sound SndHum3
+  if HumIx = 4 then play sound SndHum4
+  if HumIx = 5 then play sound SndHum5
+  if HumIx = 6 then play sound SndHum6
+  if HumIx = 7 then play sound SndHum7
+  return
+end sub
+
+' a gun on (Lit = 1) or off its lane cell
+sub DrawGun:
+  Rr = CrR[Side]
+  C = CrC[Side]
+  if Side = 0 then
+    T = C + 1
+    if Lit = 1 then
+      put char TopCr[C] at T,5
+    else
+      put char TopBase[C] at T,5
+    end if
+    return
+  end if
+  if Side = 1 then
+    T = C + 1
+    if Lit = 1 then
+      put char BotCr[C] at T,21
+      put char BotCr2[C] at T,22
+    else
+      put char BotBase[C] at T,21
+      put char BotBase2[C] at T,22
+    end if
+    return
+  end if
+  ' side lanes: the lane column's own tiles (numbered down the column, so
+  ' pixel row y is byte y - 40 of both tables)
+  Ys = Rr * 6
+  Ys += 34
+  V = Ys - 40
+  if Side = 2 then
+    copy LaneLPat + V count 6 to PatBuf
+    A16 = TLaneL * 8
+  else
+    copy LaneRPat + V count 6 to PatBuf
+    A16 = TLaneR * 8
+  end if
+  A16 += V
+  J = GCol16 | 1
+  if Lit = 1 then
+    J = $F1
+    for Ri = 0 to 5
+      if Side = 2 then
+        K = CrLeftRows[Ri]
+      else
+        K = CrRightRows[Ri]
+      end if
+      PatBuf[Ri] = PatBuf[Ri] | K
+    next
+  end if
+  fill J count 6 to vram.color + A16
+  ' the pattern bytes: one copy, split where a screen third begins
+  K = 6
+  if Ys < 64 then
+    T = 64 - Ys
+    if T < 6 then K = T
+  else
+    if Ys < 128 then
+      A16 += 2048
+      T = 128 - Ys
+      if T < 6 then K = T
+    else
+      A16 += 4096
+    end if
+  end if
+  copy PatBuf count K to vram.pattern + A16
+  if K < 6 then
+    T = 6 - K
+    A16 += K
+    A16 += 2048
+    copy PatBuf + K count T to vram.pattern + A16
+  end if
+  return
+end sub
+
+' guns drawn after the passes (the screen shows where they are at the
+' frame's end), old cell erased
+sub FlushGuns:
+  GunsDirty = 0
+  for Ci = 0 to 3
+    if Ci < 4 then
+      V = 0
+      if DrR[Ci] <> CrR[Ci] then V = 1
+      if DrC[Ci] <> CrC[Ci] then V = 1
+      if V = 1 then
+        Side = Ci
+        Nr = CrR[Ci]
+        Nc = CrC[Ci]
+        CrR[Ci] = DrR[Ci]
+        CrC[Ci] = DrC[Ci]
+        Lit = 0
+        DrawGun
+        CrR[Ci] = Nr
+        CrC[Ci] = Nc
+        DrR[Ci] = Nr
+        DrC[Ci] = Nc
+        Lit = 1
+        DrawGun
+      end if
+    end if
+  next
+  return
+end sub
+
+sub DrawSprites:
+  ' the ship: x = X - 16, top = 40 + (Y - $3A) x 3/4
+  T = PY - $3A
+  V = T + 3
+  V = V >> 2
+  V = T - V
+  V += 39
+  T = PX - 16
+  C = ShipPtr << 2
+  set sprite 0 to V,T,C,15
+  ' missile colours turn every 20 frames
+  inc ColT
+  if ColT >= 20 then
+    ColT = 0
+    inc ColPh
+  end if
+  K = ColPh
+  for Li = 0 to 3
+    C = Li + 1
+    ' a missile past the frame (C64 rows/columns 0) is not drawn
+    V = 0
+    if MY[Li] < $3A then V = 1
+    if MX[Li] < $20 then V = 1
+    if V = 1 then
+      set sprite C to HideY,0,SMis1,0
+    else
+      T = MY[Li] - $3A
+      V = T + 3
+      V = V >> 2
+      V = T - V
+      V += 39
+      T = MX[Li] - 16
+      J = K + Li
+      J = J & 3
+      J = MisPal[J]
+      R = Tick >> 3
+      R = R & 1
+      R = R << 2
+      R += SMis1
+      set sprite C to V,T,R,J
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "SCORE"
+  print at 18,1, "HIGH"
+  print at 2,3, "LEVEL"
+  print at 21,3, "SHIPS"
+  NumU = Level
+  print at 8,3, digits$(NumU, 2)
+  ShowNums
+  return
+end sub
+
+' the numbers that change in play: score, high score, ships
+sub ShowNums:
+  HudDirty = 0
+  for Li = 0 to 5
+    HudBuf[Li] = Sc[Li] + 48
+  next
+  copy HudBuf count 6 to vram.name + 40
+  for Li = 0 to 5
+    HudBuf[Li] = Hi[Li] + 48
+  next
+  copy HudBuf count 6 to vram.name + 55
+  NumU = Ships
+  print at 27,3, digits$(NumU, 2)
+  return
+end sub
+
+' the grid's colour for this level (ink 0 in the art = grid colour)
+sub GridPaint:
+  T = Level & 7
+  GCol = LevCol[T]
+  J = GCol << 4
+  GCol16 = J
+  for W16 = 0 to NTiles8 - 1
+    V = TileColRaw[W16]
+    if V < 16 then V = V | J
+    vpoke vram.color + 1024 + W16, V
+  next
+  return
+end sub
+
+' $0CA6: the grid, then 5 dots in each of the rows 4, 8 .. 20: the column
+' table is shuffled (11 swaps with random places 0-7) and its first 5 used
+sub DrawField:
+  for Ri = 0 to 17
+    W16 = Ri * 27
+    A16 = Ri + 5
+    A16 = A16 << 5
+    A16 += 2
+    copy FieldNames + W16 count 27 to vram.name + A16
+  next
+  for Li = 0 to 54
+    DotMap[Li] = 0
+  next
+  for Ri = 0 to 4
+    for Li = 0 to 10
+      J = 10 - Li
+      K = RandBelow(8)
+      T = Perm[J]
+      Perm[J] = Perm[K]
+      Perm[K] = T
+    next
+    ' dot row Ri: cell row 4 + 4 Ri = tile row 7 + 3 Ri
+    Ty = Ri * 3
+    Ty += 7
+    for Li = 0 to 4
+      J = 4 - Li
+      C = Perm[J]
+      T = C >> 1
+      T -= 2
+      V = Ri * 11
+      V += T
+      DotMap[V] = 1
+      C += 1
+      put char TDot at C,Ty
+    next
+  next
+  for Li = 0 to 3
+    Side = Li
+    Lit = 1
+    DrawGun
+    DrR[Li] = CrR[Li]
+    DrC[Li] = CrC[Li]
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  GridPaint
+  DrawField
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' a blank box over the field's middle (rows 11-15) for a message
+sub MsgBox:
+  for Ri = 11 to 15
+    fill 32 count 21 at 5,Ri
+  next
+  return
+end sub
+
+sub GameOver:
+  HideSprites
+  ShowHud
+  MsgBox
+  print at 11,12, "GAME OVER"
+  print at 8,14, "PRESS THE BUTTON"
+  play sound SndOver
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 4
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, the
+' field tiles into the three thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the block logo, menu (cursor back on START), the tune once
+sub TitlePage:
+  NewScreen
+  decompress zx0 TitlePatZ to vram.pattern + 1024
+  decompress zx0 TitleColZ to vram.color + 1024
+  decompress zx0 TitlePatZ to vram.pattern + 3072
+  for Ri = 0 to 3
+    W16 = Ri * LogoGridW
+    A16 = Ri + 2
+    A16 = A16 << 5
+    A16 += 9
+    copy LogoGrid + W16 count LogoGridW to vram.name + A16
+    W16 = Ri * LogoRunW
+    A16 = Ri + 7
+    A16 = A16 << 5
+    A16 += 11
+    copy LogoRun + W16 count LogoRunW to vram.name + A16
+  next
+  fill TBar count 20 at 6,11
+  print at 11,13, "START"
+  print at 11,15, "HOW TO PLAY"
+  print at 11,17, "CREDITS"
+  print at 4,20, "C64 ORIGINAL: RERUN 1990"
+  Menu = 0
+  ShowMenu
+  ' the ship running along the bar toward a missile
+  set sprite 0 to 85,40,SShipright,15
+  set sprite 1 to 85,208,SMis2,9
+  update sprites
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  RsH = Rs >> 8
+  RsL = Rs
+  if RsL = 0 then RsL = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,15
+  put char 32 at 9,17
+  C = Menu << 1
+  C += 13
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 12,2, "GRID RUN"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 5
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages, pictures made of the game's own tiles/sprites
+sub HowTo:
+  Page = 1
+  NewScreen
+  T = 1
+  Level = 1
+  GridPaint
+  print at 8,1, "HOW TO PLAY  1/3"
+  ' a piece of the grid with dots and the ship
+  for Ri = 0 to 3
+    W16 = Ri + 1
+    W16 = W16 * 27
+    W16 += 6
+    A16 = Ri + 4
+    A16 = A16 << 5
+    A16 += 11
+    copy FieldNames + W16 count 9 to vram.name + A16
+  next
+  put char TDot at 12,5
+  put char TDot at 18,5
+  set sprite 0 to 41,112,SShipright,15
+  update sprites
+  TxT = TxtHow1
+  TxX0 = 2
+  TxY = 9
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    GridPaint
+    print at 8,1, "HOW TO PLAY  2/3"
+    ' the top lane with a gun, and its missile coming down a column
+    for Ri = 0 to 3
+      W16 = Ri * 27
+      W16 += 6
+      A16 = Ri + 4
+      A16 = A16 << 5
+      A16 += 11
+      copy FieldNames + W16 count 9 to vram.name + A16
+    next
+    put char TopCr[10] at 14,4
+    set sprite 1 to 51,112,SMis1,9
+    update sprites
+    TxT = TxtHow2
+    TxX0 = 2
+    TxY = 9
+    TxGap = 2
+    TextShow
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    put char TDot at 6,4
+    print at 8,4, "LEVEL X 10 POINTS"
+    put char TShipicon at 6,6
+    print at 8,6, "A SHIP EVERY 5000"
+    TxT = TxtHow3
+    TxX0 = 2
+    TxY = 9
+    TxGap = 2
+    TextShow
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $A8,$FF,$C0,$01,$1A,$FF,$A1,$00,$AA,$FF,$03,$00,$47,$61,$E0,$FE,$F9,$FE,$A8,$1F,$18,$6A,$FF,$86
+  $18,$A8,$F8,$18,$1F,$C8,$F7,$A8,$95,$B8,$FD,$CD,$70,$E7,$F0,$FE,$C9,$F4,$A0,$28,$3C,$AE,$3C,$F9
+  $3F,$7E,$3C,$F5,$C0,$EE,$D8,$ED,$E5,$7E,$00,$FF,$E0,$A1,$98,$D0,$8A,$24,$C3,$24,$75,$55,$58
+end data
+data TileColZ bytes
+  $90,$01,$00,$68,$B1,$68,$F1,$79,$DC,$E5,$E8,$F7,$E0,$82,$D0,$09,$1F,$0F,$0F,$1F,$D5,$55,$60
+end data
+data SpritePatZ bytes
+  $59,$18,$3C,$7E,$FF,$DB,$81,$00,$06,$69,$F0,$7E,$3F,$90,$7E,$F0,$00,$64,$F0,$81,$DB,$FF,$7E,$3C
+  $18,$80,$6A,$0F,$2A,$FC,$FC,$0F,$44,$A8,$3C,$24,$BD,$BD,$DB,$3C,$49,$24,$42,$E7,$3C,$3C,$E7,$42
+  $4D,$55,$56
+end data
+data TitlePatZ bytes
+  $96,$00,$9E,$F0,$F0,$0F,$FE,$4A,$F0,$57,$D3,$A8,$D5,$C0,$F5,$40,$63,$FF,$FF,$B5,$F6,$55,$58
+end data
+data TitleColZ bytes
+  $96,$01,$9A,$51,$01,$69,$15,$A6,$01,$9E,$05,$C8,$5F,$FE,$7F,$C0,$FF,$F0,$C0,$97,$98,$DF,$C8,$FE
+  $7F,$C0,$97,$68,$DF,$98,$C8,$7D,$FE,$F7,$50,$55,$55,$80
+end data
+
+data FieldNames bytes
+  $80,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$92
+  $81,$A5,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A7,$93
+  $82,$A8,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AB,$94
+  $83,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$95
+  $84,$A5,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A7,$96
+  $85,$A8,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AB,$97
+  $86,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$98
+  $87,$A5,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A7,$99
+  $88,$A8,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AB,$9A
+  $89,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$9B
+  $8A,$A5,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A7,$9C
+  $8B,$A8,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AB,$9D
+  $8C,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$9E
+  $8D,$A5,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A6,$A4,$A7,$9F
+  $8E,$A8,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AA,$A9,$AB,$A0
+  $8F,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$AD,$AC,$A1
+  $90,$AE,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$AF,$A2
+  $91,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A3
+end data
+data LaneLPat bytes
+  $FF,$FF,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+  $FF,$FF,$00,$00,$00,$00,$00,$00
+end data
+data LaneRPat bytes
+  $FF,$FF,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03
+  $FF,$FF,$00,$00,$00,$00,$00,$00
+end data
+data TopCr bytes $00,$00,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+data BotCr bytes $00,$00,$B2,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4,$B5
+data BotCr2 bytes $00,$00,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3,$B3
+data BotBase bytes $00,$00,$AE,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$AF
+data BotBase2 bytes $00,$00,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4
+data TopBase bytes $00,$00,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4,$A4
+data CrLeftRows bytes $F8,$FC,$FF,$FF,$FC,$F8
+data CrRightRows bytes $1F,$3F,$FF,$FF,$3F,$1F
+data TileColRaw bytes
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$01,$01,$01,$01
+  $01,$01,$B1,$B1,$B1,$B1,$B1,$B1
+  $F1,$F1,$F1,$F1,$F1,$F1,$01,$01
+  $01,$01,$01,$01,$F1,$F1,$F1,$F1
+  $F1,$F1,$01,$01,$01,$01,$01,$01
+  $01,$01,$01,$01,$F1,$F1,$F1,$F1
+  $01,$01,$01,$01,$F1,$F1,$F1,$F1
+  $F1,$1F,$0F,$0F,$1F,$01,$01,$01
+end data
+
+data LogoGrid bytes $8E,$83,$8D,$80,$8F,$83,$8D,$80,$83,$8F,$83,$80,$8F,$8B,$84,$8F,$88,$8C,$80,$8F,$8C,$87,$80,$80,$8F,$80,$80,$8F,$80,$8F,$8F,$80,$8F,$80,$8F,$8B,$84,$80,$80,$8F,$80,$80,$8F,$88,$87,$82,$83,$81,$80,$83,$80,$83,$80,$83,$83,$83,$80,$83,$83,$80
+data LogoRun bytes $8F,$83,$8D,$80,$8F,$80,$8F,$80,$8F,$84,$8F,$8F,$8C,$87,$80,$8F,$80,$8F,$80,$8F,$8B,$8F,$8F,$8B,$84,$80,$8F,$80,$8F,$80,$8F,$80,$8F,$83,$80,$83,$80,$82,$83,$81,$80,$83,$80,$83
+
+data TxD_0 bytes
+  $03,$54,$48,$45,$01,$41,$03,$41,$4D,$59,$05,$4C,$45,$56,$45,$4C,$02,$54,$4F,$03,$41,$4E,$44,$02
+  $42,$59,$04,$45,$41,$43,$48,$04,$47,$55,$4E,$53,$02,$49,$4E,$04,$53,$48,$49,$50,$0C,$28,$41,$4E
+  $54,$48,$52,$4F,$50,$49,$43,$29,$2C,$05,$31,$39,$39,$30,$2E,$03,$32,$30,$2E,$05,$32,$30,$32,$36
+  $2E,$02,$32,$35
+end data
+data TxD_1 bytes
+  $05,$41,$47,$41,$49,$4E,$03,$41,$4C,$4C,$05,$41,$4C,$4F,$4E,$47,$03,$41,$52,$45,$02,$41,$54,$07
+  $41,$55,$54,$48,$4F,$52,$2E,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$03,$43,$36,$34,$06,$43,$4C
+  $41,$55,$44,$45,$05,$43,$4C,$45,$41,$52,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$07
+  $43,$4F,$4C,$55,$4D,$4E,$2E,$05,$43,$4F,$53,$54,$53,$05,$43,$52,$41,$57,$4C,$09,$43,$52,$4F,$53
+  $53,$49,$4E,$47,$2E,$04,$44,$49,$53,$4B
+end data
+data TxD_2 bytes
+  $04,$44,$4F,$54,$53,$05,$44,$4F,$54,$53,$2E,$07,$46,$41,$53,$54,$45,$52,$2C,$05,$46,$49,$52,$45
+  $53,$04,$46,$4F,$55,$52,$06,$46,$52,$41,$4D,$45,$2E,$05,$47,$52,$49,$44,$2E,$03,$47,$55,$4E,$03
+  $48,$49,$54,$02,$49,$54,$03,$49,$54,$53,$06,$4C,$45,$56,$45,$4C,$2E,$05,$4D,$41,$4B,$45,$53,$05
+  $4E,$41,$4D,$45,$53,$05,$4E,$45,$56,$45,$52,$03,$4E,$45,$57
+end data
+data TxD_3 bytes
+  $02,$4E,$4F,$07,$4E,$4F,$56,$2F,$44,$45,$43,$02,$4F,$4E,$04,$4F,$4E,$4C,$59,$02,$4F,$52,$09,$4F
+  $52,$49,$47,$49,$4E,$41,$4C,$3A,$04,$50,$4F,$52,$54,$04,$50,$55,$53,$48,$05,$52,$45,$52,$55,$4E
+  $03,$52,$4F,$57,$05,$53,$48,$49,$50,$2E,$06,$53,$48,$49,$50,$53,$2E,$05,$53,$54,$41,$52,$54,$06
+  $53,$54,$41,$52,$54,$53,$05,$53,$54,$45,$45,$52,$05,$53,$54,$49,$43,$4B
+end data
+data TxD_4 bytes
+  $05,$53,$54,$4F,$50,$53,$04,$54,$41,$4B,$45,$05,$54,$48,$52,$45,$45,$05,$54,$55,$52,$4E,$53,$02
+  $55,$50,$04,$57,$48,$45,$4E,$04,$57,$49,$54,$48,$03,$59,$4F,$55,$04,$59,$4F,$55,$52
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3, @TxD_4
+end data
+data TxM_How1 bytes
+  $3E,$48,$0A,$12,$00,$FE,$26,$29,$2E,$40,$05,$FE,$43,$33,$14,$01,$1E,$FE,$41,$11,$0F,$20,$04,$19
+  $FE,$00,$2B,$FF
+end data
+data TxM_How2 bytes
+  $24,$08,$1D,$32,$00,$FE,$25,$01,$27,$23,$45,$FE,$47,$13,$09,$2A,$39,$34,$FE,$1B,$01,$28,$1C,$01
+  $0A,$FE,$05,$00,$03,$3D,$10,$FE,$46,$2F,$21,$FF
+end data
+data TxM_How3 bytes
+  $42,$3B,$07,$03,$FE,$2C,$00,$08,$22,$44,$FE,$04,$03,$0D,$FE,$37,$00,$3F,$04,$3C,$FE,$07,$3A,$FF
+end data
+data TxM_Credits bytes
+  $17,$35,$38,$FE,$31,$0C,$00,$1F,$FE,$2D,$30,$15,$FE,$1A,$36,$09,$02,$FE,$06,$18,$0B,$FE,$02,$06
+  $02,$16,$0E,$FF
+end data
+data TxMsg words
+  @TxM_How1, @TxM_How2, @TxM_How3, @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $80,$40,$30,$01,$90
+ScHum0:
+    db $40,$80,$A3,$08,$50
+ScHum1:
+    db $40,$56,$A2,$08,$50
+ScHum2:
+    db $40,$C0,$A1,$08,$50
+ScHum3:
+    db $40,$67,$A1,$08,$50
+ScHum4:
+    db $40,$2B,$A1,$08,$50
+ScHum5:
+    db $40,$00,$A1,$08,$50
+ScHum6:
+    db $40,$E0,$A0,$08,$50
+ScHum7:
+    db $40,$C7,$A0,$08,$50
+ScDot:
+    db $80,$B3,$10,$01,$80,$B3,$30,$03,$80,$B3,$60,$04,$80,$B3,$A0,$04,$90
+ScBoom:
+    db $00,$00,$14,$0C,$00,$00,$35,$14,$00,$00,$66,$1E,$00,$00,$A6,$22,$10
+ScLevelUp:
+    db $40,$70,$21,$02,$40,$70,$51,$0C,$40,$70,$21,$02,$40,$70,$51,$0C,$40,$24,$21,$02,$40,$24,$51,$12
+    db $40,$70,$21,$02,$40,$70,$51,$0A,$40,$24,$21,$02,$40,$24,$51,$0C,$40,$49,$21,$02,$40,$49,$51,$06
+    db $40,$70,$21,$02,$40,$70,$51,$06,$40,$49,$21,$02,$40,$49,$51,$06,$40,$70,$21,$02,$40,$70,$51,$0A
+    db $40,$70,$21,$02,$40,$70,$51,$0A,$40,$24,$21,$02,$40,$24,$51,$0C,$40,$49,$21,$02,$40,$49,$51,$06
+    db $40,$70,$21,$02,$40,$70,$51,$06,$40,$49,$21,$02,$40,$49,$51,$06,$40,$70,$21,$02,$40,$70,$51,$05
+    db $40,$24,$21,$02,$40,$24,$51,$05,$40,$49,$21,$02,$40,$49,$51,$05,$40,$70,$21,$02,$40,$70,$51,$12
+    db $50
+ScOver:
+    db $40,$24,$21,$02,$40,$24,$51,$07,$40,$49,$21,$02,$40,$49,$51,$07,$40,$70,$21,$02,$40,$70,$51,$07
+    db $40,$24,$21,$02,$40,$24,$51,$07,$40,$49,$21,$02,$40,$49,$51,$07,$40,$70,$21,$02,$40,$70,$51,$07
+    db $40,$24,$21,$02,$40,$24,$51,$07,$40,$49,$21,$02,$40,$49,$51,$07,$40,$70,$21,$02,$40,$70,$51,$07
+    db $40,$24,$21,$02,$40,$24,$51,$07,$40,$49,$21,$02,$40,$49,$51,$07,$40,$70,$21,$02,$40,$70,$51,$07
+    db $40,$24,$21,$02,$40,$24,$51,$12,$40,$24,$21,$02,$40,$24,$51,$06,$40,$49,$21,$02,$40,$49,$51,$12
+    db $40,$49,$21,$02,$40,$49,$51,$06,$40,$70,$21,$02,$40,$70,$51,$30,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$7067
+    dw ScHum0,$705D
+    dw ScHum1,$705D
+    dw ScHum2,$705D
+    dw ScHum3,$705D
+    dw ScHum4,$705D
+    dw ScHum5,$705D
+    dw ScHum6,$705D
+    dw ScHum7,$705D
+    dw ScDot,$7067
+    dw ScBoom,$7053
+    dw ScLevelUp,$705D
+    dw ScOver,$705D
+; Grid Run jingles (original, arranged) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$21,$01,$21,$01,$25,$01,$01,$21,$01,$25,$01,$23
+    db $21,$23,$21,$01,$21,$01,$25,$01,$23,$21,$23,$21,$25,$23,$21,$01
+    db $01,$00,$00,$00,$25,$23,$21,$25,$23,$21,$25,$23,$21,$25,$23,$21
+    db $25,$01,$01,$25,$23,$01,$01,$23,$21,$01,$01,$01,$01,$01,$01,$00
+    db $00,$00,$00,$00
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$1C,$01,$01,$01,$21,$01,$01,$01,$1C,$01,$01,$01
+    db $1E,$01,$01,$01,$1C,$01,$01,$01,$20,$01,$01,$01,$1C,$01,$01,$01
+    db $00,$00,$00,$00,$21,$01,$01,$01,$1C,$01,$01,$01,$21,$01,$01,$01
+    db $1C,$01,$01,$01,$20,$01,$01,$01,$19,$01,$01,$01,$01,$01,$01,$00
+    db $00,$00,$00,$00
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$37,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$3E
+    db $10
+ScTuneBassPitch:
+    db $C0,$66,$F0,$21,$C0,$88,$F0,$1B,$C0,$66,$F0,$1D,$C0,$98,$F0,$1B,$C0,$66,$F0,$1D,$C0,$88,$F0,$1B
+    db $C0,$66,$F0,$55,$C0,$88,$F0,$1B,$C0,$66,$F0,$1D,$C0,$88,$F0,$38,$C0,$66,$F0,$31,$FE
+    db $D0
+}

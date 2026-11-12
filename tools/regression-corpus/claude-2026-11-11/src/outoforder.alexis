@@ -1,0 +1,1486 @@
+cartridge "OUT OF ORDER/PENNY DEGROFF/1990"
+' OUT OF ORDER - Penny DeGroff, RUN magazine's ReRUN disk, Summer 1990
+' (Commodore 64, BASIC). ColecoVision port in Amy.
+'
+' The game: seven big letters wait in the bottom row of a 7 x 6 board.
+' Carry them one at a time to the top row and set them down in
+' alphabetical order before the border fills up. Four robots, one per row,
+' patrol the four rows you walk in. A robot that runs into you stops you
+' until it moves on; at skill 2 it also sends your letter back, at
+' skill 3 your letter is lost. Pay: $10 x skill per right letter, $10 if
+' all seven are right, $1 per border block left.
+'
+' Rules, numbers and pace come from the BASIC listing (orig/OUT_OF_ORDER.bas)
+' and from line-by-line cycle traces of the original (c64/cyc.mjs): one
+' game pass costs what the same BASIC lines cost on an NTSC C64 (15400
+' cycles a frame), so robots and the clock run at the original's speed.
+'
+' Controls: either controller. Stick: move one cell (held: one cell a
+' pass, as in the original). Button: pick up / set down. Menus by stick.
+
+const TWall = 213
+const TBlock = 214
+const TMarkGL = 215
+const TMarkGR = 216
+const TMarkRL = 217
+const TMarkRR = 218
+const TLnBot = 219
+const TLnTop = 220
+const TLnRt = 221
+const TLnLf = 222
+const TDgDown = 223
+const TDgUp = 224
+const TBxH = 225
+const TBxV = 226
+const TBxTL = 227
+const TBxTR = 228
+const TBxBL = 229
+const TBxBR = 230
+const TBxFill = 231
+const TFrH = 232
+const TFrV = 233
+const TFrTL = 234
+const TFrTR = 235
+const TFrBL = 236
+const TFrBR = 237
+const TFrUl = 238
+const TLvPip = 239
+const TLvOff = 240
+const SPlayer = 0
+const SRobot = 4
+const NTiles8 = 904
+const SprBytes = 64
+const NLetQ = 85
+const LetQBytes = 680
+const FirstMisc = 213
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndBeep = 6
+const SndHit = 7
+const SndRight = 8
+const SndWrong = 9
+const TuneFrames = 98
+const TxtCredits = 0
+const NSpr = 5
+const HideY = 192
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StEnd = 5
+const StPay = 6
+' one frame of an NTSC C64 in units of 64 cycles (15400 cycles a frame)
+const Budget = 241
+' pass costs, units of 64 cycles, measured from the original's line traces
+const CIdle = 3768
+const CStun = 1904
+const CStunLeave = 1824
+const CFire = 2723
+const CPick = 10613
+const CDrop = 11260
+const CDropEnd = 9519
+const CUp = 3315
+const CRight = 3709
+const CDown = 4028
+const CLeft = 4383
+const CTimer = 433
+const CHit = 7465
+' the board: cell column c (0-6) is at tile column 6 + 3c; walking row r
+' (0-3) at tile row 6 + 3r; the top slots are on row 3, the letters on 18
+const SlotY = 3
+const BotY = 18
+const NRing = 96
+
+u8 Rc[4]
+u8 Rd[4]
+u8 Lb[7]
+u8 Lt[7]
+u8 Bot[7]
+u8 Inset[27]
+u8 Sx[5]
+u8 Tx5[5]
+u8 Sy[5]
+u8 Ty5[5]
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Debt = 0
+u16 Cost = 0
+u16 Pay = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Skill = 1
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' the game
+u8 Pr = 0
+u8 Pc = 0
+u8 F1 = 4
+u8 Lc = 0
+u8 Lp = 0
+u8 Ld = 0
+u8 Tl = 0
+u8 Bc = 0
+u8 Rl = 0
+u8 Shown = 0
+u8 Passes = 0
+u8 Over = 0
+u8 R5 = 0
+u8 Moved = 0
+u8 HitT = 0
+u8 HitRet = 0
+u8 Flash = 0
+u8 LastFl = 0
+u8 BasePay = 0
+u8 Bonus = 0
+u8 Early = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 LatDir = 0
+u8 LatFire = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (one per level, never used by helper subs)
+u8 Oi = 0
+u8 Li = 0
+u8 Ri = 0
+u8 Ai = 0
+u8 Gi = 0
+' drawing arguments (DrawBig / DrawCell / RingAt)
+u8 Bx = 0
+u8 By = 0
+u8 Bl = 0
+u8 Bs = 0
+u8 Rx = 0
+u8 Ry = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  NewScreen(0)
+  ShowScreen
+
+title:
+  TitlePage
+  if Menu = 2 then
+    HowTo
+    goto title
+  end if
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  Latch
+  if Debt < Budget then
+    DoPass
+    if Over = 1 then goto game_end
+  end if
+  if Debt >= Budget then
+    Debt -= Budget
+  else
+    Debt = 0
+  end if
+  Animate
+  goto play_loop
+
+game_end:
+  ' the last pass's sprites and sounds finish first
+  for Gi = 0 to 5
+    Frame1
+    Animate
+  next
+  EndShow
+  PayPage
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random number from 0 to M - 1 (low byte * M / 256: no division)
+function RandBelow(u8 M) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs & 255
+  W16 = W16 * M
+  W16 = W16 >> 8
+  Rv = W16
+  return Rv
+
+sub NewGame:
+  ' lines 980-1030: robots at the right end, worker top left, 7 letters
+  for Li = 0 to 3
+    Rc[Li] = 6
+    Rd[Li] = 1
+  next
+  Pr = 0
+  Pc = 0
+  F1 = 4
+  Lc = 0
+  Lp = 0
+  Ld = 0
+  Tl = 0
+  Bc = 0
+  Rl = 0
+  Shown = 0
+  Over = 0
+  Debt = 0
+  HitT = 0
+  HitRet = 255
+  Flash = 0
+  LastFl = 0
+  LatDir = 0
+  LatFire = 0
+  fill array Inset with 0
+  fill array Lt with 0
+  for Li = 0 to 6
+pick_again:
+    T = RandBelow(26)
+    inc T
+    if Inset[T] = 1 then goto pick_again
+    Inset[T] = 1
+    Lb[Li] = T
+    Bot[Li] = 1
+  next
+  DrawPlay
+  State = StPlay
+  return
+end sub
+
+' every frame between passes: remember the last pure stick direction and
+' any button press, so a short tap between two passes is not lost
+sub Latch:
+  if Jk = 1 then LatDir = 1
+  if Jk = 2 then LatDir = 2
+  if Jk = 4 then LatDir = 4
+  if Jk = 8 then LatDir = 8
+  if Press = 1 then LatFire = 1
+  return
+end sub
+
+' one pass of the original's main loop (lines 30-360)
+sub DoPass:
+  inc Passes
+  Moved = 0
+  Cost = CIdle
+  if F1 < 4 then
+    ' line 30: stopped by a robot, the stick is not read
+    Cost = CStun
+  else
+    ' line 40: the button first (held or pressed since the last pass)
+    V = Btn
+    if LatFire = 1 then V = 16
+    if V > 0 then
+      Cost = CFire
+      FirePass
+      if Over = 1 then
+        LatFire = 0
+        LatDir = 0
+        return
+      end if
+    else
+      ' lines 50-140: one direction, exact (diagonals do nothing)
+      K = Jk
+      if K = 0 then K = LatDir
+      MovePass
+    end if
+  end if
+  LatFire = 0
+  LatDir = 0
+  RobotStep
+  if Over = 1 then return
+  ' lines 340-360: every third pass one more border block
+  inc Tl
+  if Tl >= 3 then
+    Tl = 0
+    inc Bc
+    Cost += CTimer
+    DrawRing
+    if Bc >= 126 then Over = 1
+  end if
+  Debt += Cost
+  return
+end sub
+
+' lines 150-220: pick up below, set down above
+sub FirePass:
+  if Pr = 3 then
+    if Lc = 0 then
+      if Bot[Pc] = 1 then
+        Lc = Lb[Pc]
+        Bot[Pc] = 0
+        Lp = Pc
+        Bx = Pc * 3
+        Bx += 6
+        By = BotY
+        Bl = 0
+        DrawCell
+        play sound SndBeep
+        Cost = CPick
+      end if
+    end if
+    return
+  end if
+  if Pr = 0 then
+    if Lc > 0 then
+      if Lt[Pc] = 0 then
+        Lt[Pc] = Lc
+        Bx = Pc * 3
+        Bx += 6
+        By = SlotY
+        Bl = Lc
+        Bs = 0
+        DrawCell
+        Lc = 0
+        play sound SndBeep
+        Cost = CDrop
+        inc Ld
+        if Ld >= 7 then
+          Cost = CDropEnd
+          Debt += Cost
+          Over = 1
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' lines 60-140: a move needs the next cell inside the walking rows and free
+' of its row's robot (robot r walks row r)
+sub MovePass:
+  if K = 1 then
+    if Pr > 0 then
+      T = Pr - 1
+      if Rc[T] <> Pc then
+        Pr = T
+        Moved = 1
+        Cost = CUp
+      end if
+    end if
+    return
+  end if
+  if K = 8 then
+    if Pc < 6 then
+      T = Pc + 1
+      if Rc[Pr] <> T then
+        Pc = T
+        Moved = 1
+        Cost = CRight
+      end if
+    end if
+    return
+  end if
+  if K = 2 then
+    if Pr < 3 then
+      T = Pr + 1
+      if Rc[T] <> Pc then
+        Pr = T
+        Moved = 1
+        Cost = CDown
+      end if
+    end if
+    return
+  end if
+  if K = 4 then
+    if Pc > 0 then
+      T = Pc - 1
+      if Rc[Pr] <> T then
+        Pc = T
+        Moved = 1
+        Cost = CLeft
+      end if
+    end if
+  end if
+  return
+end sub
+
+' lines 230-330: one random robot steps; it turns at either end; one that
+' lands on the worker stops him (and costs him his letter at skill 2-3)
+sub RobotStep:
+  R5 = Rand4()
+  T = Rc[R5]
+  if T = 0 then Rd[R5] = 1
+  if T = 6 then Rd[R5] = 255
+  if R5 = F1 then
+    F1 = 4
+    Cost = CStunLeave
+  end if
+  T += Rd[R5]
+  Rc[R5] = T
+  if R5 = Pr then
+    if T = Pc then
+      F1 = R5
+      Cost += CHit
+      HitT = 3
+      HitRet = 255
+      if Lc > 0 then
+        if Skill = 2 then
+          Bot[Lp] = 1
+          HitRet = Lp
+          Lc = 0
+        end if
+        if Skill = 3 then
+          Lc = 0
+          inc Ld
+          if Ld >= 7 then
+            Debt += Cost
+            Over = 1
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+function Rand4() as u8
+  u8 Rv = 0
+  Rand
+  Rv = Rs & 3
+  return Rv
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite targets from the logical cells; sprites glide 8 px a frame
+sub Animate:
+  for Ai = 0 to 3
+    T = Rc[Ai] * 24
+    Tx5[Ai] = T + 48
+  next
+  T = Pc * 24
+  Tx5[4] = T + 48
+  T = Pr * 24
+  Ty5[4] = T + 47
+  for Ai = 0 to 4
+    T = Tx5[Ai]
+    V = Sx[Ai]
+    if V < T then
+      V += 8
+      if V > T then V = T
+    end if
+    if V > T then
+      V -= 8
+      if V < T then V = T
+    end if
+    Sx[Ai] = V
+  next
+  T = Ty5[4]
+  V = Sy[4]
+  if V < T then
+    V += 8
+    if V > T then V = T
+  end if
+  if V > T then
+    V -= 8
+    if V < T then V = T
+  end if
+  Sy[4] = V
+  ' a robot's hit shows when it has arrived: flash, noise, letter back
+  if HitT > 0 then
+    dec HitT
+    if HitT = 0 then
+      play sound SndHit
+      ' one short red flash, never closer than 20 frames to the last one
+      T = Tick - LastFl
+      if T >= 20 then
+        Flash = 4
+        LastFl = Tick
+        backdrop dark red
+      end if
+      if HitRet < 7 then
+        Bx = HitRet * 3
+        Bx += 6
+        By = BotY
+        J = HitRet
+        Bl = Lb[J]
+        Bs = 0
+        DrawCell
+        HitRet = 255
+      end if
+    end if
+  end if
+  if Flash > 0 then
+    dec Flash
+    if Flash = 0 then backdrop black
+  end if
+  DrawSprites
+  return
+end sub
+
+sub DrawSprites:
+  set sprite 0 to Sy[0],Sx[0],SRobot,11
+  set sprite 1 to Sy[1],Sx[1],SRobot,5
+  set sprite 2 to Sy[2],Sx[2],SRobot,9
+  set sprite 3 to Sy[3],Sx[3],SRobot,3
+  ' the worker is hidden while a robot stands on him (as on the C64)
+  if F1 < 4 then
+    if HitT = 0 then
+      set sprite 4 to HideY,0,SPlayer,0
+    else
+      set sprite 4 to Sy[4],Sx[4],SPlayer,14
+    end if
+  else
+    set sprite 4 to Sy[4],Sx[4],SPlayer,14
+  end if
+  update sprites
+  return
+end sub
+
+' a big letter Bl (1-26, 0 = blank) at tile Bx,By; Bs is subtracted from
+' the tile codes (95: the light-green copy at codes 33.. of the first third)
+sub DrawCell:
+  if Bl = 0 then
+    put char 32 at Bx,By
+    J = Bx + 1
+    put char 32 at J,By
+    T = By + 1
+    put char 32 at Bx,T
+    put char 32 at J,T
+    return
+  end if
+  K = Bl - 1
+  K = K << 2
+  C = LetTiles[K]
+  C -= Bs
+  put char C at Bx,By
+  J = Bx + 1
+  inc K
+  C = LetTiles[K]
+  C -= Bs
+  put char C at J,By
+  T = By + 1
+  inc K
+  C = LetTiles[K]
+  C -= Bs
+  put char C at Bx,T
+  inc K
+  C = LetTiles[K]
+  C -= Bs
+  put char C at J,T
+  return
+end sub
+
+' a word of big letters (data: letters 1-26, 0 = a one-column space,
+' 255 = end) from tile Bx,By
+sub DrawBig(u16 Src)
+  u16 Q = 0
+  Q = Src
+db_next:
+  V = peek(Q)
+  Q += 1
+  if V = 255 then return
+  if V = 0 then
+    inc Bx
+    goto db_next
+  end if
+  Bl = V
+  Bs = 0
+  DrawCell
+  Bx += 2
+  goto db_next
+end sub
+
+' ring cell I (0-95) -> Rx,Ry: top row left to right, right side down,
+' bottom row right to left, left side up (the original's order)
+sub RingAt(u8 I)
+  if I < 28 then
+    Rx = I + 2
+    Ry = 1
+    return
+  end if
+  if I < 48 then
+    Rx = 29
+    Ry = I - 26
+    return
+  end if
+  if I < 76 then
+    Rx = 77 - I
+    Ry = 22
+    return
+  end if
+  Rx = 2
+  Ry = 97 - I
+  return
+end sub
+
+' the border holds Bc of the original's 126 blocks: 96 cells here
+sub DrawRing:
+  W16 = Bc
+  W16 = W16 * NRing
+  W16 += 63
+  W16 = W16 / 126
+  T = W16
+  while Shown < T
+    RingAt(Shown)
+    put char TBlock at Rx,Ry
+    inc Shown
+  end while
+  return
+end sub
+
+' the board (lines 960-990): cyan walls, black cells, letters below
+sub DrawBoard:
+  ' rows 2, 5, 8 .. 20 are solid wall; the rows between have holes
+  for Li = 0 to 6
+    T = Li * 3
+    T += 2
+    fill TWall count 22 at 5,T
+    V = T + 1
+    if Li = 6 then V = 0
+    if V > 0 then
+    for Oi = 0 to 7
+      C = Oi * 3
+      C += 5
+      put char TWall at C,V
+      J = V + 1
+      put char TWall at C,J
+    next
+    end if
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen(1)
+  DrawBoard
+  for Li = 0 to 6
+    Bx = Li * 3
+    Bx += 6
+    By = BotY
+    Bl = Lb[Li]
+    Bs = 0
+    DrawCell
+  next
+  print at 14,21, "LV"
+  T = Skill + 48
+  put char T at 17,21
+  for Li = 0 to 4
+    Sx[Li] = 192
+    Sy[Li] = 47
+    Tx5[Li] = 192
+  next
+  Sy[1] = 71
+  Sy[2] = 95
+  Sy[3] = 119
+  Sx[4] = 48
+  Sy[4] = 47
+  Animate
+  ShowScreen
+  return
+end sub
+
+' lines 370-520: the board is cleared, the jingle plays, GAME OVER, then
+' every slot is checked in alphabetical order; then PRESS FIRE BUTTON
+sub EndShow:
+  State = StEnd
+  mute all
+  ' line 370: a pause with the board as it was, then the border goes
+  WaitN(123)
+  Early = 126 - Bc
+  for Li = 0 to 95
+    RingAt(Li)
+    put char 32 at Rx,Ry
+  next
+  ' lines 380-400: everything but the placed letters
+  HideSprites
+  fill 32 count 22 at 5,2
+  for Li = 0 to 7
+    C = Li * 3
+    C += 5
+    put char 32 at C,3
+    put char 32 at C,4
+  next
+  for Li = 5 to 21
+    fill 32 count 22 at 5,Li
+  next
+  WaitN(18)
+  PlayTune
+  WaitN(83)
+  ' line 410: GAME OVER in yellow (third 1 letters are yellow)
+  Bx = 7
+  By = 14
+  DrawBig(@BigGameOver)
+  WaitN(34)
+  ' lines 420-500
+  Rl = 0
+  Ri = 0
+  for Li = 1 to 26
+    if Inset[Li] = 1 then
+      Bx = Ri * 3
+      Bx += 6
+      if Lt[Ri] = Li then
+        put char TMarkGL at Bx,5
+        J = Bx + 1
+        put char TMarkGR at J,5
+        play sound SndRight
+        inc Rl
+        WaitN(15)
+      else
+        put char TMarkRL at Bx,5
+        J = Bx + 1
+        put char TMarkRR at J,5
+        play sound SndWrong
+        WaitN(3)
+        By = 6
+        Bl = Li
+        Bs = 95
+        DrawCell
+      end if
+      WaitN(44)
+      inc Ri
+    end if
+  next
+  ' lines 500-520: PRESS FIRE BUTTON in red (third 2 recoloured)
+  fill $60 count LetQBytes to vram.color + $1400
+  Bx = 6
+  By = 18
+  DrawBig(@BigPressFire)
+  Bx = 10
+  By = 20
+  DrawBig(@BigButton)
+  ' line 530: the button, or 5 seconds
+  Waited = 0
+  WasBtn = 16
+es_wait:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 300 then goto es_done
+  if Press = 0 then goto es_wait
+es_done:
+  return
+end sub
+
+' lines 540-610: the statement of earnings; one press (or 30 s): the title
+sub PayPage:
+  State = StPay
+  ' line 520: base pay 10 x right letters x skill, 10 more if all 7 right
+  BasePay = Rl * 10
+  BasePay = BasePay * Skill
+  Bonus = 0
+  if Rl = 7 then Bonus = 10
+  Pay = BasePay
+  Pay += Bonus
+  Pay += Early
+  NewScreen(0)
+  put char TFrTL at 2,5
+  fill TFrH count 26 at 3,5
+  put char TFrTR at 29,5
+  for Li = 6 to 17
+    put char TFrV at 2,Li
+    put char TFrV at 29,Li
+  next
+  put char TFrBL at 2,18
+  fill TFrH count 26 at 3,18
+  put char TFrBR at 29,18
+  print at 5,7, "STATEMENT OF EARNINGS"
+  fill TFrUl count 9 at 5,8
+  fill TFrUl count 2 at 15,8
+  fill TFrUl count 8 at 18,8
+  print at 3,10, "BASE PAY--------------$"
+  NumU = BasePay
+  By = 10
+  PrintPay
+  print at 3,12, "PROFICIENCY BONUS-----$"
+  NumU = Bonus
+  By = 12
+  PrintPay
+  print at 3,14, "EARLY COMPLETION PAY--$"
+  NumU = Early
+  By = 14
+  PrintPay
+  print at 3,16, "TOTAL EARNINGS--------$"
+  NumU = Pay
+  By = 16
+  PrintPay
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' NumU (0-999) at columns 26-28 of row By, right-aligned with spaces
+sub PrintPay:
+  print at 26,By, digits$(NumU, 3)
+  C = get char at 26,By
+  if C = 48 then
+    put char 32 at 26,By
+    C = get char at 27,By
+    if C = 48 then put char 32 at 27,By
+  end if
+  return
+end sub
+
+sub WaitN(u8 N)
+  u8 Wn = 0
+  Wn = N
+  while Wn > 0
+    Frame1
+    dec Wn
+  end while
+  return
+end sub
+
+sub PlayTune:
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker off
+  for J = 0 to 4
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: frame wait, NMI off, display off, Mode 2 with
+' independent thirds. Kind 0: text pages (font + letters green in every
+' third); kind 1: the play screen (third 0 also gets the letters again at
+' codes 33-117 in light green for the answers, keeping the space at 32;
+' third 1 letters yellow)
+sub NewScreen(u8 Kind)
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  mode 2 screen
+  load default ascii
+  duplicate mode 2 patterns
+  fill full mode 2 text color with $70
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  decompress zx0 TileColZ to vram.color + 1704
+  decompress zx0 TileColZ to vram.color + 3752
+  decompress zx0 TileColZ to vram.color + 5800
+  fill $20 count LetQBytes to vram.color + 1024
+  fill $20 count LetQBytes to vram.color + 3072
+  fill $20 count LetQBytes to vram.color + 5120
+  if Kind = 1 then
+    decompress zx0 LetPatZ to vram.pattern + 264
+    fill $30 count LetQBytes to vram.color + 264
+    fill $B0 count LetQBytes to vram.color + 3072
+  end if
+  decompress zx0 SpritePatZ to vram.spr_pat
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title (lines 700-900): the original's framed OUT OF ORDER sign, then
+' the menu (START, skill, HOW TO PLAY, CREDITS; the cursor back on START)
+sub TitlePage:
+  State = StTitle
+  NewScreen(0)
+  ' first third: the font is black on cyan for the sign's lettering, and
+  ' empty cells use code 0 (no colour)
+  fill $17 count 1024 to vram.color
+  fill $00 count 8 to vram.color
+  for Li = 0 to 7
+    fill 0 count 32 at 0,Li
+  next
+  DrawSign
+  print at 12,15, "START"
+  print at 12,17, "SKILL"
+  print at 12,19, "HOW TO PLAY"
+  print at 12,21, "CREDITS"
+  ShowSkill
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  PlayTune
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 3
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 3 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  ' left / right (or the button) on the SKILL line changes the skill
+  if Menu = 1 then
+    K = Edge & 12
+    if Press = 1 then K = 8
+    if K = 4 then
+      dec Skill
+      if Skill = 0 then Skill = 3
+    end if
+    if K = 8 then
+      inc Skill
+      if Skill > 3 then Skill = 1
+    end if
+    if K > 0 then
+      play sound SndClick
+      ShowSkill
+    end if
+    goto tp_loop
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+' menu rows 15, 17, 19, 21
+sub ShowMenu:
+  put char 32 at 10,15
+  put char 32 at 10,17
+  put char 32 at 10,19
+  put char 32 at 10,21
+  C = Menu << 1
+  C += 15
+  put char 62 at 10,C
+  return
+end sub
+
+' "SKILL LV n" with n lamps (the original's names for the levels are on
+' the HOW TO PLAY pages)
+sub ShowSkill:
+  print at 18,17, "LV"
+  T = Skill + 48
+  put char T at 21,17
+  for J = 0 to 2
+    C = J + 23
+    T = TLvOff
+    if J < Skill then T = TLvPip
+    put char T at C,17
+  next
+  return
+end sub
+
+' the sign: a frame with lines from its corners to a reverse box in the
+' middle holding the name (13 rows here, 15 on the C64)
+sub DrawSign:
+  fill TLnBot count 24 at 4,1
+  fill TLnTop count 24 at 4,13
+  for Li = 2 to 12
+    put char TLnRt at 3,Li
+    put char TLnLf at 28,Li
+  next
+  for Li = 0 to 3
+    C = Li + 4
+    T = Li + 2
+    put char TDgDown at C,T
+    C = 27 - Li
+    put char TDgUp at C,T
+    C = 7 - Li
+    T = Li + 9
+    put char TDgUp at C,T
+    C = Li + 24
+    put char TDgDown at C,T
+  next
+  put char TBxTL at 8,6
+  fill TBxH count 14 at 9,6
+  put char TBxTR at 23,6
+  put char TBxV at 8,7
+  put char TBxFill at 9,7
+  print at 10,7, "OUT OF ORDER"
+  put char TBxFill at 22,7
+  put char TBxV at 23,7
+  put char TBxBL at 8,8
+  fill TBxH count 14 at 9,8
+  put char TBxBR at 23,8
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen(0)
+  print at 10,2, "OUT OF ORDER"
+  TxT = TxtCredits
+  TxX0 = 3
+  TxY = 5
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: four airy pages with pictures from the game's own tiles and
+' sprites
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen(0)
+  print at 8,1, "HOW TO PLAY  1/5"
+  print at 3,3, "SORT THE SEVEN LETTERS"
+  print at 3,5, "INTO ALPHABETICAL ORDER."
+  ' the picture: three slots of the top row, two already filled
+  fill TWall count 10 at 11,7
+  fill TWall count 10 at 11,10
+  for Li = 0 to 3
+    C = Li * 3
+    C += 11
+    put char TWall at C,8
+    put char TWall at C,9
+  next
+  Bx = 12
+  By = 8
+  Bl = 1
+  Bs = 0
+  DrawCell
+  Bx = 15
+  Bl = 3
+  DrawCell
+  Bx = 18
+  Bl = 7
+  DrawCell
+  print at 3,13, "THE TOP ROW MUST READ FROM"
+  print at 3,15, "LEFT TO RIGHT: A BEFORE C,"
+  print at 3,17, "C BEFORE G AND SO ON."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then goto how_end
+  Page = 2
+  NewScreen(0)
+  print at 8,1, "HOW TO PLAY  2/5"
+  print at 3,3, "STICK: MOVE ONE CELL."
+  ' the picture: the worker above a letter of the bottom row
+  fill TWall count 4 at 14,5
+  put char TWall at 14,6
+  put char TWall at 14,7
+  put char TWall at 17,6
+  put char TWall at 17,7
+  fill TWall count 4 at 14,8
+  put char TWall at 14,9
+  put char TWall at 14,10
+  put char TWall at 17,9
+  put char TWall at 17,10
+  fill TWall count 4 at 14,11
+  Bx = 15
+  By = 9
+  Bl = 13
+  Bs = 0
+  DrawCell
+  set sprite 4 to 47,120,SPlayer,14
+  update sprites
+  print at 2,13, "BUTTON ABOVE A LETTER OF THE"
+  print at 2,15, "BOTTOM ROW: PICK IT UP."
+  print at 2,17, "BUTTON UNDER AN EMPTY TOP"
+  print at 2,19, "SLOT: SET IT DOWN THERE."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  HideSprites
+  if TimedOut = 1 then goto how_end
+  Page = 3
+  NewScreen(0)
+  print at 8,1, "HOW TO PLAY  3/5"
+  print at 3,3, "A ROBOT PATROLS EACH ROW."
+  ' the picture: the four robots
+  set sprite 0 to 55,72,SRobot,11
+  set sprite 1 to 55,104,SRobot,5
+  set sprite 2 to 55,136,SRobot,9
+  set sprite 3 to 55,168,SRobot,3
+  update sprites
+  print at 3,11, "ONE THAT RUNS INTO YOU"
+  print at 3,13, "STOPS YOU TILL IT MOVES ON,"
+  print at 3,15, "AND YOU CANNOT WALK INTO"
+  print at 3,17, "A ROBOT'S CELL."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  HideSprites
+  if TimedOut = 1 then goto how_end
+  Page = 4
+  NewScreen(0)
+  print at 8,1, "HOW TO PLAY  4/5"
+  print at 3,3, "LV 1: FIRST DAY ON THE JOB."
+  print at 3,5, "A ROBOT ONLY STOPS YOU."
+  print at 3,8, "LV 2: SOME EXPERIENCE"
+  print at 3,10, "REQUIRED. IT ALSO SENDS"
+  print at 3,12, "YOUR LETTER BACK DOWN."
+  print at 3,15, "LV 3: AN OLD PRO. A LETTER"
+  print at 3,17, "IT KNOCKS AWAY IS LOST."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then goto how_end
+  Page = 5
+  NewScreen(0)
+  print at 8,1, "HOW TO PLAY  5/5"
+  fill TBlock count 8 at 12,3
+  print at 3,5, "THE BORDER FILLS WITH"
+  print at 3,7, "BLOCKS. FULL: TIME IS UP."
+  print at 3,10, "PAY: $10 X LV FOR EACH"
+  print at 3,12, "LETTER IN ITS PLACE, $10"
+  print at 3,14, "MORE IF ALL SEVEN ARE, $1"
+  print at 3,16, "FOR EACH BLOCK LEFT WHEN"
+  print at 3,18, "THE LAST LETTER IS DOWN."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+how_end:
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+' big-letter words: letters 1-26, 0 = one column of space, 255 = end
+data BigGameOver bytes 7,1,13,5,0,15,22,5,18,255
+data BigPressFire bytes 16,18,5,19,19,0,6,9,18,5,255
+data BigButton bytes 2,21,20,20,15,14,255
+
+data LetTiles bytes
+  128,129,130,131
+  132,133,134,135
+  136,137,138,139
+  140,129,141,142
+  143,144,145,146
+  143,144,147,148
+  136,137,138,149
+  150,151,147,152
+  153,154,155,156
+  157,158,159,160
+  161,162,163,164
+  165,166,167,168
+  169,170,171,172
+  173,174,175,176
+  177,178,179,180
+  143,181,147,182
+  177,178,183,184
+  143,181,185,186
+  187,188,189,190
+  191,192,193,194
+  165,165,179,180
+  165,165,195,196
+  197,198,199,200
+  201,202,203,204
+  205,206,207,208
+  209,210,211,212
+end data
+
+data TilePatZ bytes
+  $5A,$00,$03,$07,$0F,$1F,$3E,$3C,$5A,$00,$C0,$E0,$F0,$F8,$7C,$3C,$A8,$3F,$3C,$22,$00,$FC,$A0,$3C
+  $AA,$00,$1F,$A6,$1E,$4A,$1F,$00,$F8,$FC,$3E,$1E,$39,$3E,$FC,$E4,$F9,$E3,$E4,$BF,$F8,$C1,$84,$FE
+  $AE,$84,$FF,$F7,$FF,$E8,$83,$3E,$1F,$0F,$00,$E7,$EA,$7C,$F8,$F0,$EB,$F5,$5F,$3D,$CB,$FE,$3D,$FE
+  $E9,$D7,$D4,$3E,$E0,$C0,$D1,$2E,$69,$3F,$FA,$E9,$E5,$C0,$4F,$E3,$FF,$CD,$FF,$D8,$FF,$E0,$52,$F9
+  $E0,$DA,$E3,$8C,$F8,$3E,$AC,$F3,$F0,$FE,$D2,$FE,$AA,$00,$0F,$82,$03,$2A,$00,$F0,$C0,$0E,$E6,$3F
+  $D9,$81,$FF,$FE,$D9,$C1,$F6,$E5,$6E,$FD,$F0,$FE,$8D,$AA,$BF,$B0,$E8,$63,$E0,$66,$C0,$61,$3F,$00
+  $3E,$BA,$80,$EA,$FB,$3D,$50,$80,$22,$D0,$F7,$3E,$10,$F3,$DF,$FE,$8F,$E6,$B9,$DF,$58,$DE,$BE,$3E
+  $98,$CA,$00,$D2,$0F,$7E,$FE,$FE,$DE,$A2,$6F,$9E,$E1,$FA,$FE,$C1,$38,$1D,$9B,$90,$BC,$F3,$9F,$47
+  $30,$69,$7C,$32,$71,$97,$3C,$37,$A2,$7E,$C0,$30,$77,$10,$FD,$D1,$EC,$F7,$00,$23,$34,$8C,$D8,$FE
+  $A0,$FF,$82,$75,$9D,$70,$72,$D0,$24,$3E,$1F,$FB,$F5,$A8,$58,$D0,$ED,$E4,$77,$D0,$27,$A0,$CD,$89
+  $A0,$F8,$FE,$93,$00,$C0,$EA,$40,$1E,$20,$07,$03,$B3,$78,$C0,$73,$BA,$F2,$F0,$CA,$BC,$A8,$D2,$3E
+  $93,$AD,$38,$BC,$B5,$7E,$A0,$0F,$1C,$FF,$40,$9E,$FF,$40,$61,$49,$D0,$FF,$61,$00,$F6,$FF,$80,$96
+  $1F,$F5,$F8,$49,$CA,$A2,$E0,$1F,$C1,$22,$68,$DF,$01,$E0,$48,$BC,$C7,$D4,$D2,$E0,$29,$80,$38,$FE
+  $26,$42,$C3,$24,$8E,$C3,$42,$AA,$EF,$A9,$F0,$90,$8F,$80,$80,$3B,$E0,$71,$E0,$3D,$FE,$69,$01,$69
+  $80,$72,$B3,$0D,$70,$38,$1C,$0E,$92,$3F,$03,$07,$0E,$1C,$38,$70,$7C,$FE,$A5,$18,$E8,$EA,$9E,$E0
+  $E0,$DA,$89,$07,$07,$3E,$E1,$C0,$7E,$E1,$50,$4F,$90,$40,$8E,$C3,$81,$FE,$BA,$C3,$F0,$EF,$42,$FE
+  $F1,$55,$55,$80
+end data
+data TileColZ bytes
+  $96,$07,$0A,$00,$70,$07,$70,$6A,$07,$70,$00,$20,$28,$02,$E2,$F0,$82,$20,$E8,$60,$FF,$06,$E2,$F0
+  $9F,$60,$FE,$3B,$9E,$9A,$FE,$70,$55,$A2,$07,$A8,$01,$07,$A5,$17,$A2,$07,$B8,$71,$F0,$7F,$FE,$EF
+  $F1,$E6,$F0,$7D,$FE,$F7,$38,$DE,$70,$E0,$3D,$F0,$F7,$4A,$BD,$E6,$F0,$FC,$F9,$FE,$A1,$0B,$A8,$00
+  $98,$0E,$E0,$D5,$0E,$00,$55,$60
+end data
+data LetPatZ bytes
+  $5A,$00,$03,$07,$0F,$1F,$3E,$3C,$5A,$00,$C0,$E0,$F0,$F8,$7C,$3C,$A8,$3F,$3C,$22,$00,$FC,$A0,$3C
+  $AA,$00,$1F,$A6,$1E,$4A,$1F,$00,$F8,$FC,$3E,$1E,$39,$3E,$FC,$E4,$F9,$E3,$E4,$BF,$F8,$C1,$84,$FE
+  $AE,$84,$FF,$F7,$FF,$E8,$83,$3E,$1F,$0F,$00,$E7,$EA,$7C,$F8,$F0,$EB,$F5,$5F,$3D,$CB,$FE,$3D,$FE
+  $E9,$D7,$D4,$3E,$E0,$C0,$D1,$2E,$69,$3F,$FA,$E9,$E5,$C0,$4F,$E3,$FF,$CD,$FF,$D8,$FF,$E0,$52,$F9
+  $E0,$DA,$E3,$8C,$F8,$3E,$AC,$F3,$F0,$FE,$D2,$FE,$AA,$00,$0F,$82,$03,$2A,$00,$F0,$C0,$0E,$E6,$3F
+  $D9,$81,$FF,$FE,$D9,$C1,$F6,$E5,$6E,$FD,$F0,$FE,$8D,$AA,$BF,$B0,$E8,$63,$E0,$66,$C0,$61,$3F,$00
+  $3E,$BA,$80,$EA,$FB,$3D,$50,$80,$22,$D0,$F7,$3E,$10,$F3,$DF,$FE,$8F,$E6,$B9,$DF,$58,$DE,$BE,$3E
+  $98,$CA,$00,$D2,$0F,$7E,$FE,$FE,$DE,$A2,$6F,$9E,$E1,$FA,$FE,$C1,$38,$1D,$9B,$90,$BC,$F3,$9F,$47
+  $30,$69,$7C,$32,$71,$97,$3C,$37,$A2,$7E,$C0,$30,$77,$10,$FD,$D1,$EC,$F7,$00,$23,$34,$8C,$D8,$FE
+  $A0,$FF,$82,$75,$9D,$70,$72,$D0,$24,$3E,$1F,$FB,$F5,$A8,$58,$D0,$ED,$E4,$77,$D0,$27,$A0,$CD,$89
+  $A0,$F8,$FE,$93,$00,$C0,$EA,$40,$1E,$20,$07,$03,$B3,$78,$C0,$73,$BA,$F2,$F0,$CA,$BC,$A8,$D2,$3E
+  $93,$AD,$38,$BC,$B5,$7E,$A0,$0F,$1C,$FF,$40,$9E,$FF,$40,$61,$49,$D0,$FF,$61,$00,$F6,$FF,$80,$96
+  $1F,$F5,$F8,$49,$CA,$A2,$E0,$1F,$C1,$22,$68,$DF,$01,$E0,$48,$BC,$C7,$D4,$D2,$E0,$29,$80,$35,$55
+  $58
+end data
+data SpritePatZ bytes
+  $5A,$00,$07,$0C,$18,$32,$66,$60,$02,$61,$60,$66,$33,$18,$0C,$07,$00,$92,$E0,$30,$18,$4C,$66,$06
+  $80,$98,$86,$06,$66,$CC,$18,$30,$E0,$00,$49,$04,$02,$21,$11,$0F,$11,$21,$02,$04,$00,$21,$27,$20
+  $40,$84,$88,$F0,$88,$84,$40,$20,$00,$55,$55,$80
+end data
+
+data TxD_0 bytes
+  $02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$06,$28,$43,$36,$34,$29,$2E,$04
+  $31,$39,$39,$30,$05,$32,$30,$32,$36,$2E,$03,$41,$4E,$44,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F
+  $4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$08,$44,$45,$47,$52,$4F,$46,$46,$2C,$05,$44,$49,$53,$4B
+  $2C,$04,$47,$41,$4D,$45,$06,$4A,$49,$4E,$47,$4C,$45,$0A,$4D,$41,$47,$41,$5A,$49,$4E,$45,$27,$53
+  $08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$05,$50,$45,$4E,$4E,$59,$04,$50,$4F,$52,$54
+end data
+data TxD_1 bytes
+  $05,$52,$45,$52,$55,$4E,$03,$52,$55,$4E,$06,$53,$55,$4D,$4D,$45,$52
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $0D,$0A,$05,$0B,$FE,$00,$0E,$08,$FE,$11,$0C,$10,$09,$FE,$12,$03,$02,$FE,$07,$0F,$FE,$00,$06,$01
+  $FE,$04,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScBeep:
+    db $40,$35,$10,$01,$40,$35,$30,$01,$40,$35,$50,$01,$40,$35,$70,$01,$40,$35,$F0,$08,$40,$35,$10,$01
+    db $40,$35,$30,$01,$40,$35,$50,$01,$40,$35,$70,$01,$50
+ScHit:
+    db $00,$00,$46,$02,$00,$00,$36,$02,$00,$00,$25,$02,$00,$00,$25,$02,$00,$00,$24,$01,$00,$00,$44,$02
+    db $10
+ScRight:
+    db $40,$32,$10,$02,$40,$32,$20,$02,$40,$32,$40,$02,$40,$32,$50,$02,$40,$32,$70,$02,$40,$32,$A0,$02
+    db $50
+ScWrong:
+    db $40,$CA,$20,$02,$40,$CA,$40,$02,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScBeep,$705D
+    dw ScHit,$7053
+    dw ScRight,$705D
+    dw ScWrong,$705D
+; Out of Order jingle (Penny DeGroff, 1990) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$31,$01,$38,$01,$33,$01,$38,$01,$31,$01,$2C,$01
+    db $01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$33,$0C,$14,$66,$22,$02,$33,$0C,$14,$66,$22,$02,$33,$0C,$14,$66,$22
+    db $02,$33,$0C,$14,$66,$22,$02,$33,$0C,$14,$66,$22,$02,$33,$0C,$14,$66,$30
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$0E,$C0,$4C,$F0,$0E,$C0,$66,$F0,$0E,$C0,$5A,$F0,$0E,$C0,$72,$F0,$0E,$C0,$B5,$F0,$0C
+    db $F0
+    db $D0
+}

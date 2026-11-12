@@ -1,0 +1,1519 @@
+cartridge "ROLLERDASH/TONY BRANTNER/1991"
+' ROLLERDASH - a ColecoVision port of the C64 machine-code game ROLLERDASH
+' from the ReRUN disk of September/October 1991 (author not credited on the
+' disk). Port in Amy by Claude (Anthropic), 2026.
+'
+' The game: a roller-skater dashes along a brick wall. Each push of the
+' stick to the right (then let go) is one stride: speed goes up. Speed
+' slowly runs down by itself. Stick up jumps the low obstacles, stick down
+' ducks under the hanging banners; hitting anything drops the speed to a
+' crawl. Cover 1.00 mile before the timer runs out: 10 points every 0.01
+' mile, 100 points for every tick left on the timer. Ten levels, each with
+' five ticks less; when the time runs out the game is over.
+'
+' Timing is the original's: its main loop ran about 18 times per 1/60 s
+' (measured in the C64 emulator, c64/traces); the port runs that loop body
+' 18 times a frame (LoopStep), so every rule counts in the original's units
+' (strides of 256 loops, speed -1 every 32 loops, +1 every 8 loops of a
+' stride, 1 pixel per 256/speed loops, 96 pixels per 0.01 mile, a timer
+' tick every 38 jiffies).
+
+const TSky = 128
+const TStar = 129
+const TRoof = 130
+const TBldg = 131
+const TBldg2 = 132
+const TTower = 133
+const TCap = 134
+const TCell = 135
+const TLit = 136
+const TRule = 137
+const TWall0 = 138
+const TWall1 = 139
+const TPave0 = 140
+const TPave1 = 141
+const TPave2 = 142
+const TPave3 = 143
+const TKerb0 = 144
+const TKerb1 = 145
+const TKerb2 = 146
+const TKerb3 = 147
+const TBigR00 = 148
+const TBigR01 = 149
+const TBigR10 = 150
+const TBigR11 = 151
+const TBigO00 = 152
+const TBigO01 = 153
+const TBigO10 = 154
+const TBigO11 = 155
+const TBigL00 = 156
+const TBigL01 = 157
+const TBigL10 = 158
+const TBigL11 = 159
+const TBigE00 = 160
+const TBigE01 = 161
+const TBigE10 = 162
+const TBigE11 = 163
+const TBigD00 = 164
+const TBigD01 = 165
+const TBigD10 = 166
+const TBigD11 = 167
+const TBigA00 = 168
+const TBigA01 = 169
+const TBigA10 = 170
+const TBigA11 = 171
+const TBigS00 = 172
+const TBigS01 = 173
+const TBigS10 = 174
+const TBigS11 = 175
+const TBigH00 = 176
+const TBigH01 = 177
+const TBigH10 = 178
+const TBigH11 = 179
+const SStandpt = 0
+const SStandpb = 4
+const SStandgt = 8
+const SStandgb = 12
+const SSk1pt = 16
+const SSk1pb = 20
+const SSk1gt = 24
+const SSk1gb = 28
+const SSk2pt = 32
+const SSk2pb = 36
+const SSk2gt = 40
+const SSk2gb = 44
+const SSk3pt = 48
+const SSk3pb = 52
+const SSk3gt = 56
+const SSk3gb = 60
+const SJumppt = 64
+const SJumppb = 68
+const SJumpgt = 72
+const SJumpgb = 76
+const SDuckpt = 80
+const SDuckpb = 84
+const SDuckgt = 88
+const SDuckgb = 92
+const SHurdlek = 96
+const SHurdleo = 100
+const SBink = 104
+const SBino = 108
+const SBannerk = 112
+const SBannero = 116
+const SRockk = 120
+const SRocko = 124
+const SHydrantk = 128
+const SHydranto = 132
+const SHurdlewl = 136
+const SHurdlewr = 140
+const SBinwl = 144
+const SBinwr = 148
+const SBannerwl = 152
+const SBannerwr = 156
+const SRockwl = 160
+const SRockwr = 164
+const SHydrantwl = 168
+const SHydrantwr = 172
+const NTiles8 = 416
+const SprBytes = 1408
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndBlip = 6
+const SndTimeUp = 7
+const SndRCs = 8
+const SndRC = 9
+const SndRDs = 10
+const SndRG = 11
+const TuneFrames = 448
+const TxtCredits = 0
+const NSpr = 6
+const HideY = 192
+const LoopsPerFrame = 18
+' the skater's sprite: x, top row when standing (wheels on the pavement)
+const PX = 32
+const PY = 101
+' obstacle rows: low ones stand on the pavement, the banner hangs high
+const LowY = 116
+const HighY = 99
+' C64 sprite X of the skater (60) minus the port's (32)
+const XOff = 28
+' poses (pattern groups of 16)
+const PStand = 0
+const PSk1 = 1
+const PSk2 = 2
+const PSk3 = 3
+const PJump = 4
+const PDuck = 5
+' VRAM: wall tiles live in the middle third, pavement and kerb in the bottom one
+const WallPat = 2048 + TWall0 * 8
+const PavePat = 4096 + TPave0 * 8
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StReady = 5
+const StDone = 6
+const StOver = 9
+
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+' score and high score in tens (the score is always a multiple of 10)
+u16 S10 = 0
+u16 Hi10 = 0
+' obstacle X in the original's 9-bit C64 sprite coordinates
+u16 OX = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' the original's game variables (C64 addresses in brackets)
+u8 Lc = 0
+u8 Act = 0
+u8 AT = 0
+u8 Last = 0
+u8 Jc = 0
+u8 Pose = 0
+u8 Rise = 0
+u8 Spd = 0
+u8 DAcc = 0
+u8 MAcc = 0
+u8 Fine = 0
+u8 C12 = 0
+u8 Dist = 0
+u8 Timer = 0
+u8 TJ = 0
+u8 Level = 0
+u8 MusIdx = 0
+u8 MusDur = 0
+u8 ObsOn = 0
+u8 OType = 0
+u8 OWide = 0
+u8 OCol = 0
+u8 OY = 0
+u8 Hit = 0
+u8 ScrollX = 0
+u8 Moved = 0
+u8 SpdShown = 0
+u8 DistDirty = 0
+u8 ScoreDirty = 0
+u8 Px1 = 0
+u8 Px2 = 0
+u8 Ox1 = 0
+u8 Ox2 = 0
+u8 Ox0 = 0
+u8 Ol = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Li = 0
+u8 Oi = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Y = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  S10 = 0
+  Level = 1
+  DrawPlay
+
+next_level:
+  NewLevel
+  WaitStick
+
+play_loop:
+  Frame1
+  ReadPad
+  for Li = 1 to LoopsPerFrame
+    LoopStep
+  next
+  Collide
+  DrawSprites
+  DrawScroll
+  ' the HUD numbers: at most one of them a frame
+  if DistDirty = 1 then
+    DistDirty = 0
+    ScoreDirty = 1
+    ShowDist
+  else
+    if ScoreDirty = 1 then
+      ScoreDirty = 0
+      ShowScore
+    end if
+  end if
+  ShowSpeed
+  if Dist >= 100 then
+    ShowDist
+    ShowScore
+    goto level_done
+  end if
+  if Timer = 0 then goto time_up
+  inc TJ
+  if TJ >= 38 then
+    TJ = 0
+    dec Timer
+    ShowTimer
+  end if
+  goto play_loop
+
+level_done:
+  LevelDone
+  goto next_level
+
+time_up:
+  TimeUp
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (from the original's machine code, see README)
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a level starts ($08BE): everything cleared, timer 105 - 5 x level
+sub NewLevel:
+  State = StReady
+  T = Level << 2
+  T += Level
+  Timer = 105 - T
+  TJ = 0
+  ' the loop counter's phase (speed -1 every 32 loops) starts at 0 each
+  ' level (the original never resets it: a sub-frame difference)
+  Lc = 0
+  Dist = 0
+  C12 = 0
+  Spd = 0
+  Act = 0
+  AT = 0
+  Last = 0
+  Rise = 0
+  Pose = PStand
+  DAcc = 0
+  MAcc = 0
+  Fine = 0
+  MusIdx = 0
+  MusDur = 0
+  OX = 240
+  ObsOn = 0
+  Hit = 0
+  ShowHud
+  DrawSprites
+  return
+end sub
+
+' the original waits for any stick direction before the level runs
+sub WaitStick:
+  print at 2,4, "LEVEL"
+  NumU = Level
+  print at 8,4, digits$(NumU, 2)
+  print at 12,4, "PUSH THE STICK"
+  WasJ = 15
+wk_loop:
+  Frame1
+  ReadPad
+  if Jk = 0 then goto wk_loop
+  fill TSky count 28 at 2,4
+  State = StPlay
+  return
+end sub
+
+' one pass of the original's main loop ($0910-$096E)
+sub LoopStep:
+  inc Lc
+  ActStep
+  ' the bass riff steps when 16 x loops overflow; the next step then starts
+  ' from the speed, so the riff runs faster when you skate fast
+  MAcc += 16
+  if MAcc < 16 then
+    MusicStep
+    MAcc = Spd
+  end if
+  ' speed runs down by 1 every 32 loops
+  V = Lc & 31
+  if V = 0 then
+    if Spd > 0 then dec Spd
+  end if
+  ' 1 pixel of travel each time the speed overflows the accumulator
+  T = DAcc
+  DAcc += Spd
+  if DAcc < T then ScrollPx
+  return
+end sub
+
+' the stick ($09F2): a new direction starts a move that runs 256 counts;
+' the stick is only read again when the move is over, and only a CHANGE
+' of the stick starts one (push, let go, push again)
+sub ActStep:
+  if Act = 0 then
+    if Jc = Last then
+      Pose = PStand
+      return
+    end if
+    Last = Jc
+    if Jc = 1 then Act = 1
+    if Jc = 8 then Act = 2
+    if Jc = 2 then Act = 3
+    if Act = 0 then
+      Pose = PStand
+      return
+    end if
+    AT = 0
+  end if
+  if Act = 1 then
+    ' jump: up 1 px every 8 counts for 16 px, then down; counts every 2nd loop
+    Pose = PJump
+    K = AT >> 3
+    if K < 16 then
+      Rise = K
+    else
+      Rise = 31 - K
+    end if
+    V = Lc & 1
+    if V = 0 then return
+  end if
+  if Act = 2 then
+    ' a stride: the legs (4 pictures of 64 counts), speed +1 every 8 counts
+    K = AT >> 6
+    Pose = SkTab[K]
+    V = AT & 7
+    if V = 0 then
+      if Spd < 119 then inc Spd
+    end if
+  end if
+  if Act = 3 then Pose = PDuck
+  inc AT
+  if AT = 0 then
+    Act = 0
+    Rise = 0
+  end if
+  return
+end sub
+
+' one pixel of travel: the obstacle moves left, the wall scrolls
+sub ScrollPx:
+  Moved = 1
+  inc ScrollX
+  OX -= 1
+  OX = OX & 511
+  if OX = 506 then Spawn
+  Fine -= 1
+  Fine = Fine & 7
+  if Fine = 7 then
+    ' a character of wall: 12 of them are 0.01 mile, worth 10 points
+    inc C12
+    if C12 >= 12 then
+      C12 = 0
+      inc Dist
+      S10 += 1
+      DistDirty = 1
+    end if
+  end if
+  return
+end sub
+
+' a new obstacle ($0AA6) just off the right edge, 336-463 px out; its kind,
+' width and colour come from one 16-entry table
+sub Spawn:
+  Rand
+  W16 = Rs & 255
+  W16 = W16 >> 1
+  OX = 336 + W16
+  Rand
+  K = Rs & 15
+  OType = TypeTab[K]
+  OWide = WideTab[K]
+  OCol = ColTab[K]
+  OY = LowY
+  if OType = 2 then OY = HighY
+  ObsOn = 1
+  return
+end sub
+
+' the riff ($0BF1): 24 notes, each held (length + 1) steps
+sub MusicStep:
+  if MusDur > 0 then
+    dec MusDur
+    return
+  end if
+  T = RiffLen[MusIdx]
+  if T = 0 then
+    MusIdx = 0
+    return
+  end if
+  MusDur = T
+  K = RiffNote[MusIdx]
+  if K = 0 then play sound SndRCs
+  if K = 1 then play sound SndRC
+  if K = 2 then play sound SndRDs
+  if K = 3 then play sound SndRG
+  inc MusIdx
+  return
+end sub
+
+' hitting anything ($0AD8) holds the speed at 10 or less. Checked row by
+' row with each picture's leftmost and rightmost pixel (spans.txt)
+sub Collide:
+  Hit = 0
+  if ObsOn = 0 then return
+  ' only near the skater (screen X 0-52)
+  if OX < XOff then return
+  if OX > 80 then return
+  ' X in a +64 frame so nothing goes negative (all of it fits a byte)
+  T = OX
+  Ox0 = T + 36
+  Y = PY - Rise
+  ' obstacle rows that meet the skater's 32 rows
+  Oi = 0
+  if Y > OY then Oi = Y - OY
+  Ol = 15
+  T = Y + 31
+  T -= OY
+  if T < 15 then Ol = T
+cl_row:
+  if Oi > Ol then goto cl_end
+  T = OY + Oi
+  K = T - Y
+  W16 = Pose
+  W16 = W16 << 6
+  J = K << 1
+  W16 += J
+  Px1 = PSpan[W16]
+  if Px1 = 255 then goto cl_next
+  W16 += 1
+  Px2 = PSpan[W16]
+  C = OType << 5
+  J = Oi << 1
+  C += J
+  Ox1 = OSpan[C]
+  if Ox1 = 255 then goto cl_next
+  inc C
+  Ox2 = OSpan[C]
+  if OWide = 1 then
+    Ox1 = Ox1 << 1
+    Ox2 = Ox2 << 1
+    inc Ox2
+  end if
+  ' overlap when P.left <= O.right and O.left <= P.right (skater at 96)
+  Px1 += 96
+  Px2 += 96
+  Ox1 += Ox0
+  Ox2 += Ox0
+  if Px1 <= Ox2 then
+    if Ox1 <= Px2 then
+      Hit = 1
+      goto cl_end
+    end if
+  end if
+cl_next:
+  inc Oi
+  goto cl_row
+cl_end:
+  if Hit = 1 then
+    if Spd > 10 then Spd = 10
+  end if
+  return
+end sub
+
+' the level is covered ($0971): every tick left on the timer gives 100
+' points with a blip, then the next level (up to 10)
+sub LevelDone:
+  State = StDone
+  mute all
+  NewLevelBanner
+lc_loop:
+  if Timer > 0 then
+    play sound SndBlip
+    S10 += 10
+    dec Timer
+    ShowTimer
+    ShowScore
+    Rearm
+    wait 3 frames
+    nmi off
+    goto lc_loop
+  end if
+  if Level < 10 then inc Level
+  ' the message blinks (30 frames on, 10 off) until the button
+  WasBtn = 16
+  Waited = 0
+lc_wait:
+  Frame1
+  ReadPad
+  inc Waited
+  T = Waited % 40
+  if T = 0 then print at 2,4, "LEVEL COMPLETE! PRESS FIRE"
+  if T = 30 then fill TSky count 28 at 2,4
+  if Press = 0 then goto lc_wait
+  fill TSky count 28 at 2,4
+  return
+end sub
+
+sub NewLevelBanner:
+  print at 2,4, "LEVEL COMPLETE! PRESS FIRE"
+  return
+end sub
+
+' time has run out ($09B4): four falling notes, then game over
+sub TimeUp:
+  State = StOver
+  mute all
+  play sound SndTimeUp
+  print at 2,4, "TIME HAS EXPIRED!"
+  Rearm
+  wait 230 frames
+  nmi off
+  print at 2,4, "GAME OVER - PRESS FIRE"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawSprites:
+  Y = PY - Rise
+  Y -= 1
+  C = Pose << 4
+  T = SStandpt + C
+  set sprite 0 to Y,PX,T,9
+  T += 8
+  set sprite 2 to Y,PX,T,3
+  Y += 16
+  T = SStandpt + C
+  T += 4
+  set sprite 1 to Y,PX,T,9
+  T += 8
+  set sprite 3 to Y,PX,T,3
+  ' the obstacle: hidden while off the screen (C64 X 28..283 is on it)
+  set sprite 4 to HideY,0,0,0
+  set sprite 5 to HideY,0,0,0
+  if ObsOn = 1 then
+    Y = OY - 1
+    C = OType << 3
+    if OWide = 0 then
+      if OX >= XOff then
+        W16 = OX - XOff
+        if W16 < 256 then
+          V = W16
+          T = SHurdlek + C
+          set sprite 4 to Y,V,T,1
+          T += 4
+          set sprite 5 to Y,V,T,OCol
+        end if
+      end if
+    else
+      if OX >= XOff then
+        W16 = OX - XOff
+        if W16 < 256 then
+          V = W16
+          T = SHurdlewl + C
+          set sprite 4 to Y,V,T,OCol
+        end if
+      end if
+      W16 = OX + 16
+      if W16 >= XOff then
+        W16 -= XOff
+        if W16 < 256 then
+          V = W16
+          T = SHurdlewr + C
+          set sprite 5 to Y,V,T,OCol
+        end if
+      end if
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+' the wall (16 px period) and the pavement (32 px) slide by redrawing
+' their tiles shifted
+sub DrawScroll:
+  if Moved = 0 then return
+  Moved = 0
+  W16 = ScrollX & 15
+  W16 = W16 << 4
+  copy WallSh + W16 count 16 to vram.pattern + WallPat
+  W16 = ScrollX & 31
+  W16 = W16 << 6
+  copy PaveSh + W16 count 64 to vram.pattern + PavePat
+  return
+end sub
+
+' the speed meter ($0B95): one lit cell, speed / 8
+sub ShowSpeed:
+  T = Spd >> 3
+  if T = SpdShown then return
+  SpdShown = T
+  fill TCell count 15 at 8,18
+  C = T + 8
+  put char TLit at C,18
+  return
+end sub
+
+sub ShowDist:
+  NumU = 0
+  if Dist >= 100 then NumU = 1
+  print at 7,20, digits$(NumU, 1)
+  NumU = Dist % 100
+  print at 9,20, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowTimer:
+  NumU = Timer
+  print at 26,20, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowScore:
+  if S10 > Hi10 then Hi10 = S10
+  NumU = S10
+  print at 8,22, digits$(NumU, 5)
+  NumU = Hi10
+  print at 21,22, digits$(NumU, 5)
+  return
+end sub
+
+sub ShowHud:
+  print at 2,18, "SPEED"
+  SpdShown = 99
+  ShowSpeed
+  print at 2,20, "DIST 0.00 LEVEL"
+  NumU = Level
+  print at 18,20, digits$(NumU, 2)
+  print at 21,20, "TIME"
+  ShowDist
+  ShowTimer
+  print at 2,22, "SCORE"
+  put char 48 at 13,22
+  print at 16,22, "HIGH"
+  put char 48 at 26,22
+  ShowScore
+  return
+end sub
+
+' the street: logo, night sky and city, the wall, the pavement
+sub DrawStreet:
+  fill TSky count 32 at 0,1
+  fill TSky count 32 at 0,2
+  DrawLogo
+  for Li = 3 to 6
+    fill TSky count 32 at 0,Li
+  next
+  put char TStar at 3,3
+  put char TStar at 27,3
+  put char TStar at 16,6
+  put char TStar at 6,5
+  put char TStar at 23,5
+  ' skyline
+  for Li = 0 to 31
+    T = Li & 7
+    V = TRoof
+    if T = 2 then V = TTower
+    if T = 5 then V = TSky
+    put char V at Li,7
+    T = Li & 3
+    V = TBldg
+    if T = 1 then V = TBldg2
+    put char V at Li,8
+  next
+  fill TCap count 32 at 0,9
+  for Li = 10 to 15
+    for Oi = 0 to 15
+      C = Oi << 1
+      put char TWall0 at C,Li
+      inc C
+      put char TWall1 at C,Li
+    next
+  next
+  for Oi = 0 to 7
+    C = Oi << 2
+    put char TPave0 at C,16
+    put char TKerb0 at C,17
+    inc C
+    put char TPave1 at C,16
+    put char TKerb1 at C,17
+    inc C
+    put char TPave2 at C,16
+    put char TKerb2 at C,17
+    inc C
+    put char TPave3 at C,16
+    put char TKerb3 at C,17
+  next
+  return
+end sub
+
+' ROLLERDASH in 2 x 2 letters at columns 6-25, rows 1-2
+sub DrawLogo:
+  for Oi = 0 to 9
+    K = LogoTab[Oi]
+    C = Oi << 1
+    C += 6
+    T = K
+    put char T at C,1
+    T += 1
+    inc C
+    put char T at C,1
+    T += 1
+    dec C
+    put char T at C,2
+    T += 1
+    inc C
+    put char T at C,2
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  copy ScrollCol count 80 to vram.color + WallPat - 2048
+  DrawStreet
+  ScrollX = 0
+  Moved = 1
+  DrawScroll
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Jc = the same for the rules, Edge = directions newly pressed, Press =
+' button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  Jc = Jk
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker off
+  for J = 0 to 5
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the street with the logo, the menu (cursor back on START),
+' the tune once
+sub TitlePage:
+  DrawPlay
+  State = StTitle
+  print at 9,4, "ROLLER SKATE DASH"
+  print at 11,18, "START"
+  print at 11,20, "HOW TO PLAY"
+  print at 11,22, "CREDITS"
+  ' the skater waits on the pavement, a hurdle ahead
+  Rise = 0
+  Pose = PStand
+  ObsOn = 1
+  OType = 0
+  OWide = 0
+  OCol = 15
+  OY = LowY
+  OX = 220
+  DrawSprites
+  Menu = 0
+  ShowMenu
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,18
+  put char 32 at 9,20
+  put char 32 at 9,22
+  C = Menu << 1
+  C += 18
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen
+  print at 11,2, "ROLLERDASH"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' a strip of street for the HOW TO PLAY pictures: wall rows R..R+1,
+' pavement and kerb below
+sub HowStreet:
+  for Oi = 0 to 15
+    C = Oi << 1
+    put char TWall0 at C,10
+    put char TWall0 at C,11
+    inc C
+    put char TWall1 at C,10
+    put char TWall1 at C,11
+  next
+  for Oi = 0 to 7
+    C = Oi << 2
+    put char TPave0 at C,12
+    put char TKerb0 at C,13
+    inc C
+    put char TPave1 at C,12
+    put char TKerb1 at C,13
+    inc C
+    put char TPave2 at C,12
+    put char TKerb2 at C,13
+    inc C
+    put char TPave3 at C,12
+    put char TKerb3 at C,13
+  next
+  return
+end sub
+
+' HOW TO PLAY: two pages, each with a picture made of the game's own
+' sprites and tiles
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  copy ScrollCol count 80 to vram.color + WallPat - 2048
+  ScrollX = 0
+  copy WallSh count 16 to vram.pattern + WallPat
+  copy PaveSh count 64 to vram.pattern + 2048 + TPave0 * 8
+  print at 8,1, "HOW TO PLAY  1/2"
+  print at 2,3, "SKATE 1.00 MILE ALONG THE"
+  print at 2,5, "WALL BEFORE THE TIMER ENDS."
+  HowStreet
+  ' the picture: a stride (stick right), then let go
+  set sprite 0 to 68,48,SSk1pt,9
+  set sprite 1 to 84,48,SSk1pb,9
+  set sprite 2 to 68,48,SSk1gt,3
+  set sprite 3 to 84,48,SSk1gb,3
+  set sprite 4 to 83,176,SHurdlek,1
+  set sprite 5 to 83,176,SHurdleo,15
+  update sprites
+  print at 2,15, "STICK RIGHT, THEN LET GO:"
+  print at 2,17, "ONE STRIDE. STRIDE AGAIN"
+  print at 2,19, "AND AGAIN TO GO FASTER."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    copy ScrollCol count 80 to vram.color + WallPat - 2048
+    copy WallSh count 16 to vram.pattern + WallPat
+    copy PaveSh count 64 to vram.pattern + 2048 + TPave0 * 8
+    print at 8,1, "HOW TO PLAY  2/2"
+    print at 2,3, "STICK UP JUMPS, STICK DOWN"
+    print at 2,5, "DUCKS UNDER A BANNER."
+    HowStreet
+    ' a skater ducking under a banner
+    set sprite 0 to 68,120,SDuckpt,9
+    set sprite 1 to 84,120,SDuckpb,9
+    set sprite 2 to 68,120,SDuckgt,3
+    set sprite 3 to 84,120,SDuckgb,3
+    set sprite 4 to 66,120,SBannerk,1
+    set sprite 5 to 66,120,SBannero,11
+    update sprites
+    print at 2,15, "A HIT DROPS YOUR SPEED."
+    print at 2,17, "10 POINTS EVERY 0.01 MILE,"
+    print at 2,19, "100 FOR EACH TICK LEFT."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+' tables from the original ($0CF2, $0CF6, $0D06, $0D16, $0E4A)
+data SkTab bytes 1,2,3,0
+data TypeTab bytes 0,0,0,0,1,1,2,2,2,2,3,3,3,3,4,4
+data WideTab bytes 0,0,1,1,0,0,0,0,1,1,0,0,1,1,0,0
+' C64 colours 1 f 1 f d f 1 7 f 3 1 e 1 e 7 7 as TMS colours
+data ColTab bytes 15,14,15,14,3,14,15,11,14,7,15,5,15,5,11,11
+' riff: lengths (steps - 1), then 0 C#, 1 C, 2 D#, 3 G
+data RiffLen bytes 9,9,12,15,12,18,9,9,12,15,12,18,9,9,12,12,12,12,12,12,12,15,9,15,0
+data RiffNote bytes 0,1,2,0,1,3,0,1,2,0,1,3,0,1,2,0,0,2,0,0,2,0,1,3,0
+data LogoTab bytes TBigR00,TBigO00,TBigL00,TBigL00,TBigE00,TBigR00,TBigD00,TBigA00,TBigS00,TBigH00
+
+data WallSh bytes
+  1,1,1,0,16,16,16,0,1,1,1,0,16,16,16,0
+  2,2,2,0,32,32,32,0,2,2,2,0,32,32,32,0
+  4,4,4,0,64,64,64,0,4,4,4,0,64,64,64,0
+  8,8,8,0,128,128,128,0,8,8,8,0,128,128,128,0
+  16,16,16,0,1,1,1,0,16,16,16,0,1,1,1,0
+  32,32,32,0,2,2,2,0,32,32,32,0,2,2,2,0
+  64,64,64,0,4,4,4,0,64,64,64,0,4,4,4,0
+  128,128,128,0,8,8,8,0,128,128,128,0,8,8,8,0
+  1,1,1,0,16,16,16,0,1,1,1,0,16,16,16,0
+  2,2,2,0,32,32,32,0,2,2,2,0,32,32,32,0
+  4,4,4,0,64,64,64,0,4,4,4,0,64,64,64,0
+  8,8,8,0,128,128,128,0,8,8,8,0,128,128,128,0
+  16,16,16,0,1,1,1,0,16,16,16,0,1,1,1,0
+  32,32,32,0,2,2,2,0,32,32,32,0,2,2,2,0
+  64,64,64,0,4,4,4,0,64,64,64,0,4,4,4,0
+  128,128,128,0,8,8,8,0,128,128,128,0,8,8,8,0
+end data
+data PaveSh bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,1,2,4,8,16,32,64,128
+  0,0,64,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,64,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,1,2,4,8,16,32,64,128,0
+  0,0,128,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,128,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,1,2,4,8,16,32,64,128,0,0
+  0,0,0,255,255,255,255,255,0,0,1,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,1,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,1,2,4,8,16,32,64,128,0,0,0
+  0,0,0,255,255,255,255,255,0,0,2,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,2,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,1,2,4,8,16,32,64,128,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,4,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,4,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,1,2,4,8,16,32,64,128,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,8,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,8,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,1,2,4,8,16,32,64,128,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,16,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,16,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,1,2,4,8,16,32,64,128,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,32,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,32,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  1,2,4,8,16,32,64,128,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,64,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,64,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  2,4,8,16,32,64,128,0,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,128,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,128,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,2
+  4,8,16,32,64,128,0,0,0,0,0,0,0,0,0,0
+  0,0,1,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,1,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,0,1,2,4
+  8,16,32,64,128,0,0,0,0,0,0,0,0,0,0,0
+  0,0,2,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,2,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,0,1,2,4,8
+  16,32,64,128,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,4,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,4,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,0,1,2,4,8,16
+  32,64,128,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,8,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,8,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,0,1,2,4,8,16,32
+  64,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,16,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,16,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,0,0,1,2,4,8,16,32,64
+  128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,32,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,32,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,0,1,2,4,8,16,32,64,128
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,64,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,64,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,0,1,2,4,8,16,32,64,128,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,128,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,128,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,0,0,0,0,1,2,4,8,16,32,64,128,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,1,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,1,255,255,255,255,255
+  0,0,0,0,0,1,2,4,8,16,32,64,128,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,2,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,2,255,255,255,255,255
+  0,0,0,0,1,2,4,8,16,32,64,128,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,4,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,4,255,255,255,255,255
+  0,0,0,1,2,4,8,16,32,64,128,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,8,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,8,255,255,255,255,255
+  0,0,1,2,4,8,16,32,64,128,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,16,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,16,255,255,255,255,255
+  0,1,2,4,8,16,32,64,128,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,32,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,32,255,255,255,255,255
+  1,2,4,8,16,32,64,128,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,255,255,255,255,255,0,0,64,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,64,255,255,255,255,255
+  2,4,8,16,32,64,128,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+  0,0,0,255,255,255,255,255,0,0,128,255,255,255,255,255
+  0,0,0,255,255,255,255,255,0,0,128,255,255,255,255,255
+  4,8,16,32,64,128,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,2
+  0,0,1,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,1,255,255,255,255,255,0,0,0,255,255,255,255,255
+  8,16,32,64,128,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,1,2,4
+  0,0,2,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,2,255,255,255,255,255,0,0,0,255,255,255,255,255
+  16,32,64,128,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,1,2,4,8
+  0,0,4,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,4,255,255,255,255,255,0,0,0,255,255,255,255,255
+  32,64,128,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,1,2,4,8,16
+  0,0,8,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,8,255,255,255,255,255,0,0,0,255,255,255,255,255
+  64,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,1,2,4,8,16,32
+  0,0,16,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,16,255,255,255,255,255,0,0,0,255,255,255,255,255
+  128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,1,2,4,8,16,32,64
+  0,0,32,255,255,255,255,255,0,0,0,255,255,255,255,255
+  0,0,32,255,255,255,255,255,0,0,0,255,255,255,255,255
+end data
+data ScrollCol bytes
+  230,230,230,30,230,230,230,30,230,230,230,30,230,230,230,30
+  30,30,30,31,30,30,30,30,30,30,30,31,30,30,30,30
+  30,30,30,31,30,30,30,30,30,30,30,31,30,30,30,30
+  31,30,30,17,17,17,17,17,31,30,30,17,17,17,17,17
+  31,30,30,17,17,17,17,17,31,30,30,17,17,17,17,17
+end data
+data PSpan bytes
+  255,0,255,0,255,0,255,0,255,0,255,0,6,8,5,9
+  5,10,5,9,6,9,7,8,4,9,3,10,3,11,3,11
+  3,11,6,8,5,9,5,9,5,9,5,9,5,9,5,9
+  5,9,5,9,5,9,4,10,4,10,5,9,4,8,255,0
+  255,0,255,0,255,0,255,0,255,0,255,0,255,0,8,10
+  7,11,7,12,7,11,8,11,9,10,5,10,4,11,4,12
+  4,12,4,12,7,9,6,10,6,10,4,9,3,10,3,11
+  2,12,2,13,1,14,1,14,0,15,0,15,0,14,1,15
+  255,0,255,0,255,0,255,0,255,0,255,0,255,0,8,10
+  7,11,7,12,7,11,8,11,9,10,5,10,4,11,4,12
+  4,12,4,12,7,9,6,10,6,10,5,9,4,10,3,11
+  3,12,2,13,2,13,2,13,1,14,1,14,1,13,2,14
+  255,0,255,0,255,0,255,0,255,0,255,0,255,0,8,10
+  7,11,7,12,7,11,8,11,9,10,5,10,4,11,4,12
+  4,12,4,12,7,9,6,10,6,10,5,9,5,10,4,11
+  4,12,4,13,4,14,4,14,3,15,3,15,3,14,4,15
+  255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0
+  6,8,5,9,5,10,5,9,6,9,7,8,4,9,3,10
+  3,11,3,11,3,11,6,8,4,10,3,11,3,11,4,11
+  3,13,3,13,3,13,4,12,255,0,255,0,255,0,255,0
+  255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0
+  255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0
+  255,0,8,10,7,11,7,12,7,11,2,11,1,10,1,11
+  2,9,3,9,3,10,3,13,3,13,3,13,4,12,255,0
+end data
+data OSpan bytes
+  255,0,255,0,255,0,255,0,255,0,0,15,0,15,0,15
+  0,15,0,15,0,15,0,15,0,15,0,15,0,15,0,15
+  255,0,6,9,3,12,2,13,3,12,3,13,3,13,3,13
+  3,13,3,13,3,13,3,13,3,13,3,13,3,12,255,0
+  0,15,0,15,0,15,0,15,0,15,0,15,0,15,0,15
+  0,15,0,15,0,15,0,15,0,15,0,15,0,15,0,15
+  255,0,255,0,255,0,255,0,255,0,5,10,3,12,2,13
+  1,14,1,14,0,15,0,15,0,15,1,14,2,14,4,11
+  255,0,255,0,6,9,5,10,4,11,4,11,5,10,3,13
+  3,14,3,13,5,10,5,10,5,10,5,10,4,11,3,12
+end data
+
+
+data TilePatZ bytes
+  $97,$00,$A5,$F1,$10,$E2,$DD,$F0,$80,$69,$44,$A0,$01,$BA,$20,$FB,$04,$23,$18,$C3,$A2,$FF,$81,$81
+  $00,$A1,$81,$E0,$F0,$F6,$FE,$8F,$01,$91,$E0,$FF,$F0,$E5,$FE,$39,$C1,$A6,$02,$04,$08,$20,$40,$80
+  $29,$40,$5F,$E0,$5B,$F0,$BF,$FE,$F4,$FF,$01,$FF,$E8,$97,$E0,$8F,$F1,$C0,$C0,$D8,$7F,$E5,$BC,$7F
+  $D9,$D1,$9F,$E8,$F1,$DF,$C4,$64,$0F,$FE,$2B,$03,$DE,$DC,$E8,$1E,$C0,$47,$F9,$58,$3C,$F7,$C0,$E7
+  $ED,$30,$F9,$D4,$C0,$78,$60,$76,$C0,$5F,$F4,$E7,$C8,$D9,$F9,$C0,$89,$0C,$0C,$0F,$60,$FF,$FE,$95
+  $C7,$E0,$D5,$F1,$55,$60
+end data
+data TileColZ bytes
+  $81,$04,$88,$F4,$04,$0A,$41,$A2,$01,$EF,$B1,$FA,$F9,$CE,$EE,$FB,$FE,$14,$D7,$FE,$22,$01,$04,$6A
+  $0E,$0F,$0E,$01,$A1,$1E,$AA,$01,$1B,$1F,$AE,$FA,$D7,$FE,$8B,$E6,$0E,$97,$F8,$FF,$FF,$A2,$FF,$D7
+  $F0,$AF,$88,$1F,$7E,$FF,$E7,$79,$FE,$FF,$58,$FE,$F1,$E0,$EA,$FF,$09,$9A,$94,$08,$AA,$94,$49,$69
+  $84,$6A,$04,$A9,$84,$48,$FF,$F1,$D9,$C0,$F9,$E5,$C0,$FF,$DD,$C4,$FF,$D0,$C4,$FE,$B0,$D1,$C0,$77
+  $48,$7F,$C0,$E7,$65,$E8,$FD,$B0,$40,$FD,$89,$C4,$F5,$C0,$F7,$40,$FF,$3C,$DD,$C0,$79,$EC,$FF,$00
+  $FF,$97,$C0,$E7,$C9,$D0,$D9,$ED,$C0,$7F,$ED,$C4,$F7,$E5,$8C,$7F,$F4,$77,$C0,$DD,$00,$DF,$80,$80
+  $1D,$55,$56
+end data
+data SpritePatZ bytes
+  $86,$00,$22,$03,$07,$60,$03,$01,$00,$64,$FA,$80,$C0,$E0,$40,$C0,$80,$E4,$18,$79,$B8,$96,$06,$0F
+  $0F,$05,$0A,$00,$30,$07,$FE,$BB,$B9,$BB,$FE,$59,$A8,$0F,$1F,$1B,$00,$59,$AA,$C0,$E0,$B0,$03,$A8
+  $07,$06,$7C,$4C,$FC,$4B,$FE,$A4,$00,$68,$01,$E5,$E2,$92,$E0,$F0,$F8,$D0,$F0,$60,$0A,$0C,$F6,$FE
+  $28,$60,$F8,$DC,$A8,$50,$DE,$63,$0A,$05,$C2,$74,$09,$07,$0F,$0D,$00,$48,$F6,$D8,$0D,$51,$FB,$4D
+  $0C,$18,$18,$30,$30,$60,$88,$90,$99,$D8,$C0,$39,$C0,$60,$30,$18,$0C,$06,$00,$56,$18,$30,$78,$78
+  $50,$28,$58,$60,$0C,$1E,$1E,$14,$0A,$46,$D8,$06,$FE,$F4,$00,$A1,$0C,$47,$DD,$20,$C4,$00,$33,$07
+  $F7,$25,$FF,$00,$43,$4D,$FC,$59,$DC,$1F,$1F,$15,$28,$A1,$30,$82,$7C,$7C,$54,$28,$1D,$34,$FC,$F1
+  $E0,$F4,$77,$E6,$DD,$03,$0F,$1E,$1C,$F7,$DC,$4D,$DD,$36,$FD,$D3,$F9,$70,$77,$FE,$03,$3D,$CC,$83
+  $FA,$36,$CC,$DC,$30,$FA,$7D,$F2,$49,$2D,$3F,$7F,$7F,$37,$1F,$1C,$97,$44,$2E,$F2,$B8,$1A,$C0,$AE
+  $78,$DC,$E0,$D6,$AB,$03,$3C,$E2,$F9,$FE,$E6,$07,$60,$64,$FF,$87,$FF,$3A,$E1,$C3,$06,$28,$03,$1F
+  $F7,$1F,$02,$FE,$68,$02,$A3,$C0,$F8,$F8,$10,$DF,$FE,$E9,$E3,$04,$00,$1D,$DE,$FE,$98,$2A,$FC,$F7
+  $EC,$FE,$7C,$EC,$8E,$E1,$8F,$88,$FF,$24,$8F,$80,$9A,$01,$03,$01,$22,$F1,$11,$24,$F1,$01,$F6,$BD
+  $29,$38,$10,$17,$FF,$D7,$10,$0F,$C2,$75,$8E,$69,$08,$E8,$FF,$7D,$08,$F0,$E0,$8D,$60,$10,$84,$92
+  $18,$20,$42,$40,$84,$80,$90,$40,$30,$0F,$02,$18,$44,$02,$12,$02,$22,$02,$42,$B4,$F0,$C8,$CE,$08
+  $1F,$3D,$3F,$7B,$7F,$6F,$3F,$0F,$09,$77,$B8,$FC,$EC,$FD,$DD,$FD,$BC,$C0,$9E,$03,$04,$08,$D3,$6B
+  $18,$10,$18,$02,$D7,$FD,$80,$82,$C0,$20,$10,$F0,$98,$0C,$02,$0C,$33,$29,$48,$CA,$F4,$81,$EF,$4D
+  $FB,$05,$FD,$5C,$56,$EB,$81,$F0,$EC,$01,$FE,$CA,$E0,$F0,$E8,$FF,$F0,$6C,$FC,$CA,$A0,$FF,$47,$D6
+  $E0,$BA,$0F,$FF,$0F,$1C,$CA,$C9,$2F,$0F,$E1,$FE,$FE,$C8,$FE,$5E,$E1,$95,$F0,$EF,$03,$F0,$FD,$DB
+  $FE,$C0,$A7,$E4,$FC,$CF,$C3,$F5,$FE,$24,$54,$E7,$AA,$69,$27,$03,$E1,$E0,$DF,$9D,$C7,$E3,$24,$3F
+  $F3,$8F,$A0,$1E,$7E,$FF,$D4,$6E,$3F,$9A,$34,$CF,$A0,$1E,$0E,$E1,$95,$FC,$FF,$14,$D8,$F7,$F7,$5C
+  $7D,$6C,$DF,$7E,$B8,$84,$66,$ED,$FE,$8E,$7E,$AC,$E7,$A6,$F3,$98,$9C,$77,$E5,$9D,$6E,$55,$56
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$05,$31,$39,$39
+  $31,$2C,$05,$32,$30,$32,$36,$2E,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$09,$42,$52,$41,$4E,$54
+  $4E,$45,$52,$2E,$03,$43,$36,$34,$04,$43,$36,$34,$3B,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C
+  $45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$04,$44,$49,$53,$4B,$04,$46,$52,$4F,$4D,$04,$47,$41,$4D,$45
+  $02,$49,$4E,$02,$49,$53
+end data
+data TxD_1 bytes
+  $04,$4E,$45,$57,$2E,$09,$4F,$52,$49,$47,$49,$4E,$41,$4C,$3A,$04,$50,$4F,$52,$54,$05,$52,$45,$52
+  $55,$4E,$04,$52,$49,$46,$46,$0B,$52,$4F,$4C,$4C,$45,$52,$44,$41,$53,$48,$2C,$07,$53,$45,$50,$2F
+  $4F,$43,$54,$03,$54,$48,$45,$05,$54,$49,$54,$4C,$45,$04,$54,$4F,$4E,$59,$04,$54,$55,$4E,$45
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $11,$15,$07,$FE,$13,$0B,$16,$03,$FE,$01,$19,$06,$FE,$0A,$12,$0E,$00,$FE,$01,$09,$02,$FE,$00,$01
+  $00,$05,$04,$FE,$0D,$14,$0C,$17,$08,$FE,$18,$1A,$0F,$10,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScBlip:
+    db $40,$8F,$10,$01,$40,$8F,$40,$01,$50
+ScTimeUp:
+    db $40,$8E,$11,$06,$40,$8E,$31,$2C,$40,$01,$12,$06,$40,$01,$32,$30,$40,$CD,$12,$06,$40,$CD,$32,$34
+    db $40,$E7,$13,$06,$40,$E7,$33,$28,$40,$E7,$63,$10,$50
+ScRCs:
+    db $80,$25,$33,$02,$80,$25,$43,$03,$80,$25,$63,$04,$80,$25,$83,$06,$80,$25,$A3,$06,$90
+ScRC:
+    db $80,$56,$33,$02,$80,$56,$43,$03,$80,$56,$63,$04,$80,$56,$83,$06,$80,$56,$A3,$06,$90
+ScRDs:
+    db $80,$CD,$32,$02,$80,$CD,$42,$03,$80,$CD,$62,$04,$80,$CD,$82,$06,$80,$CD,$A2,$06,$90
+ScRG:
+    db $80,$3B,$32,$02,$80,$3B,$42,$03,$80,$3B,$62,$04,$80,$3B,$82,$06,$80,$3B,$A2,$06,$90
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScBlip,$705D
+    dw ScTimeUp,$705D
+    dw ScRCs,$7067
+    dw ScRC,$7067
+    dw ScRDs,$7067
+    dw ScRG,$7067
+; Rollerdash Strut (original, on the C64 riff) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$1B,$01,$20,$01,$23,$01,$22,$01,$20,$01,$01,$01
+    db $1E,$01,$1B,$01,$1B,$01,$20,$01,$23,$01,$25,$01,$27,$01,$01,$01
+    db $25,$23,$22,$01,$23,$01,$22,$01,$20,$01,$1E,$01,$20,$01,$01,$01
+    db $1B,$01,$1E,$01,$23,$25,$27,$2A,$27,$01,$25,$01,$23,$01,$20,$01
+    db $01,$01,$00,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1B,$01,$01,$01,$1A,$01,$01,$01
+    db $12,$01,$01,$01,$17,$01,$01,$01,$1C,$01,$01,$01,$1F,$01,$01,$01
+    db $1E,$01,$01,$01,$1B,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01
+    db $16,$01,$01,$01,$1B,$01,$01,$01,$17,$01,$01,$01,$1E,$01,$01,$01
+    db $1B,$01,$00,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11
+    db $02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$45,$01,$13,$11,$02,$33,$15,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$3E
+    db $10
+ScTuneBassPitch:
+    db $C0,$6C,$F0,$21,$C0,$72,$F0,$1B,$C0,$60,$F0,$1D,$C0,$6C,$F0,$1B,$C0,$72,$F0,$1D,$C0,$4C,$F0,$1B
+    db $C0,$6C,$F0,$1D,$C0,$72,$F0,$1B,$C0,$6C,$F0,$1D,$C0,$72,$F0,$1B,$C0,$60,$F0,$1D,$C0,$6C,$F0,$1B
+    db $C0,$72,$F0,$1D,$C0,$4C,$F0,$1B,$C0,$6C,$F0,$16,$FE
+    db $D0
+}

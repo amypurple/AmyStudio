@@ -1,0 +1,1378 @@
+cartridge "POWER-PUNCH/AUTHOR UNKNOWN (RERUN 1990)/2026"
+' POWER-PUNCH - ColecoVision port of the C-64 machine-language boxing game
+' from ReRUN May/June/July 1990 (author not named on the disk).
+'
+' Rules taken from the original's 6502 code (orig/pp.dis), in its own units:
+' - one "pass" of the original = read both sticks, move + punch for each
+'   boxer, draw, KO test, delay loop (18 x 256 DEY), clock. A pass costs
+'   about 24.6k C-64 cycles + the KERNAL IRQ: about 38 passes a second, so
+'   the port runs 41/64 of a pass per frame (Acc).
+' - X positions are the C-64 sprite X ($0DF6/$0DF7): player 1 64..., player
+'   2 ...255; one pixel a pass; no step toward the other closer than 29.
+' - stick + button = punch (left/right jab, up = head, down = body); stick
+'   up/down without the button = high/low guard. A punch runs 15 passes; it
+'   lands on pass 5 if the gap is under 35 and it is not guarded: damage and
+'   score + table + random 0-3; the hit boxer's move is cancelled and he
+'   waits 8 passes.
+' - damage >= 104 while the other boxer is not punching = knock-out.
+' - the round clock loses one second every 15 jiffies (so 3:00 lasts about
+'   47 s); damage over 3 recovers 1 at the same time. Three rounds.
+' - computer opponents 64-SPAR / 64-PRO / 64-CHAMP think every 5 / 3 / 2
+'   passes (table $0E0B) - code $0B01.
+
+const TBanner = 112
+const TScD = 128
+const TClD = 138
+const TEn = 148
+const SBlank = 0
+const NTiles8 = 1024
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndHit = 6
+const SndMiss = 7
+const SndBell = 8
+const SndThud = 9
+const TuneFrames = 476
+const TxtCredits = 0
+const TxtHow1 = 1
+const TxtHow2 = 2
+const TxtHow3 = 3
+const NSpr = 8
+const HideY = 192
+const TorsoY = 91
+const LegsY = 123
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StSelect = 5
+const StBreak = 6
+const StKO = 7
+const StNext = 8
+const StOver = 9
+
+' the original's per-boxer state (index 0 = player 1, 1 = player 2)
+u8 Dmg[2]
+u8 Ph[2]
+u8 Ty[2]
+u8 Cd[2]
+u8 In[2]
+u8 Px[2]
+u16 Sc[2]
+' shown sprite frames (0-39) and the frames in VRAM (255 = none)
+u8 Fr[4]
+u8 Up[4]
+u8 Sx[4]
+u8 Sy[4]
+u8 Sel = 0
+u8 AiT = 0
+u8 Rnd = 1
+u8 Mins = 3
+u8 Secs = 0
+u8 Jif = 0
+u8 Acc = 0
+u8 Hud = 0
+u8 Loser = 0
+u8 Ended = 0
+u8 Pi = 0
+u8 Oi = 0
+u8 Dist = 0
+u8 Hit = 0
+u8 Amt = 0
+
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Off = 0
+u16 Dst = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 RB = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Li = 0
+u8 Wi = 0
+u8 Ks = 0
+u8 Kl = 0
+u8 Kb = 0
+u8 Kx = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+' original tables ($0DFD.., $0E03.., $0E0F.., $0E15.., $0E21.., $0E29..)
+data Toward bytes = 1, 2
+data Dlt bytes = 0, 1, 255, 0
+data BlkA bytes = 4, 4, 4, 5
+data BlkB bytes = 5, 5, 4, 5
+data Think bytes = 0, 4, 2, 1
+data Codes bytes = $0B, $07, $0E, $0D, $1E, $1D
+data Pow bytes = 4, 6, 7, 5
+data AiPick bytes = $1E, $1D, $1E, $1D, $0D, $0E, $0B, $07
+data Anim bytes = 1,2,1,0, 3,4,3,0, 5,6,5,0, 7,8,7,0, 9,10,9,0, 11,12,11,0
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  sprites double
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  SelectOpp
+
+match_start:
+  RoundStart
+play_loop:
+  Frame1
+  Flush
+  ReadPad
+  inc Jif
+  Acc += 41
+  if Acc >= 64 then
+    Acc -= 64
+    PassStep
+  end if
+  if Ended = 0 then goto play_loop
+  if Ended = 1 then
+    ' time is up: both walk back to their corners, next round
+    Walkback
+    if Rnd < 3 then
+      inc Rnd
+      goto match_start
+    end if
+    MatchOver
+  else
+    KnockOut
+  end if
+  State = StOver
+  Rearm
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (the original's main loop $08B5..$0922)
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  RB = Rs
+  return
+end sub
+
+sub RoundStart:
+  State = StNext
+  Mins = 3
+  Secs = 0
+  Jif = 0
+  Acc = 0
+  Ended = 0
+  AiT = 0
+  fill array Dmg with 0
+  fill array Ph with 0
+  fill array Ty with 0
+  fill array Cd with 0
+  In[0] = 31
+  In[1] = 31
+  Px[0] = 64
+  Px[1] = 255
+  Hud = 3
+  print at 2,10, "                            "
+  T = Rnd + TClD
+  put char T at 19,6
+  SetSprites
+  play sound SndBell
+  State = StPlay
+  return
+end sub
+
+sub PassStep:
+  ' sticks: C-64 codes (active low: 1 up, 2 down, 4 left, 8 right, 16 fire)
+  T = J1 & 31
+  In[0] = T ^ 31
+  if Sel = 0 then
+    T = J2 & 31
+    In[1] = T ^ 31
+  else
+    AiInput
+  end if
+  Pi = 0
+  Oi = 1
+  MoveOne
+  PunchOne
+  Pi = 1
+  Oi = 0
+  MoveOne
+  PunchOne
+  SetSprites
+  ' knock-out: damage >= $68 while the other boxer is not punching
+  if Ph[1] = 0 then
+    if Dmg[0] >= 104 then
+      Loser = 0
+      Ended = 2
+      return
+    end if
+  end if
+  if Ph[0] = 0 then
+    if Dmg[1] >= 104 then
+      Loser = 1
+      Ended = 2
+      return
+    end if
+  end if
+  ' the clock ($0BFA): 0:00 ends the round; else every 15 jiffies
+  if Mins = 0 then
+    if Secs = 0 then
+      Ended = 1
+      return
+    end if
+  end if
+  if Jif >= 15 then
+    Jif = 0
+    if Dmg[0] >= 4 then dec Dmg[0]
+    if Dmg[1] >= 4 then dec Dmg[1]
+    if Secs = 0 then
+      Secs = 59
+      dec Mins
+    else
+      dec Secs
+    end if
+    Hud = Hud | 2
+  end if
+  return
+end sub
+
+' $0AD2: no button: step left/right (not closer than 29 toward the other)
+sub MoveOne:
+  T = In[Pi]
+  V = T & 16
+  if V = 0 then return
+  T = T >> 2
+  K = T & 3
+  Dist = Px[1] - Px[0]
+  if Dist < 29 then
+    if K = Toward[Pi] then return
+  end if
+  T = Px[Pi] + Dlt[K]
+  if T >= 64 then Px[Pi] = T
+  return
+end sub
+
+' $0997: start / run a punch or guard, land it on its 5th pass
+sub PunchOne:
+  if Ph[Pi] = 0 then
+    if Cd[Pi] > 0 then
+      dec Cd[Pi]
+      return
+    end if
+    T = In[Pi] & 31
+    K = 255
+    for J = 0 to 5
+      if T = Codes[J] then K = J
+    next
+    if K = 255 then return
+    Ty[Pi] = K
+  end if
+  T = Ph[Pi] + 1
+  T = T & 15
+  Ph[Pi] = T
+  if T <> 5 then return
+  K = Ty[Pi]
+  if K > 3 then return
+  Dist = Px[1] - Px[0]
+  if Dist >= 35 then
+    play sound SndMiss
+    return
+  end if
+  if Ph[Oi] > 0 then
+    T = Ty[Oi]
+    if T = BlkA[K] then
+      play sound SndMiss
+      return
+    end if
+    if T = BlkB[K] then
+      play sound SndMiss
+      return
+    end if
+  end if
+  ' a hit ($09FE)
+  play sound SndHit
+  Rand
+  Amt = RB & 3
+  Amt += Pow[K]
+  T = Dmg[Oi] + Amt
+  if T < 128 then Dmg[Oi] = T
+  Ph[Oi] = 0
+  Cd[Oi] = 8
+  W16 = Amt
+  Sc[Pi] += W16
+  if Sc[Pi] >= 10000 then Sc[Pi] -= 10000
+  Hud = Hud | 1
+  return
+end sub
+
+' $0B01: the computer boxer (player 2)
+sub AiInput:
+  Dist = Px[1] - Px[0]
+  if Dist >= 45 then
+    In[1] = $1B
+    return
+  end if
+  if AiT > 0 then
+    dec AiT
+    if Ph[0] = 0 then
+      In[1] = $1B
+      return
+    end if
+    if Ty[0] >= 4 then
+      In[1] = $1B
+      return
+    end if
+    Rand
+    if RB < $AA then
+      In[1] = $1F
+    else
+      In[1] = $17
+    end if
+    return
+  end if
+  AiT = Think[Sel]
+  if Ph[1] > 0 then
+    In[1] = $1F
+    return
+  end if
+  K = 255
+  if Ph[0] > 0 then
+    if Ph[0] < 10 then K = Ty[0]
+  end if
+  if K = 255 then
+    Rand
+    K = RB & 7
+  end if
+  In[1] = AiPick[K]
+  return
+end sub
+
+' sprite frames and places from the state ($0CF4)
+sub SetSprites:
+  K = 0
+  T = Ph[0]
+  if T > 0 then
+    T = T >> 2
+    T = T & 3
+    C = Ty[0] << 2
+    C += T
+    K = Anim[C]
+  end if
+  Fr[0] = K
+  T = Px[0] >> 2
+  T = T & 3
+  Fr[1] = T + 13
+  K = 0
+  T = Ph[1]
+  if T > 0 then
+    T = T >> 2
+    T = T & 3
+    C = Ty[1] << 2
+    C += T
+    K = Anim[C]
+  end if
+  Fr[2] = K + 20
+  T = Px[1] >> 2
+  T = T & 3
+  Fr[3] = T + 33
+  T = Px[0]
+  C = XMap[T]
+  Sx[1] = C
+  Sx[0] = C + 4
+  T = Px[1]
+  C = XMap[T]
+  Sx[3] = C
+  Sx[2] = C - 4
+  Sy[0] = TorsoY
+  Sy[1] = LegsY
+  Sy[2] = TorsoY
+  Sy[3] = LegsY
+  return
+end sub
+
+' right after the frame wait: patterns that changed, the sprites, the HUD
+sub Flush:
+  for Li = 0 to 3
+    T = Fr[Li]
+    if T <> Up[Li] then
+      Up[Li] = T
+      Off = T
+      Off = Off << 6
+      Dst = Li
+      Dst = Dst << 6
+      copy SprRaw + Off count 64 to vram.spr_pat + Dst
+    end if
+  next
+  for Li = 0 to 3
+    C = Li << 1
+    K = Li << 3
+    T = Sy[Li]
+    V = Sx[Li]
+    ' C-64 sprite colour (gloves, shorts, shoes): dark yellow / light green;
+    ' skin + outline (C-64 orange + brown): dark red
+    J = 10
+    if Li >= 2 then J = 3
+    set sprite C to T,V,K,J
+    inc C
+    K += 4
+    set sprite C to T,V,K,6
+  next
+  update sprites
+  if Hud > 0 then ShowHud
+  return
+end sub
+
+sub ShowHud:
+  ' the original's scoreboard cells (C-64 row 6-8 -> same rows, col - 4)
+  V = Hud & 1
+  if V > 0 then
+    NumU = Sc[0]
+    Kx = 6
+    PutNum4
+    NumU = Sc[1]
+    Kx = 22
+    PutNum4
+  end if
+  V = Hud & 2
+  if V > 0 then
+    T = Mins + TClD
+    put char T at 14,7
+    T = 0
+    V = Secs
+    while V >= 10
+      V -= 10
+      inc T
+    end while
+    T += TClD
+    put char T at 16,7
+    T = V + TClD
+    put char T at 17,7
+    T = Dmg[0] >> 4
+    Energy(7, T)
+    T = Dmg[1] >> 4
+    Energy(23, T)
+  end if
+  Hud = 0
+  return
+end sub
+
+' the damage box (C-64 $D923.. colour from table $0E19): level 0-7, 8 = grey
+sub Energy(u8 X, u8 L):
+  K = L << 2
+  K += TEn
+  put char K at X,7
+  inc K
+  inc X
+  put char K at X,7
+  inc K
+  dec X
+  put char K at X,8
+  inc K
+  inc X
+  put char K at X,8
+  return
+end sub
+
+' NumU (0-9999) as 4 score digits at Kx,6
+sub PutNum4:
+  W16 = 1000
+  for Wi = 0 to 3
+    T = TScD
+    while NumU >= W16
+      NumU -= W16
+      inc T
+    end while
+    put char T at Kx,6
+    inc Kx
+    if Wi = 0 then W16 = 100
+    if Wi = 1 then W16 = 10
+    if Wi = 2 then W16 = 1
+  next
+  return
+end sub
+
+' the opponent's name in the scoreboard (C-64 row 4, cols 24-31)
+sub ShowName:
+  K = Sel << 3
+  for J = 0 to 7
+    T = NameT[K]
+    C = J + 20
+    put char T at C,4
+    inc K
+  next
+  return
+end sub
+
+sub DrawBoard:
+  put BoardR1 count 26 at 3,1
+  put BoardR2 count 26 at 3,2
+  put BoardR3 count 26 at 3,3
+  put BoardR4 count 26 at 3,4
+  put BoardR5 count 26 at 3,5
+  put BoardR6 count 26 at 3,6
+  put BoardR7 count 26 at 3,7
+  put BoardR8 count 26 at 3,8
+  put BoardR9 count 26 at 3,9
+  return
+end sub
+
+sub DrawRing3D:
+  put RingR0 count 28 at 2,14
+  put RingR1 count 28 at 2,15
+  put RingR2 count 28 at 2,16
+  put RingR3 count 28 at 2,17
+  put RingR4 count 28 at 2,18
+  put RingR5 count 28 at 2,19
+  put RingR6 count 28 at 2,20
+  put RingR7 count 28 at 2,21
+  put RingR8 count 28 at 2,22
+  return
+end sub
+
+sub DrawRing:
+  DrawBoard
+  ShowName
+  T = Rnd + TClD
+  put char T at 19,6
+  DrawRing3D
+  Hud = 3
+  ShowHud
+  return
+end sub
+
+' the opponent menu ($0B54): up/down on controller 1 changes it, the
+' button picks it; the whole match is played against it
+sub SelectOpp:
+  State = StNext
+  Rnd = 1
+  Sc[0] = 0
+  Sc[1] = 0
+  fill array Dmg with 0
+  fill array Ph with 0
+  Px[0] = 64
+  Px[1] = 255
+  Mins = 3
+  Secs = 0
+  NewScreen
+  DrawRing
+  print at 7,10, "SELECT AN OPPONENT"
+  Energy(7, 8)
+  Energy(23, 8)
+  ' the original shows no boxers on its opponent menu ($D015 = 0)
+  SetSprites
+  for Li = 0 to 3
+    Sy[Li] = HideY
+  next
+  ShowScreen
+  fill array Up with 255
+  Flush
+  State = StSelect
+  WasBtn = 16
+  Waited = 0
+so_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      Sel -= 1
+    else
+      Sel += 1
+    end if
+    Sel = Sel & 3
+    ShowName
+    play sound SndClick
+  end if
+  if Press = 0 then goto so_loop
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+' time is up ($0924): the bell, both walk back to their corners
+sub Walkback:
+  State = StBreak
+  play sound SndBell
+  fill array Ph with 0
+  In[0] = $1B
+  In[1] = $17
+wb_loop:
+  Pi = 1
+  MoveOne
+  Pi = 0
+  MoveOne
+  SetSprites
+  Frame1
+  Flush
+  Frame1
+  Flush
+  if Px[0] >= 65 then goto wb_loop
+  if Px[1] < 255 then goto wb_loop
+  return
+end sub
+
+sub MatchOver:
+  State = StNext
+  print at 9,10, "END OF ROUND 3"
+  play sound SndBell
+  for Li = 0 to 89
+    Frame1
+  next
+  PressMsg
+  return
+end sub
+
+' $0A4C: the loser falls in three steps and lies on the canvas
+sub KnockOut:
+  State = StKO
+  Ph[0] = 0
+  Ph[1] = 0
+  SetSprites
+  Ks = Loser << 1
+  Kb = Loser * 20
+  Fr[Ks] = Kb + 11
+  WaitJ(10)
+  Fr[Ks] = Kb + 12
+  WaitJ(11)
+  Sy[Ks] = HideY
+  Kl = Ks + 1
+  Fr[Kl] = Kb + 17
+  WaitJ(12)
+  ' lying: legs frame 18 at the boxer's X, torso frame 19 44 px beside
+  Fr[Ks] = Kb + 19
+  Fr[Kl] = Kb + 18
+  Sy[Ks] = LegsY + 10
+  Sy[Kl] = LegsY + 10
+  Kx = Sx[Kl]
+  if Loser = 0 then
+    Sx[Ks] = Kx + 29
+  else
+    Sx[Ks] = Kx - 29
+  end if
+  play sound SndThud
+  print at 11,10, "KNOCK OUT"
+  WaitJ(80)
+  play sound SndBell
+  PressMsg
+  return
+end sub
+
+sub WaitJ(u8 N):
+  for Wi = 1 to 80
+    Frame1
+    Flush
+    if Wi >= N then return
+  next
+  return
+end sub
+
+sub PressMsg:
+  print at 2,10, "                            "
+  print at 8,10, "PRESS THE BUTTON"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  ' menus: controller 1 (as the original's port 1)
+  Jk = J1 & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = J1 & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker on
+  for J = 0 to 7
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  ' the last playfield tiles live in codes 96-127 (lower case, unused)
+  decompress zx0 XPatZ to vram.pattern + 768
+  decompress zx0 XPatZ to vram.pattern + 2816
+  decompress zx0 XPatZ to vram.pattern + 4864
+  decompress zx0 XColZ to vram.color + 768
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub TitlePage:
+  State = StNext
+  NewScreen
+  ' the original's POWER-PUNCH logo and ring
+  fill TBanner count 26 at 3,1
+  put BoardR1 count 26 at 3,2
+  put BoardR2 count 26 at 3,3
+  fill TBanner count 26 at 3,4
+  print at 11,6, "START"
+  print at 11,8, "HOW TO PLAY"
+  print at 11,10, "CREDITS"
+  DrawRing3D
+  Menu = 0
+  ShowMenu
+  ' two boxers face each other on the title
+  Px[0] = 112
+  Px[1] = 160
+  fill array Ph with 0
+  SetSprites
+  fill array Up with 255
+  ShowScreen
+  Flush
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,6
+  put char 32 at 9,8
+  put char 32 at 9,10
+  C = Menu << 1
+  C += 6
+  put char 62 at 9,C
+  return
+end sub
+
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StNext
+  NewScreen
+  print at 10,2, "POWER-PUNCH"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three airy pages; pictures use the game's own sprites
+sub HowTo:
+  State = StNext
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  TxT = TxtHow1
+  TxX0 = 2
+  TxY = 3
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    State = StNext
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    TxT = TxtHow2
+    TxX0 = 2
+    TxY = 3
+    TxGap = 2
+    TextShow
+    ' a jab landing: player 1 punching, player 2 guarding low
+    Px[0] = 120
+    Px[1] = 150
+    SetSprites
+    Fr[0] = 2
+    Fr[2] = 31
+    for Li = 0 to 3
+      Sy[Li] += 4
+    next
+    fill array Up with 255
+    print at 8,22, "PRESS THE BUTTON"
+    State = StHow
+    ShowScreen
+    Flush
+    PageWait
+  end if
+  if TimedOut = 0 then
+    State = StNext
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    TxT = TxtHow3
+    TxX0 = 2
+    TxY = 3
+    TxGap = 2
+    TextShow
+    print at 8,21, "PRESS THE BUTTON"
+    State = StHow
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $1A,$C3,$99,$91,$89,$99,$68,$C3,$FF,$E7,$88,$C7,$E7,$E0,$81,$FF,$E1,$E2,$F9,$F3,$CF,$9F,$F0,$3A
+  $E3,$F9,$D0,$5A,$F9,$F1,$E1,$99,$80,$F9,$F9,$7F,$81,$9F,$83,$F5,$E1,$BF,$D0,$EF,$A0,$99,$81,$99
+  $F3,$A7,$E7,$FE,$E7,$E0,$F6,$BF,$C1,$C0,$85,$60,$59,$E2,$00,$00,$3F,$FE,$A8,$00,$FC,$7C,$E4,$7F
+  $F1,$C0,$55,$5C,$A3,$86,$83,$9F,$88,$FF,$FF,$9F,$72,$31,$CC,$E7,$8F,$CA,$6B,$79,$FF,$33,$87,$3B
+  $60,$81,$A0,$D1,$87,$F8,$B0,$EF,$87,$93,$D1,$00,$FE,$35,$DC,$D0,$DD,$00,$77,$D0,$FF,$FF,$9B,$F6
+  $5A,$F1,$9F,$A4,$F9,$FF,$6A,$E0,$FB,$FF,$F0,$E6,$E9,$40,$1E,$9C,$88,$80,$94,$9C,$FF,$25,$FF,$1F
+  $A6,$FF,$85,$0F,$FF,$38,$F0,$EE,$D2,$EF,$E9,$FF,$FF,$F0,$69,$00,$21,$25,$FF,$00,$80,$C0,$E0,$F0
+  $F8,$FC,$FE,$F8,$A5,$00,$FF,$A2,$FE,$A1,$03,$AA,$FF,$C0,$5E,$30,$1F,$C9,$DF,$48,$18,$7D,$E8,$E4
+  $40,$F7,$66,$9A,$BF,$7F,$3F,$1F,$7D,$07,$03,$01,$20,$CD,$FE,$F7,$10,$E7,$BF,$2C,$DF,$30,$C8,$E5
+  $50,$CC,$40,$57,$1D,$00,$F7,$E0,$E3,$C3,$9C,$37,$50,$20,$E0,$BA,$FF,$FF,$E0,$EC,$AC,$CF,$B0,$FE
+  $AA,$07,$E7,$13,$DD,$50,$77,$F0,$8D,$F2,$78,$F0,$A9,$89,$81,$91,$EE,$C8,$F5,$B8,$93,$30,$3B,$83
+  $E7,$9F,$FA,$FF,$FF,$51,$F3,$F0,$E7,$61,$50,$83,$B8,$7F,$50,$A4,$75,$55,$58
+end data
+data TileColZ bytes
+  $81,$E1,$56,$81,$F1,$56,$95,$21,$69,$31,$56,$95,$71,$69,$51,$56,$95,$41,$69,$D1,$56,$95,$61,$5A
+  $E1,$55,$A1,$31,$56,$96,$33,$80,$31,$56,$80,$71,$56,$97,$77,$5C,$B0,$57,$DA,$FE,$55,$5A,$51,$45
+  $69,$E1,$5A,$A1,$15,$69,$AA,$69,$A1,$69,$EE,$70,$95,$A0,$5B,$FF,$CE,$FE,$C0,$57,$95,$00,$D5,$55
+  $60
+end data
+data SpritePatZ bytes
+  $95,$00,$75,$55,$58
+end data
+data XPatZ bytes
+  $9A,$00,$F0,$69,$00,$AB,$FF,$00,$C0,$F2,$BC,$3F,$FE,$A5,$FC,$A4,$00,$F7,$B8,$CF,$EE,$D4,$78,$88
+  $7E,$F9,$FE,$7D,$38,$BB,$0F,$FE,$DF,$B6,$FE,$F7,$9A,$55,$55,$80
+end data
+data XColZ bytes
+  $96,$E1,$95,$F1,$69,$E1,$5F,$B0,$07,$94,$FC,$62,$11,$55,$3F,$FB,$FD,$55,$55,$80
+end data
+
+data SprRaw bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$E0
+  $E0,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$0F,$1E,$3E,$3F,$3C,$3C,$3E,$3E,$3E,$3E,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$03,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$1C,$1C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$0F,$0F,$0F,$0F,$0F,$1E,$3F,$3F,$3C,$3C,$3E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$20
+  $F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$3E
+  $00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$0F,$1F,$3F
+  $3F,$3C,$3C,$3E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$FC,$FC,$E0,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$1C,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$0F,$1E,$3E,$3F,$3F,$3F,$3E,$3E,$3E,$3E,$00
+  $00,$00,$00,$00,$00,$00,$00,$20,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$0F,$0F,$0F,$0F,$0F,$1F,$1F,$3F,$3E,$3E,$3E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$FC,$E0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E
+  $00,$00,$00,$00,$00,$00,$1C,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$03,$0F,$1F
+  $1F,$3F,$3F,$3F,$3E,$3E,$3E,$00,$00,$C0,$C0,$C0,$C0,$C0,$00,$00,$1C,$30,$E0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$03,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$0F,$1F,$3F,$FF,$FF,$FF,$3E,$3E,$3E,$00
+  $00,$E0,$E0,$E0,$E0,$E0,$C3,$C2,$EE,$FC,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$03,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$1C,$00,$00,$00,$00,$00
+  $00,$0F,$0F,$0F,$0F,$0F,$1E,$3E,$3F,$3C,$3C,$3F,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$E0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$3E
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$03,$03,$03,$03,$03,$0F,$1F
+  $3F,$3F,$3C,$3C,$3E,$3E,$3E,$00,$00,$C0,$C0,$C0,$C0,$C0,$00,$00,$00,$C0,$E0,$FC,$0C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00
+  $E0,$C0,$00,$00,$00,$00,$00,$00,$00,$1E,$1E,$1E,$1E,$1E,$3C,$3C,$3C,$3F,$3F,$3E,$3E,$3E,$3E,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0E,$0E,$0C,$01
+  $01,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$3C,$3C,$3C,$30,$30,$F0,$FE,$FE,$FE,$3E,$3E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$1C,$00,$E0,$E0,$00,$00,$00,$00,$00,$03,$03,$03,$03,$0F
+  $0F,$1F,$1F,$1F,$3F,$3F,$3E,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$00,$E0,$E0,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$03,$00,$1C,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$0F,$1F,$1F,$3F,$3F,$00
+  $00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$FC,$FC,$E0,$E0,$E0,$C0,$00,$1F,$1F,$1F,$1E,$00,$00,$00,$00
+  $00,$20,$10,$01,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00
+  $00,$00,$00,$01,$1F,$1F,$1F,$1F,$1F,$1D,$21,$F0,$E1,$21,$31,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0
+  $C0,$C0,$C0,$00,$C0,$C0,$E0,$00,$1F,$1F,$1F,$1E,$00,$00,$00,$00,$00,$00,$00,$0E,$00,$00,$00,$00
+  $C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$1F,$0F,$0F,$0F
+  $0F,$0E,$0E,$00,$1E,$1E,$0F,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $1F,$1F,$1F,$1E,$00,$00,$00,$00,$00,$00,$0C,$01,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00
+  $00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$01,$1F,$0F,$0F,$03,$03,$0F,$13,$3C,$31,$11,$1D,$00
+  $00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00,$C0,$C0,$E0,$00,$1F,$1F,$1F,$1E,$00,$00,$00,$00
+  $00,$00,$00,$0E,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$01,$1F,$0F,$0F,$0F,$0F,$0F,$0E,$00,$1E,$1E,$0F,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0
+  $C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$1F,$1E,$00,$00,$00,$0C,$0C,$0C
+  $00,$00,$00,$00,$00,$00,$00,$00,$0E,$02,$00,$00,$00,$00,$03,$03,$00,$01,$03,$0F,$0F,$1F,$1F,$03
+  $00,$01,$0F,$0F,$0F,$33,$F3,$D3,$1E,$FE,$FE,$FE,$EE,$E0,$F0,$FC,$E0,$20,$F0,$F0,$DC,$CE,$C0,$C0
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$10,$10,$00,$0C,$0C,$0C,$00,$00,$00,$00,$00,$00,$00,$0E,$1E
+  $1E,$1E,$0E,$0E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$EF,$EF,$C1,$33,$33,$33,$20
+  $00,$00,$00,$00,$00,$00,$01,$21,$E1,$E1,$F1,$F1,$FC,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0E,$0C,$00,$1C,$1C,$00,$00
+  $00,$00,$00,$00,$00,$00,$F0,$FF,$FF,$FF,$FF,$FE,$1F,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0
+  $F0,$F0,$C0,$00,$00,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$00,$00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$F0,$3C,$3E,$FE,$1E,$1E,$3E,$3E,$3E,$3E,$00
+  $00,$00,$00,$00,$00,$00,$1C,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$E0,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$02,$0F,$03,$00,$00,$00,$00,$00,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$3C,$FE,$FE,$1E,$1E,$3E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$E0,$E0,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$3E
+  $00,$00,$00,$00,$00,$00,$1F,$1F,$03,$00,$00,$00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$F0,$FC,$FE
+  $FE,$1E,$1E,$3E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$1C,$1C,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$C0,$00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$02
+  $03,$01,$00,$00,$00,$00,$00,$00,$00,$F0,$F0,$F0,$F0,$F0,$3C,$3E,$FE,$FE,$FE,$3E,$3E,$3E,$3E,$00
+  $00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$1F,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$FC,$FC,$FE,$3E,$3E,$3E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$1C,$1C
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E
+  $00,$01,$01,$01,$01,$01,$00,$00,$1C,$0E,$03,$01,$00,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$E0,$F0,$FC
+  $FC,$FE,$FE,$FE,$3E,$3E,$3E,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E,$00,$03,$03,$03,$03,$03,$E1,$21
+  $33,$1F,$0E,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$C0,$F0,$FC,$FE,$FF,$FF,$FF,$3E,$3E,$3E,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$1C,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$E0,$E0,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$01,$00,$00,$00,$00
+  $00,$F0,$F0,$F0,$F0,$F0,$3C,$3E,$FE,$1E,$1E,$FE,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$3E
+  $00,$01,$01,$01,$01,$01,$00,$00,$00,$01,$03,$1F,$10,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$E0,$F0,$FC
+  $FE,$FE,$1E,$1E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$3C,$3C,$3C,$3C,$3C,$1E,$1E,$1E,$FE,$FE,$3E,$3E,$3E,$3E,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$30,$10,$C0
+  $C0,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$1E,$1E,$1E,$0E,$0E,$0F,$3F,$3F,$3F,$3E,$3E,$3E,$3E,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$1C,$1C,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E
+  $00,$00,$00,$01,$01,$01,$01,$01,$00,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$F0
+  $F0,$FC,$FC,$FC,$FE,$FE,$3E,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$E0,$00,$1C,$1C,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3E,$00,$00,$00,$00,$00,$00,$0F,$0F
+  $0F,$1F,$1F,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0,$F0,$FC,$FC,$FE,$FE,$00
+  $01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$FC,$FC,$FC,$3C,$00,$00,$00,$00
+  $00,$02,$0C,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01,$03,$00
+  $00,$00,$00,$C0,$FC,$FC,$FC,$FC,$FC,$DC,$C2,$0F,$C3,$C2,$CE,$00,$01,$01,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$FC,$FC,$FC,$3C,$00,$00,$00,$00,$00,$00,$00,$30,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$FC,$F0,$F0,$F0
+  $F0,$30,$30,$00,$3C,$3C,$F0,$00,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00
+  $FC,$FC,$FC,$3C,$00,$00,$00,$00,$00,$00,$10,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01
+  $01,$01,$01,$00,$01,$01,$03,$00,$00,$00,$00,$C0,$FC,$F0,$F0,$E0,$E0,$F0,$EC,$1E,$CE,$CC,$DC,$00
+  $01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FC,$FC,$FC,$3C,$00,$00,$00,$00
+  $00,$00,$00,$30,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$FC,$F0,$F0,$F0,$F0,$F0,$30,$00,$3C,$3C,$F0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$20,$00,$00,$00,$00,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$1C,$FC,$3C,$00,$00,$00,$10,$10,$10
+  $3C,$3F,$3F,$3F,$33,$03,$0F,$1F,$03,$02,$0F,$0F,$1D,$31,$01,$01,$00,$C0,$E0,$F0,$F0,$FC,$FC,$E0
+  $00,$C0,$F0,$F0,$F0,$EE,$EF,$ED,$00,$00,$00,$00,$00,$00,$30,$3C,$3C,$3C,$30,$30,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$0C,$00,$10,$10,$10,$00,$00,$00,$00,$00,$00,$00,$C0,$C2
+  $C3,$C3,$CF,$CF,$1F,$0F,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$F3,$F3,$C1,$EE,$EE,$EE,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$10,$00,$1C,$1C,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$0F,$0F,$01,$00,$00,$03,$00,$00
+  $00,$00,$00,$00,$00,$00,$0F,$FF,$FF,$FF,$FF,$3F,$FC,$E0,$00,$00
+end data
+data BoardR1 bytes
+  32,200,201,200,201,202,203,202,200,204,200,204,205,206,200,201,200,202,200,207,208,209,210,200,211,212
+end data
+data BoardR2 bytes
+  32,213,214,213,215,216,217,218,213,219,213,220,221,222,213,214,213,215,213,220,223,218,219,213,224,225
+end data
+data BoardR3 bytes
+  226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226,226
+end data
+data BoardR4 bytes
+  227,228,229,230,231,232,233,234,235,236,236,236,237,238,236,236,236,32,32,32,32,32,32,32,32,239
+end data
+data BoardR5 bytes
+  32,236,236,236,236,236,236,236,240,241,241,241,241,241,241,241,241,242,236,236,236,236,236,236,236,32
+end data
+data BoardR6 bytes
+  32,227,236,128,128,128,128,236,243,244,245,246,247,248,249,138,139,243,236,128,128,128,128,236,239,32
+end data
+data BoardR7 bytes
+  32,32,236,236,180,181,236,236,243,249,249,141,250,138,138,249,249,243,236,236,180,181,236,236,32,32
+end data
+data BoardR8 bytes
+  32,32,227,236,182,183,236,236,251,241,241,241,241,241,241,241,241,252,236,236,182,183,236,239,32,32
+end data
+data BoardR9 bytes
+  32,32,32,253,253,253,253,253,253,253,253,253,253,253,253,253,253,253,253,253,253,253,253,32,32,32
+end data
+data RingR0 bytes
+  254,255,96,97,98,99,100,101,100,100,100,100,100,100,100,100,100,100,100,100,102,100,99,98,97,254,255,96
+end data
+data RingR1 bytes
+  227,32,239,32,32,103,104,101,98,98,98,98,98,98,98,98,98,98,98,98,102,104,103,32,32,227,32,239
+end data
+data RingR2 bytes
+  227,255,239,98,100,105,32,101,104,104,104,104,104,104,104,104,104,104,104,104,102,32,105,100,98,227,255,239
+end data
+data RingR3 bytes
+  227,32,239,32,103,97,100,106,106,106,106,106,106,106,106,106,106,106,106,106,106,100,97,103,32,227,32,239
+end data
+data RingR4 bytes
+  227,107,239,99,105,106,108,236,236,236,236,236,236,236,236,236,236,236,236,236,236,108,106,105,99,227,107,239
+end data
+data RingR5 bytes
+  227,32,109,106,108,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,108,106,110,32,239
+end data
+data RingR6 bytes
+  227,106,108,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,108,106,239
+end data
+data RingR7 bytes
+  227,180,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,111,181,239
+end data
+data RingR8 bytes
+  227,101,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,236,102,239
+end data
+data NameT bytes
+  184,185,186,187,188,189,190,191
+  192,193,194,195,184,186,189,190
+  192,193,194,184,189,196,190,190
+  192,193,194,197,198,186,199,184
+end data
+data XMap bytes
+  5,6,6,7,8,8,9,10,10,11,12,12,13,14,14,15,16,16,17,18,18,19,20,20,21,22,22,23,24,24,25,26
+  26,27,28,28,29,30,30,31,32,32,33,34,34,35,36,36,37,38,38,39,40,40,41,42,42,43,44,44,45,46,46,47
+  48,48,49,50,50,51,52,52,53,54,54,55,56,56,57,58,58,59,60,60,61,62,62,63,64,64,65,66,66,67,68,68
+  69,70,70,71,72,72,73,74,74,75,76,76,77,78,78,79,80,80,81,82,82,83,84,84,85,86,86,87,88,88,89,90
+  90,91,92,92,93,94,94,95,96,96,97,98,98,99,100,100,101,102,102,103,104,104,105,106,106,107,108,108,109,110,110,111
+  112,112,113,114,114,115,116,116,117,118,118,119,120,120,121,122,122,123,124,124,125,126,126,127,128,128,129,130,130,131,132,132
+  133,134,134,135,136,136,137,138,138,139,140,140,141,142,142,143,144,144,145,146,146,147,148,148,149,150,150,151,152,152,153,154
+  154,155,156,156,157,158,158,159,160,160,161,162,162,163,164,164,165,166,166,167,168,168,169,170,170,171,172,172,173,174,174,175
+end data
+
+data TxD_0 bytes
+  $03,$41,$4E,$44,$03,$41,$4D,$59,$03,$54,$48,$45,$05,$54,$48,$52,$45,$45,$01,$41,$04,$42,$4F,$44
+  $59,$02,$42,$59,$06,$47,$55,$41,$52,$44,$3A,$04,$48,$45,$41,$44,$02,$49,$4E,$02,$49,$54,$05,$4B
+  $4E,$4F,$43,$4B,$02,$4F,$46,$03,$4F,$4E,$45,$02,$4F,$52,$06,$50,$55,$4E,$43,$48,$2E
+end data
+data TxD_1 bytes
+  $02,$54,$4F,$02,$55,$50,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$05,$28,$48,$49,$47
+  $48,$02,$31,$30,$05,$31,$39,$39,$30,$2E,$02,$32,$2C,$05,$32,$30,$32,$36,$2E,$01,$33,$01,$34,$09
+  $36,$34,$2D,$43,$48,$41,$4D,$50,$2E,$07,$36,$34,$2D,$50,$52,$4F,$2C,$08,$36,$34,$2D,$53,$50,$41
+  $52,$2C,$06,$41,$4C,$4F,$4E,$45,$3A,$03,$41,$52,$45,$06,$41,$55,$54,$48,$4F,$52
+end data
+data TxD_2 bytes
+  $04,$42,$45,$53,$54,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$03,$42,$4F,$58,$07,$42,$4F,$58,$45
+  $52,$53,$2C,$07,$42,$4F,$58,$45,$52,$53,$3A,$05,$42,$4F,$58,$45,$53,$07,$42,$55,$54,$54,$4F,$4E
+  $2E,$0C,$42,$55,$54,$54,$4F,$4E,$2B,$44,$4F,$57,$4E,$3A,$12,$42,$55,$54,$54,$4F,$4E,$2B,$4C,$45
+  $46,$54,$2F,$52,$49,$47,$48,$54,$3A,$0A,$42,$55,$54,$54,$4F,$4E,$2B,$55,$50,$3A,$04,$43,$2D,$36
+  $34,$06,$43,$4C,$41,$55,$44,$45,$05,$43,$4C,$4F,$53,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53
+  $49,$4F,$4E,$08,$43,$4F,$4D,$50,$55,$54,$45,$52,$0A,$43,$4F,$4E,$54,$52,$4F,$4C,$4C,$45,$52
+end data
+data TxD_3 bytes
+  $07,$44,$41,$4D,$41,$47,$45,$2C,$04,$44,$4F,$57,$4E,$05,$44,$4F,$57,$4E,$2C,$06,$46,$52,$49,$45
+  $4E,$44,$04,$46,$52,$4F,$4D,$04,$47,$41,$4D,$45,$05,$47,$52,$45,$45,$4E,$06,$47,$55,$41,$52,$44
+  $2E,$07,$47,$55,$41,$52,$44,$45,$44,$02,$49,$53,$04,$4A,$41,$42,$2E,$05,$4A,$41,$42,$53,$2C,$06
+  $4A,$41,$42,$53,$29,$2E,$05,$4C,$41,$4E,$44,$53,$04,$4C,$45,$46,$54,$03,$4C,$4F,$57
+end data
+data TxD_4 bytes
+  $08,$4D,$41,$59,$2D,$4A,$55,$4C,$59,$08,$4D,$49,$4E,$55,$54,$45,$53,$2E,$05,$4D,$4F,$56,$45,$2E
+  $05,$4D,$55,$43,$48,$3A,$02,$4E,$4F,$03,$4E,$4F,$54,$02,$4F,$4E,$08,$4F,$52,$49,$47,$49,$4E,$41
+  $4C,$09,$4F,$52,$49,$47,$49,$4E,$41,$4C,$2E,$03,$4F,$55,$54,$04,$4F,$55,$54,$21,$04,$50,$49,$43
+  $4B,$07,$50,$4F,$49,$4E,$54,$53,$2E,$04,$50,$4F,$52,$54,$05,$50,$52,$45,$53,$53,$05,$50,$55,$4E
+  $43,$48
+end data
+data TxD_5 bytes
+  $04,$52,$45,$44,$2E,$06,$52,$45,$52,$55,$4E,$2C,$06,$52,$49,$47,$48,$54,$3A,$06,$52,$4F,$55,$4E
+  $44,$53,$07,$52,$4F,$55,$4E,$44,$53,$3A,$05,$53,$43,$4F,$52,$45,$06,$53,$43,$4F,$52,$45,$53,$04
+  $53,$48,$4F,$57,$04,$54,$48,$45,$4E,$05,$54,$49,$54,$4C,$45,$03,$54,$4F,$4F,$05,$54,$55,$4E,$45
+  $3A,$03,$54,$57,$4F,$08,$55,$4E,$4B,$4E,$4F,$57,$4E,$2E,$04,$57,$48,$45,$4E,$05,$57,$49,$4E,$53
+  $2E
+end data
+data TxD_6 bytes
+  $04,$57,$49,$54,$48,$03,$59,$4F,$55
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3, @TxD_4, @TxD_5, @TxD_6
+end data
+data TxM_Credits bytes
+  $47,$2A,$35,$34,$FE,$51,$40,$15,$FE,$1F,$5D,$FE,$2D,$4D,$09,$01,$FE,$06,$2B,$12,$FE,$01,$06,$01
+  $21,$17,$FE,$59,$5B,$48,$FF
+end data
+data TxM_How1 bytes
+  $5C,$23,$03,$53,$0C,$FE,$03,$41,$22,$04,$33,$FE,$46,$2F,$16,$0E,$0D,$0C,$FE,$03,$2E,$24,$FE,$1C
+  $1B,$1A,$FE,$4B,$0D,$60,$11,$00,$32,$FE,$58,$4E,$02,$26,$FF
+end data
+data TxM_How2 bytes
+  $28,$3A,$FE,$29,$08,$0F,$FE,$27,$05,$0F,$FE,$11,$0E,$31,$1D,$37,$FE,$3E,$00,$52,$42,$FF
+end data
+data TxM_How3 bytes
+  $04,$4F,$3D,$5E,$61,$1E,$FE,$2C,$00,$0A,$39,$45,$38,$FE,$13,$07,$08,$00,$3B,$FE,$3F,$07,$05,$00
+  $3C,$FE,$0A,$56,$19,$10,$14,$4C,$FE,$02,$25,$57,$02,$30,$FE,$36,$10,$50,$5A,$43,$FE,$0B,$4A,$44
+  $0B,$49,$09,$FE,$18,$54,$20,$55,$5F,$FF
+end data
+data TxMsg words
+  @TxM_Credits, @TxM_How1, @TxM_How2, @TxM_How3
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScHit:
+    db $00,$00,$05,$02,$00,$00,$26,$03,$00,$00,$46,$04,$10
+ScMiss:
+    db $40,$FC,$31,$02,$40,$A6,$52,$03,$50
+ScBell:
+    db $40,$47,$10,$06,$40,$47,$30,$06,$40,$47,$10,$06,$40,$47,$30,$0A,$40,$47,$50,$0C,$50
+ScThud:
+    db $00,$00,$06,$03,$00,$00,$27,$08,$00,$00,$57,$0A,$10
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScHit,$7053
+    dw ScMiss,$705D
+    dw ScBell,$705D
+    dw ScThud,$7053
+; Ring Entrance (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$1A,$01,$1F,$01,$23,$01,$26,$00,$00,$01,$23,$01
+    db $26,$00,$00,$01,$28,$01,$26,$01,$23,$01,$1F,$01,$21,$00,$00,$01
+    db $1A,$00,$00,$01,$1A,$01,$1F,$01,$23,$01,$26,$00,$00,$01,$28,$01
+    db $2A,$01,$2B,$01,$2A,$01,$28,$01,$26,$01,$23,$01,$21,$01,$1E,$01
+    db $1F,$00,$00,$01,$01,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$17,$00,$00,$01,$13,$00,$00,$01,$17,$00,$00,$01
+    db $13,$00,$00,$01,$18,$00,$00,$01,$17,$00,$00,$01,$12,$00,$00,$01
+    db $15,$00,$00,$01,$17,$00,$00,$01,$13,$00,$00,$01,$18,$00,$00,$01
+    db $17,$00,$00,$01,$15,$00,$00,$01,$13,$00,$00,$01,$12,$00,$00,$01
+    db $17,$00,$00,$01,$01,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$3F,$34
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$74,$C0,$AB,$F0,$1D,$C0,$72,$F0,$1B,$C0,$98,$F0,$38,$C0,$72,$F0,$38,$C0,$AB,$F0,$1D
+    db $C0,$72,$F0,$1B,$C0,$98,$F0,$38,$C0,$72,$F0,$16,$FF,$FB
+    db $D0
+}

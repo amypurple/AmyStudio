@@ -1,0 +1,1125 @@
+cartridge "MAD ADDER/AUTHOR UNKNOWN/1985"
+' MAD ADDER - ColecoVision port of "The Mad Adder" from ReRUN's Game Pak
+' (C-64, BASIC; author not named in the listing or the ReRUN text).
+'
+' The game: steer the adder with the stick and eat the spiders, nothing
+' else. Walls and your own body kill. Each spider makes the adder longer
+' (4 segments, 2 from rack 5). 15 spiders (7 in rack 6) clear a rack and
+' the walls close in. Score is given at the end of each life or rack:
+' INT(P * SQR(RACK) / SPEED ^ 0.125) for the P spiders eaten (table read
+' from a real C-64 BASIC run). A life every 100 points, one more for
+' clearing rack 6, after which play restarts at rack 1 two speeds faster.
+' Fire pauses; any direction resumes.
+'
+' Port notes: the C-64 field (40 x 25 cells) is drawn 1 tile per cell in
+' columns 2-29, rows 1-22 (interior 26 x 20 instead of 38 x 23); the walls
+' close in by a per-rack table that ends, as the original does, on an
+' 8-column field. One move takes the traced 8.8 frames of the BASIC loop
+' plus the original's delay loop (SPEED * 10 - 10 counts, +100 in rack 6).
+
+const TWall = 128
+const TBody = 129
+const THeadu = 130
+const THeadr = 131
+const THeadd = 132
+const THeadl = 133
+const TDeadh = 134
+const TSpider0 = 135
+const TSpider1 = 136
+const TSpider2 = 137
+const TSpider3 = 138
+const TSpider4 = 139
+const TSpider5 = 140
+const TScale = 141
+const TGrass = 142
+const SDummy = 0
+const NTiles8 = 120
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndStep = 6
+const SndEat = 7
+const SndDie = 8
+const SndRack = 9
+const SndOver = 10
+const SndGameA = 11
+const SndGameB = 12
+const SndGameC = 13
+const SndGameD = 14
+const TuneFrames = 512
+const GameFrames = 896
+const TxtCredits = 0
+const NSpr = 5
+const HideY = 192
+const QLen = 81
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StPause = 5
+const StDie = 6
+const StRack = 7
+const StOver = 9
+' joystick codes as the original's ML returns them
+const HNone = 0
+const HFire = 1
+const HDown = 2
+const HLeft = 3
+const HUp = 4
+const HRight = 5
+' start cell (the original's 1524 = column 20 of 40, row 12)
+const StartX = 16
+const StartY = 12
+
+u8 Qx[81]
+u8 Qy[81]
+u16 Score = 0
+u16 HiScore = 0
+u16 NextLife = 99
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u8 Px = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Cost = 0
+u16 Acc = 0
+u8 TzOn = 0
+u8 GzOn = 0
+u16 GzLeft = 0
+u8 State = 0
+u8 Lives = 0
+u8 Rack = 0
+u8 Speed = 5
+u8 SpSel = 5
+u8 Ri = 0
+u8 Ci = 0
+u8 Xa = 0
+u8 Xb = 0
+u8 Ya = 0
+u8 Yb = 0
+u8 Hx = 0
+u8 Hy = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Mx = 0
+u8 My = 0
+u8 Ms = 0
+u8 Dr = 0
+u8 Hd = 0
+u8 NeedSp = 0
+u8 Pn = 0
+u8 P1 = 0
+u8 Ln = 0
+u8 Qa = 0
+u8 Grow = 0
+u8 Goal = 0
+u8 Extra = 0
+u8 Hc = 0
+u8 Died = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Oi = 0
+u8 Li = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Cell = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 2 then
+    HowTo
+    goto title
+  end if
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  if Lives > 0 then goto play_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (line numbers of the original listing in brackets)
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random number from 0 to M - 1 (low byte * M >> 8: no u16 division)
+function RandBelow(u8 M) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs & 255
+  W16 = W16 * M
+  W16 = W16 >> 8
+  Rv = W16
+  return Rv
+
+sub NewGame:
+  State = StRack
+  Score = 0
+  NextLife = 99
+  Lives = 3
+  Speed = SpSel
+  Rack = 0
+  NewRack
+  return
+end sub
+
+' [60-95] next rack: the walls close in; [90] P1 = 0
+sub NewRack:
+  inc Rack
+  P1 = 0
+  Ri = RackRi[Rack]
+  Ci = RackCi[Rack]
+  Ya = Ri + 2
+  Yb = 21 - Ri
+  Xa = Ci + 3
+  Xb = 28 - Ci
+  DrawField
+  NewLife
+  return
+end sub
+
+' [100-161] a life starts: adder of 2 at the start cell, standing still
+sub NewLife:
+  fill array Qx with 0
+  fill array Qy with 0
+  Dr = 0
+  Ln = 2
+  Pn = 0
+  Hx = StartX
+  Hy = StartY
+  Hd = THeadr
+  Qx[1] = Hx
+  Qy[1] = Hy
+  Qa = 2
+  NeedSp = 1
+  Died = 0
+  Grow = 4
+  if Rack > 4 then Grow = 2
+  if Speed < 1 then Speed = 1
+  ' [150] the delay loop: SPEED * 10 - 10 counts, +100 and 7 spiders in rack 6
+  Cost = Speed * 10
+  Cost -= 10
+  Goal = 15
+  if Rack = 6 then
+    Cost += 100
+    Goal = 7
+  end if
+  ' one count = 1/16 frame; the BASIC pass itself 8.8 frames (traced)
+  Cost += 141
+  Acc = 0
+  put char Hd at Hx,Hy
+  if Rack > 1 then ShowHud
+  GameMusic
+  State = StPlay
+  return
+end sub
+
+' one frame of play: a move whenever the pass's time has run out
+sub PlayFrame:
+  MusicTick
+  if State = StPause then
+    ReadH
+    if Hc >= HDown then
+      State = StPlay
+    end if
+    return
+  end if
+  Acc += 16
+  if Acc < Cost then return
+  Acc -= Cost
+  ' [320/330] the stick is read after the delay loop
+  ReadH
+  if Hc = HFire then
+    State = StPause
+    return
+  end if
+  if Hc = HDown then
+    Dr = 2
+    Hd = THeadd
+  end if
+  if Hc = HLeft then
+    Dr = 3
+    Hd = THeadl
+  end if
+  if Hc = HUp then
+    Dr = 1
+    Hd = THeadu
+  end if
+  if Hc = HRight then
+    Dr = 4
+    Hd = THeadr
+  end if
+  Move
+  return
+end sub
+
+' the original's ML: one direction alone, fire alone, or nothing
+sub ReadH:
+  Hc = HNone
+  if Btn > 0 then
+    if Jk = 0 then Hc = HFire
+    return
+  end if
+  if Jk = 2 then Hc = HDown
+  if Jk = 4 then Hc = HLeft
+  if Jk = 1 then Hc = HUp
+  if Jk = 8 then Hc = HRight
+  return
+end sub
+
+' [240-300] one move
+sub Move:
+  Nx = Hx
+  Ny = Hy
+  if Dr = 1 then dec Ny
+  if Dr = 2 then inc Ny
+  if Dr = 3 then dec Nx
+  if Dr = 4 then inc Nx
+  ' [240, 550-590] a new spider is tried on this pass
+  if NeedSp = 1 then
+    T = Pn + P1
+    if T >= Goal then
+      RackDone
+      return
+    end if
+    T = Xb - Xa
+    T += 1
+    Mx = RandBelow(T)
+    Mx += Xa
+    T = Yb - Ya
+    T += 1
+    My = RandBelow(T)
+    My += Ya
+    NeedSp = 0
+    if Mx = Nx then
+      if My = Ny then NeedSp = 1
+    end if
+    GetCell(Mx, My)
+    if Cell <> 32 then NeedSp = 1
+    if NeedSp = 0 then
+      Ms = RandBelow(6)
+      Ms += TSpider0
+    end if
+  end if
+  ' [250] wall or body: the adder dies
+  GetCell(Nx, Ny)
+  if Cell = TWall then
+    Die
+    return
+  end if
+  if Cell = TBody then
+    Die
+    return
+  end if
+  ' [260] a spider: eaten, longer, a new one next pass
+  if Cell >= TSpider0 then
+    if Cell <= TSpider5 then
+      play sound SndEat
+      inc Pn
+      Ln += Grow
+      NeedSp = 1
+    end if
+  end if
+  ' [270] the spider (re)drawn
+  if NeedSp = 0 then put char Ms at Mx,My
+  ' [280-290] the tail end is cleared
+  Qx[Qa] = Nx
+  Qy[Qa] = Ny
+  if Qa >= Ln then
+    T = Qa - Ln
+  else
+    T = Qa + QLen
+    T -= Ln
+  end if
+  K = Qy[T]
+  if K > 0 then
+    C = Qx[T]
+    put char 32 at C,K
+  end if
+  inc Qa
+  if Qa >= QLen then Qa = 0
+  ' [300] body where the head was, head in the new cell, a click
+  put char TBody at Hx,Hy
+  put char Hd at Nx,Ny
+  Hx = Nx
+  Hy = Ny
+  play sound SndStep
+  return
+end sub
+
+sub GetCell(u8 Gx, u8 Gy)
+  W16 = Gy
+  W16 = W16 << 5
+  W16 += Gx
+  vpeek vram.name + W16 into Cell
+  return
+end sub
+
+' [410, 1000-1030] the adder dies: its head flashes (2 Hz) through the sound
+sub Die:
+  State = StDie
+  Died = 1
+  StopGameMusic
+  stop sound SndStep
+  play sound SndDie
+  for Li = 0 to 9
+    put char TDeadh at Hx,Hy
+    for Oi = 0 to 14
+      Frame1
+    next
+    put char Hd at Hx,Hy
+    for Oi = 0 to 14
+      Frame1
+    next
+  next
+  dec Lives
+  P1 += Pn
+  ScoreLife
+  return
+end sub
+
+' [550 -> 430] the rack's spiders are all eaten
+sub RackDone:
+  State = StRack
+  StopGameMusic
+  play sound SndRack
+  Died = 0
+  ScoreLife
+  return
+end sub
+
+' [430-490] the score for this life; a life per 100; clear the adder
+sub ScoreLife:
+  T = Rack - 1
+  W16 = T * 144
+  T = Speed - 1
+  T = T << 4
+  W16 += T
+  W16 += Pn
+  T = ScoreT[W16]
+  Score += T
+  if Score > NextLife then
+    NextLife += 100
+    inc Lives
+  end if
+  ' [450] the adder and the spider are wiped (81 POKEs: ~90 frames)
+  for Oi = 0 to 80
+    K = Qy[Oi]
+    if K > 0 then
+      C = Qx[Oi]
+      put char 32 at C,K
+    end if
+    V = Oi & 1
+    if V = 0 then Frame1
+  next
+  put char 32 at Mx,My
+  ShowHud
+  for Oi = 0 to 59
+    Frame1
+  next
+  ' [460] out of lives
+  if Lives = 0 then return
+  if Died = 1 then
+    NewLife
+    return
+  end if
+  if Rack < 6 then
+    NewRack
+    return
+  end if
+  ' [490] all six racks: a life, two speeds faster, rack 1 again
+  inc Lives
+  if Speed > 2 then
+    Speed -= 2
+  else
+    Speed = 1
+  end if
+  Rack = 0
+  NewRack
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the in-game tune (quiet, under the effects), restarted every GameFrames
+sub GameMusic:
+  play sound SndGameA
+  play sound SndGameB
+  play sound SndGameC
+  play sound SndGameD
+  GzLeft = GameFrames
+  GzOn = 1
+  return
+end sub
+
+sub StopGameMusic:
+  stop sound SndGameA
+  stop sound SndGameB
+  stop sound SndGameC
+  stop sound SndGameD
+  GzOn = 0
+  return
+end sub
+
+sub MusicTick:
+  if GzOn = 1 then
+    dec GzLeft
+    if GzLeft = 0 then GameMusic
+  end if
+  return
+end sub
+
+' [61-95] the walls of this rack: Ri rows and Ci columns more on each side
+sub DrawField:
+  NewScreen
+  ' the original's cyan border joins its cyan wall: one solid band
+  backdrop cyan
+  fill TWall count 32 at 0,0
+  fill TWall count 32 at 0,23
+  for Li = 1 to 22
+    fill TWall count 2 at 0,Li
+    fill TWall count 2 at 30,Li
+  next
+  ' the HUD text is cyan on black, as the original's (the colour table is
+  ' one shared 2 KB table: this colours the whole font on this screen)
+  fill $71 count 768 to vram.color + 256
+  for Li = 1 to 22
+    K = Li - 1
+    T = 22 - Li
+    if K <= Ri then
+      fill TWall count 28 at 2,Li
+    else
+      if T <= Ri then
+        fill TWall count 28 at 2,Li
+      else
+        C = Ci + 1
+        fill TWall count C at 2,Li
+        V = 29 - Ci
+        fill TWall count C at V,Li
+      end if
+    end if
+  next
+  ShowScreen
+  return
+end sub
+
+' [161] SCORE, LIVES, RACK over the bottom wall (racks 2-6, as the original)
+sub ShowHud:
+  ' as the C-64: "(SCORE = 0(LIVES = 3(RACK = 2(((" in cyan over the
+  ' wall row; spaces after the numbers dropped to fit 28 columns
+  if Rack < 2 then return
+  fill TWall count 28 at 2,22
+  Li = 22
+  Px = 3
+  if Score > 999 then Px = 2
+  print at Px,22, "SCORE ="
+  Px += 7
+  NumU = Score
+  PutNum
+  inc Px
+  print at Px,22, "LIVES ="
+  Px += 7
+  NumU = Lives
+  PutNum
+  inc Px
+  print at Px,22, "RACK ="
+  Px += 6
+  NumU = Rack
+  PutNum
+  return
+end sub
+
+' NumU without leading zeros at Px,Li (row); Px moves past it
+sub PutNum:
+  if NumU > 999 then
+    print at Px,Li, digits$(NumU, 4)
+    Px += 4
+  else
+    if NumU > 99 then
+      print at Px,Li, digits$(NumU, 3)
+      Px += 3
+    else
+      if NumU > 9 then
+        print at Px,Li, digits$(NumU, 2)
+        Px += 2
+      else
+        print at Px,Li, digits$(NumU, 1)
+        inc Px
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub GameOver:
+  State = StOver
+  StopGameMusic
+  mute all
+  if Score > HiScore then HiScore = Score
+  NewScreen
+  ' as the C-64: red text (its HIT FIRE BUTTON is yellow; one font colour
+  ' per screen here: the colour table is one shared 2 KB table)
+  fill $61 count 768 to vram.color + 256
+  print at 2,2, "YOUR SCORE:"
+  Li = 2
+  Px = 14
+  NumU = Score
+  PutNum
+  print at 2,5, "HIGH SCORE:"
+  Li = 5
+  Px = 14
+  NumU = HiScore
+  PutNum
+  print at 9,9, "HIT FIRE BUTTON"
+  ShowScreen
+  play sound SndOver
+  return
+end sub
+
+data RackRi bytes = 0,0,2,4,6,7,8
+data RackCi bytes = 0,0,2,5,7,8,9
+data ScoreT bytes = 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0,0,1,2,3,4,5,6,7,8,9,10,11,11,12,13,0,0,1,2,3,4,5,6,6,7,8,9,10,11,12,13,0,0,1,2,3,4,5,5,6,7,8,9,10,10,11,12,0,0,1,2,3,4,4,5,6,7,8,8,9,10,11,12,0,0,1,2,3,3,4,5,6,7,7,8,9,10,11,11,0,0,1,2,3,3,4,5,6,7,7,8,9,10,10,11,0,0,1,2,3,3,4,5,6,6,7,8,9,10,10,11,0,0,1,2,3,3,4,5,6,6,7,8,9,9,10,11,0,1,2,4,5,7,8,9,11,12,14,15,16,18,19,21,0,1,2,3,5,6,7,9,10,11,12,14,15,16,18,19,0,1,2,3,4,6,7,8,9,11,12,13,14,16,17,18,0,1,2,3,4,5,7,8,9,10,11,13,14,15,16,17,0,1,2,3,4,5,6,8,9,10,11,12,13,15,16,17,0,1,2,3,4,5,6,7,9,10,11,12,13,14,15,16,0,1,2,3,4,5,6,7,8,9,11,12,13,14,15,16,0,1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,0,1,2,3,4,5,6,7,8,9,10,11,12,13,15,16,0,1,3,5,6,8,10,12,13,15,17,19,20,22,24,25,0,1,3,4,6,7,9,11,12,14,15,17,19,20,22,23,0,1,3,4,6,7,9,10,12,13,15,16,18,19,21,22,0,1,2,4,5,7,8,10,11,13,14,16,17,18,20,21,0,1,2,4,5,7,8,9,11,12,14,15,16,18,19,21,0,1,2,4,5,6,8,9,11,12,13,15,16,17,19,20,0,1,2,4,5,6,8,9,10,12,13,14,16,17,19,20,0,1,2,4,5,6,8,9,10,12,13,14,16,17,18,20,0,1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,0,1,3,5,7,9,11,12,14,16,18,20,22,23,25,27,0,1,3,5,6,8,10,12,13,15,17,19,20,22,24,26,0,1,3,5,6,8,10,11,13,15,16,18,20,21,23,25,0,1,3,4,6,8,9,11,13,14,16,17,19,21,22,24,0,1,3,4,6,7,9,11,12,14,15,17,19,20,22,23,0,1,3,4,6,7,9,10,12,14,15,17,18,20,21,23,0,1,3,4,6,7,9,10,12,13,15,16,18,20,21,23,0,1,3,4,6,7,9,10,12,13,15,16,18,19,21,22,0,2,4,6,8,11,13,15,17,20,22,24,26,29,31,33,0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,0,1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,0,1,3,5,7,9,11,13,15,16,18,20,22,24,26,28,0,1,3,5,7,9,10,12,14,16,18,20,21,23,25,27,0,1,3,5,7,8,10,12,14,16,17,19,21,23,25,26,0,1,3,5,7,8,10,12,14,15,17,19,21,22,24,26,0,1,3,5,6,8,10,12,13,15,17,18,20,22,24,25,0,1,3,5,6,8,10,11,13,15,16,18,20,22,23,25,0,2,4,7,9,12,14,17,19,22,24,26,29,31,34,36,0,2,4,6,8,11,13,15,17,20,22,24,26,29,31,33,0,2,4,6,8,10,12,14,17,19,21,23,25,27,29,32,0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,0,1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,0,1,3,5,7,9,11,13,15,17,19,21,23,24,26,28,0,1,3,5,7,9,11,13,15,16,18,20,22,24,26,28,0,1,3,5,7,9,11,13,14,16,18,20,22,24,26,27
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 4
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+' the title: banner, name, menu (cursor back on START), the tune once
+sub TitlePage:
+  NewScreen
+  ' the C-64 instruction page's header: ".++++THE MAD ADDER+++++" (an adder
+  ' of the game's own characters) and "GET THE SPIDERS * * *", in green
+  ' (the whole page's text: the font has one colour per screen)
+  fill $31 count 768 to vram.color + 256
+  put char THeadl at 5,2
+  fill TBody count 4 at 6,2
+  print at 10,2, "THE MAD ADDER"
+  fill TBody count 5 at 23,2
+  print at 4,5, "GET THE SPIDERS"
+  put char TSpider2 at 20,5
+  put char TSpider1 at 22,5
+  put char TSpider0 at 24,5
+  print at 4,7, "BUT NOTHING ELSE!!!"
+  print at 11,11, "START"
+  print at 11,13, "SPEED"
+  print at 11,15, "HOW TO PLAY"
+  print at 11,17, "CREDITS"
+  print at 5,19, "SPEED: LEFT/RIGHT"
+  Menu = 0
+  ShowMenu
+  ShowSpeed
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 3
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 3 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  K = Edge & 12
+  if K > 0 then
+    if K = 4 then
+      if SpSel > 1 then dec SpSel
+    else
+      if SpSel < 9 then inc SpSel
+    end if
+    play sound SndClick
+    ShowSpeed
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,11
+  put char 32 at 9,13
+  put char 32 at 9,15
+  put char 32 at 9,17
+  C = Menu << 1
+  C += 11
+  put char 62 at 9,C
+  return
+end sub
+
+' speed 1 (fast) to 9 (slow), as the original asks
+sub ShowSpeed:
+  NumU = SpSel
+  print at 17,13, digits$(NumU, 1)
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,2, "MAD ADDER"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: two pages with pictures made of the game's own tiles
+sub HowTo:
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/2"
+  print at 2,3, "STEER THE ADDER WITH THE"
+  print at 2,5, "STICK AND EAT THE SPIDERS,"
+  print at 2,7, "BUT NOTHING ELSE!"
+  fill TWall count 14 at 9,9
+  fill TBody count 5 at 11,11
+  put char THeadr at 16,11
+  put char TSpider0 at 19,11
+  fill TWall count 14 at 9,13
+  print at 2,15, "WALLS AND YOUR OWN BODY"
+  print at 2,17, "KILL. EACH SPIDER MAKES"
+  print at 2,19, "THE ADDER LONGER."
+  print at 8,21, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/2"
+    print at 2,3, "15 SPIDERS CLEAR A RACK;"
+    print at 2,5, "THEN THE WALLS CLOSE IN."
+    print at 2,7, "SIX RACKS, THEN FASTER."
+    print at 2,9, "POINTS AT THE END OF A"
+    print at 2,11, "LIFE OR RACK. 3 LIVES,"
+    print at 2,13, "ONE MORE EVERY 100."
+    print at 2,15, "BUTTON: PAUSE. STICK:"
+    print at 2,17, "GO ON."
+    put char TSpider1 at 14,19
+    put char TSpider4 at 16,19
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $96,$00,$66,$18,$A5,$24,$22,$A5,$18,$0A,$C3,$81,$24,$81,$1A,$C3,$10,$87,$13,$00,$7F,$13,$87,$10
+  $E5,$E3,$E7,$E5,$D5,$08,$E1,$C8,$9F,$E1,$C8,$E1,$08,$C0,$66,$00,$9C,$14,$83,$08,$C9,$41,$41,$85
+  $F0,$60,$FA,$81,$00,$83,$83,$FB,$24,$0B,$10,$52,$54,$AA,$D5,$FD,$55,$60
+end data
+data TileColZ bytes
+  $96,$07,$3F,$31,$13,$FD,$FB,$E8,$FD,$FF,$13,$7A,$F2,$23,$03,$03,$DB,$E4,$31,$D9,$E0,$E2,$91,$91
+  $19,$FE,$1E,$01,$1F,$F1,$0F,$F1,$F9,$48,$F1,$01,$1B,$B1,$0B,$B1,$92,$B1,$01,$16,$61,$06,$61,$24
+  $89,$61,$01,$15,$51,$05,$51,$22,$51,$01,$1D,$D1,$0D,$D1,$48,$D1,$01,$17,$71,$07,$71,$B8,$71,$85
+  $EF,$3C,$3C,$81,$01,$FF,$A0,$6A,$D5,$C3,$0C,$2C,$02,$55,$60
+end data
+data SpritePatZ bytes
+  $95,$00,$75,$55,$58
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$04,$22,$54,$48,$45,$06,$28,$31,$38,$39,$33,$2C,$0C,$28,$41,$4E,$54
+  $48,$52,$4F,$50,$49,$43,$29,$2C,$05,$32,$30,$32,$36,$2E,$07,$41,$44,$44,$45,$52,$22,$2C,$06,$41
+  $55,$54,$48,$4F,$52,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$04,$43,$2D,$36,$34,$05,$43,$41,$49
+  $52,$4F,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$08,$44
+  $4F,$4D,$41,$49,$4E,$29,$2E,$04,$46,$52,$4F,$4D,$04,$47,$41,$4D,$45
+end data
+data TxD_1 bytes
+  $02,$49,$4E,$03,$4D,$41,$44,$06,$4D,$55,$53,$49,$43,$3A,$02,$4F,$46,$09,$4F,$52,$49,$47,$49,$4E
+  $41,$4C,$3A,$04,$50,$41,$4B,$2E,$04,$50,$4F,$52,$54,$06,$50,$55,$42,$4C,$49,$43,$05,$52,$45,$52
+  $55,$4E,$05,$52,$55,$4E,$27,$53,$07,$53,$54,$52,$45,$45,$54,$53,$08,$55,$4E,$4B,$4E,$4F,$57,$4E
+  $2C
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $09,$14,$02,$11,$FE,$06,$07,$1B,$FE,$0E,$19,$18,$0F,$15,$FE,$0C,$16,$10,$00,$FE,$01,$0B,$04,$FE
+  $00,$01,$00,$08,$05,$FE,$12,$1A,$13,$0A,$FE,$03,$17,$0D,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScStep:
+    db $40,$FF,$43,$01,$50
+ScEat:
+    db $40,$FF,$43,$02,$40,$FF,$23,$02,$40,$FF,$13,$04,$40,$F9,$23,$02,$50
+ScDie:
+    db $40,$53,$11,$06,$40,$26,$11,$06,$40,$49,$21,$06,$40,$1D,$21,$06,$40,$68,$21,$06,$40,$2E,$21,$06
+    db $40,$7C,$31,$06,$40,$41,$31,$06,$40,$94,$31,$06,$40,$53,$31,$06,$40,$AB,$41,$06,$40,$68,$41,$06
+    db $40,$C5,$51,$08,$40,$FC,$61,$0A,$40,$3B,$72,$0C,$50
+ScRack:
+    db $40,$AA,$20,$04,$40,$8F,$20,$04,$40,$71,$20,$04,$40,$55,$20,$0A,$50
+ScOver:
+    db $40,$1D,$21,$0A,$40,$41,$21,$0A,$40,$53,$31,$0A,$40,$FC,$31,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScStep,$705D
+    dw ScEat,$705D
+    dw ScDie,$705D
+    dw ScRack,$705D
+    dw ScOver,$705D
+    dw ScGameMel,$702B
+    dw ScGameHarm,$7035
+    dw ScGameBassVol,$703F
+    dw ScGameBassPitch,$7049
+; Streets of Cairo (public domain) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$23,$24,$23,$21,$1F,$21,$23,$01,$1C,$01,$01,$01
+    db $1C,$1E,$1F,$21,$23,$24,$23,$21,$23,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$23,$24,$23,$21,$1F,$21,$23,$01,$1C,$01,$01,$01
+    db $1F,$1E,$1C,$1B,$1C,$1E,$1F,$1E,$1C,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$1C,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$1F,$01,$01,$01,$01,$01,$01,$01,$1E,$01,$01,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01,$1F,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$88,$F0,$25,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F
+    db $C0,$B5,$F0,$21,$C0,$79,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F
+    db $C0,$B5,$F0,$21,$C0,$79,$F0,$1F,$C0,$88,$F0,$1A,$FF,$E3
+    db $D0
+; Charmer's Walk (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScGameMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$80,$18,$32,$1C,$00,$01,$1E,$01,$1F,$01,$1E,$00,$01,$1C,$01
+    db $1B,$01,$1C,$01,$17,$00,$01,$18,$01,$17,$01,$15,$00,$01,$17,$01
+    db $01,$01,$01,$01,$1C,$00,$01,$1E,$01,$1F,$01,$21,$00,$01,$23,$01
+    db $21,$01,$1F,$01,$1E,$00,$01,$1F,$01,$1E,$01,$1C,$00,$01,$1B,$01
+    db $01,$01,$01,$01,$23,$00,$01,$24,$01,$23,$01,$21,$00,$01,$1F,$01
+    db $21,$01,$23,$01,$24,$00,$01,$23,$01,$21,$01,$1F,$00,$01,$1E,$01
+    db $1F,$01,$21,$01,$23,$00,$01,$21,$01,$1F,$01,$1E,$00,$01,$1C,$01
+    db $1E,$01,$1F,$01,$1E,$00,$01,$1B,$01,$17,$01,$1B,$00,$01,$1C,$00
+    db $00,$00,$01,$01
+    db $FF
+ScGameHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$13,$01,$01,$01,$01,$01,$01,$01,$13,$01,$01,$01
+    db $01,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$15,$01,$01,$01,$01,$01,$01,$01,$15,$01,$01,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScGameBassVol:
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$63,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$63,$15,$14,$66,$22
+    db $10
+ScGameBassPitch:
+    db $C0,$88,$F0,$3C,$C0,$5A,$F0,$38,$C0,$88,$F0,$38,$C0,$B5,$F0,$38,$C0,$88,$F0,$38,$C0,$66,$F0,$38
+    db $C0,$B5,$F0,$38,$C0,$5A,$F0,$38,$C0,$88,$F0,$38,$C0,$AB,$F0,$38,$C0,$66,$F0,$38,$C0,$98,$F0,$38
+    db $C0,$88,$F0,$38,$C0,$5A,$F0,$38,$C0,$B5,$F0,$38,$C0,$88,$F0,$32,$E2
+    db $D0
+}

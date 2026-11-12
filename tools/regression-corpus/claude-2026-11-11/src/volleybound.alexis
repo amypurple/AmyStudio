@@ -1,0 +1,1416 @@
+cartridge "VOLLEYBOUND/TONY BRANTNER/1991"
+' VOLLEYBOUND - two-on-two volleyball. Original: "Volleybound" by Tony
+' Brantner, ReRUN November/December 1991 (Commodore 64, machine language,
+' VOLLEY ML). ColecoVision port in Amy, from the original's code
+' (orig/volley.dis) and traces (c64/).
+'
+' The rules run in the original's own units: C64 sprite coordinates
+' (ball X 26..319, Y 82..237; players' Y 220 standing), one "pass" of the
+' original main loop at a time ($091F..$098B), 26 passes per frame (the
+' original's pass is ~520 C64 cycles: about 13,800 free NTSC cycles a
+' frame / 520 = 26.5, rounded down). Every 9th pass reads the sticks (3 times a frame);
+' the computer team moves every 3rd, 2nd or every read (level 1-3).
+' Randomness is the original's: the jiffy clock (Jif, +1 a frame).
+' Drawing maps the 304-px C64 field to 208 px (XMapA/B) and keeps Y 1:1
+' (C64 rows 3..24 -> rows 1..22).
+'
+' House rules: title menu by joystick (START, PLAYERS, LEVEL, HOW TO PLAY,
+' CREDITS), one press to start, game over -> one press or 30 s -> title.
+
+const TCeil = 128
+const TFloor = 129
+const TWallL = 130
+const TWallR = 131
+const TCornerL = 132
+const TNetL = 133
+const TNetR = 134
+const TDy20 = 135
+const TDy61 = 136
+const TDya0 = 137
+const TDye1 = 138
+const TDye2 = 139
+const TDyec = 140
+const TDyfb = 141
+const TDg20 = 142
+const TDg61 = 143
+const TDga0 = 144
+const TDge1 = 145
+const TDge2 = 146
+const TDgec = 147
+const TDgfb = 148
+const TLogo0 = 149
+const TLogo1 = 150
+const TLogo2 = 151
+const TLogo3 = 152
+const TLogo4 = 153
+const TLogo5 = 154
+const TLogo6 = 155
+const TLogo7 = 156
+const TLogo8 = 157
+const TLogo9 = 158
+const TLogo10 = 159
+const TLogo11 = 160
+const TLogo12 = 161
+const TLogo13 = 162
+const TLogo14 = 163
+const TLogo15 = 164
+const TLogo16 = 165
+const TSand = 166
+const TSky = 167
+const SBall = 0
+const STop0 = 4
+const SBot0 = 8
+const STop1 = 12
+const SBot1 = 16
+const STop2 = 20
+const SBot2 = 24
+const NTiles8 = 320
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndHit = 6
+const SndWall = 7
+const SndNet = 8
+const SndPoint = 9
+const SndTone = 10
+const SndGameA = 11
+const SndGameB = 12
+const SndGameC = 13
+const SndGameD = 14
+const TuneFrames = 512
+const GameFrames = 1152
+const TxtCredits = 0
+const NSpr = 9
+const HideY = 192
+const PassesPerFrame = 26
+' C64 sprite Y -> ColecoVision sprite row (C64 line - 16, minus 1)
+const YOff = 67
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StRally = 5
+const StOver = 9
+' team colours
+const ColY = 11
+const ColG = 3
+const ColLegs = 9
+
+data DigY bytes
+  137,141,137,138,139,139
+  141,136,138,136,139,139
+  139,137,137,139,139,139
+  139,137,139,137,139,139
+  136,137,139,137,135,139
+  137,139,139,137,139,139
+  137,139,137,141,139,139
+  139,137,135,137,135,139
+  137,141,137,141,139,139
+  140,137,139,137,139,139
+end data
+data DigG bytes
+  144,148,144,145,146,146
+  148,143,145,143,146,146
+  146,144,144,146,146,146
+  146,144,146,144,146,146
+  143,144,146,144,142,146
+  144,146,146,144,146,146
+  144,146,144,148,146,146
+  146,144,142,144,142,146
+  144,148,144,148,146,146
+  147,144,146,144,146,146
+end data
+data LogoMap bytes
+  149,150,151,152,153,154,153,154,151,152,154,154,152,155,152,156,154,152,154,154,154,150,157,154,152,152
+  149,150,151,153,153,154,153,154,151,158,155,152,152,155,153,159,154,154,154,154,154,150,160,154,153,153
+  161,162,151,153,153,154,153,154,151,163,155,155,152,155,153,155,154,154,154,154,154,150,161,154,153,153
+  164,165,151,152,153,152,153,152,151,152,154,152,152,155,152,152,154,152,154,152,152,150,164,154,152,152
+end data
+data XMapA bytes
+  2,3,3,4,5,6,6,7,8,8,9,10,10,11,12,12
+  13,14,14,15,16,16,17,18,19,19,20,21,21,22,23,23
+  24,25,25,26,27,27,28,29,29,30,31,32,32,33,34,34
+  35,36,36,37,38,38,39,40,40,41,42,42,43,44,45,45
+  46,47,47,48,49,49,50,51,51,52,53,53,54,55,55,56
+  57,58,58,59,60,60,61,62,62,63,64,64,65,66,66,67
+  68,68,69,70,71,71,72,73,73,74,75,75,76,77,77,78
+  79,79,80,81,81,82,83,84,84,85,86,86,87,88,88,89
+  90,90,91,92,92,93,94,94,95,96,97,97,98,99,99,100
+  101,101,102,103,103,104,105,105,106,107,107,108,109,110,110,111
+  112,112,113,114,114,115,116,116,117,118,118,119,120,120,121,122
+  123,123,124,125,125,126,127,127,128,129,129,130,131,131,132,133
+  133,134,135,136,136,137,138,138,139,140,140,141,142,142,143,144
+  144,145,146,146,147,148,149,149,150,151,151,152,153,153,154,155
+  155,156,157,157,158,159,159,160,161,162,162,163,164,164,165,166
+  166,167,168,168,169,170,170,171,172,172,173,174,175,175,176,177
+end data
+data XMapB bytes
+  177,178,179,179,180,181,181,182,183,183,184,185,185,186,187,188
+  188,189,190,190,191,192,192,193,194,194,195,196,196,197,198,198
+  199,200,201,201,202,203,203,204,205,205,206,207,207,208,209,209
+  210,211,211,212,213,214,214,215,216,216,217,218,218,219,220,220
+  221,222,222,223,224,224,225,226,227,227,228,229,229,230,231,231
+end data
+
+' walking frames: the original's pointer table $0D4F (FD FE FF FD)
+data AnimTab bytes
+  0,1,2,0
+end data
+' sprite patterns per frame: top (team colour) and bottom (legs)
+data TopPat bytes
+  4,12,20
+end data
+data BotPat bytes
+  8,16,24
+end data
+
+' --- the original's state (C64 units; names after its RAM)
+u8 By = 0
+u16 Bx = 0
+u8 Py0 = 0
+u8 Py1 = 0
+u8 Px0 = 0
+u8 Px1 = 0
+u8 Jc0 = 0
+u8 Jc1 = 0
+u8 Fr0 = 0
+u8 Fr1 = 0
+u8 Hs = 0
+u8 Vs = 0
+u8 Ha = 0
+u8 Va = 0
+u8 Dir = 0
+u8 Up = 0
+u8 Aic = 0
+u8 InCnt = 0
+u8 Sc0 = 0
+u8 Sc1 = 0
+u8 Srv = 0
+u8 Jif = 0
+u8 Lvl = 0
+u8 NPl = 1
+u8 Over = 0
+u8 Winner = 0
+u8 In0 = 0
+u8 In1 = 0
+u8 Ai = 0
+u8 Pi = 0
+u16 Wp = 0
+u16 Dd = 0
+u8 Dl = 0
+u8 Bh = 0
+u8 Hb0 = 54
+u8 Hb1 = 104
+u8 Hit = 0
+u8 SndQ = 0
+u8 Mx = 0
+u8 My = 0
+
+u16 Rs = 1
+u16 W16 = 0
+u16 TzLeft = 0
+u16 GzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 GzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Li = 0
+u8 Wt = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 3 then
+    HowTo
+    goto title
+  end if
+  if Menu = 4 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ' the sprites computed last frame go up right after the wait (in the
+  ' blank), so a late frame never shows a half-written sprite table
+  update sprites
+  ReadPad
+  In0 = J1 | J2
+  In1 = 0
+  if NPl = 2 then
+    In0 = J1
+    In1 = J2
+  end if
+  Over = 0
+  SndQ = 0
+  for Pi = 1 to PassesPerFrame
+    Pass
+    if Over = 1 then goto pl_done
+  next
+pl_done:
+  DrawSprites
+  PlaySnd
+  if Over = 0 then goto play_loop
+
+  RallyEnd
+  if Sc0 < 15 then
+    if Sc1 < 15 then
+      Serve
+      goto play_loop
+    end if
+  end if
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  StopGameMusic
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules: one pass of the original's main loop ($091F..$098B)
+
+sub Pass:
+  ' every 9th pass: the sticks ($093D)
+  inc InCnt
+  if InCnt >= 9 then
+    InCnt = 0
+    Move0
+    if NPl = 2 then
+      Move1
+    else
+      inc Aic
+      if Aic >= 3 then
+        Aic = Lvl
+        AiStick
+        In1 = Ai
+        Move1
+      end if
+    end if
+  end if
+  ' (speed: the subs are called only when they can act; same rules)
+  Hit = 0
+  T = Py1 - By
+  if T < 5 then
+    Collide
+  else
+    T = Py0 - By
+    if T < 5 then Collide
+  end if
+  T = Va
+  Va += Vs
+  if Va < T then Vert
+  T = Ha
+  Ha += Hs
+  if Ha < T then Horiz
+  if By >= $AD then NetChk
+  ' the rally ends with the ball on the floor and nobody in the air
+  if By >= $ED then
+    if Jc0 = 0 then
+      if Jc1 = 0 then Over = 1
+    end if
+  end if
+  return
+end sub
+
+' team 0 (yellow, sprites 1 and 3): jump, or walk 1 px ($09F1)
+sub Move0:
+  if Jc0 = 0 then
+    V = In0 & 16
+    if V = 0 then
+      V = In0 & 12
+      if V = 0 then return
+      if V = 12 then return
+      T = Px0
+      if V = 4 then dec T
+      if V = 8 then inc T
+      if T >= $22 then
+        if T < $5E then
+          Px0 = T
+          Hb0 = T >> 1
+          Hb0 += 8
+          T = T >> 3
+          T = T & 3
+          Fr0 = AnimTab[T]
+        end if
+      end if
+      return
+    end if
+  end if
+  inc Jc0
+  Jc0 = Jc0 & $7F
+  if Jc0 < $40 then
+    Py0 = $DC - Jc0
+  else
+    T = Jc0 & $3F
+    Py0 = T + $9D
+  end if
+  return
+end sub
+
+' team 1 (green, sprites 2 and 4)
+sub Move1:
+  if Jc1 = 0 then
+    V = In1 & 16
+    if V = 0 then
+      V = In1 & 12
+      if V = 0 then return
+      if V = 12 then return
+      T = Px1
+      if V = 4 then dec T
+      if V = 8 then inc T
+      if T >= $BF then
+        if T < $FB then
+          Px1 = T
+          Hb1 = T >> 1
+          Hb1 += 8
+          T = T >> 3
+          T = T & 3
+          Fr1 = AnimTab[T]
+        end if
+      end if
+      return
+    end if
+  end if
+  inc Jc1
+  Jc1 = Jc1 & $7F
+  if Jc1 < $40 then
+    Py1 = $DC - Jc1
+  else
+    T = Jc1 & $3F
+    Py1 = T + $9D
+  end if
+  return
+end sub
+
+' the computer's stick ($0A68): follow the ball with the back player (or
+' the front one when the ball is at X >= 251) until it is 6 px left of
+' him; jump when the ball is low and slow
+sub AiStick:
+  Wp = Px1
+  if Bx >= $FB then Wp += 60
+  Ai = 8
+  if Wp < Bx then return
+  Dd = Wp - Bx
+  Dl = Dd & 255
+  if Dl < 6 then return
+  Ai = 4
+  if Dl > 6 then return
+  if By >= $CD then
+    if By < $D7 then
+      if Hs < $14 then Ai = 16
+    end if
+  end if
+  return
+end sub
+
+' a player under the ball hits it ($0B39): sprites 4, 3, 2, 1 in turn
+sub Collide:
+  ' (speed only: a man can be within 16 px of the ball only if their
+  ' half-coordinates are within 8, so most passes skip the 16-bit test;
+  ' Hb0/Hb1 = back man's X / 2 + 8, kept by Move0/Move1)
+  T = Py1 - By
+  if T < 5 then
+    Dl = Hb1 - Bh
+    Dl += 30
+    if Dl < 17 then
+      Wp = Px1
+      Wp += 60
+      HitChk
+      if Hit = 1 then return
+    end if
+  end if
+  K = Py0 - By
+  if K < 5 then
+    Dl = Hb0 - Bh
+    Dl += 30
+    if Dl < 17 then
+      Wp = Px0
+      Wp += 60
+      HitChk
+      if Hit = 1 then return
+    end if
+  end if
+  if T < 5 then
+    Dl = Hb1 - Bh
+    if Dl < 17 then
+      Wp = Px1
+      HitChk
+      if Hit = 1 then return
+    end if
+  end if
+  if K < 5 then
+    Dl = Hb0 - Bh
+    if Dl < 17 then
+      Wp = Px0
+      HitChk
+    end if
+  end if
+  return
+end sub
+
+' player at Wp within 16 px of the ball: the ball flies away from him, the
+' further off-centre the faster; up at a random speed (jiffy | $50)
+sub HitChk:
+  Dd = Wp - Bx
+  if Dd < 16 then
+    Dir = 1
+  else
+    Dd = Bx - Wp
+    if Dd >= 16 then return
+    Dir = 0
+  end if
+  Dl = Dd & 255
+  Dl = Dl << 2
+  Hs = Dl | 3
+  Up = 1
+  T = Jif | $50
+  Vs = T & $7F
+  Hit = 1
+  SndQ = SndHit
+  return
+end sub
+
+' the ball's height ($0AAC): 8-bit accumulator, slower near the top
+sub Vert:
+  if Up = 1 then
+    T = By - 1
+    if T < $52 then
+      SndQ = SndWall
+      Up = 0
+      return
+    end if
+    By = T
+    T = Vs - 1
+    if T < 3 then
+      Up = 0
+      return
+    end if
+    Vs = T
+    return
+  end if
+  T = By + 1
+  if T >= $EE then
+    Hs = 0
+    Vs = 0
+    return
+  end if
+  By = T
+  T = Vs + 1
+  if T < $2A then Vs = T
+  return
+end sub
+
+' the ball's X ($0AFD): walls at 26 and 319
+sub Horiz:
+  if Dir = 0 then
+    Wp = Bx + 1
+    if Wp < $140 then
+      Bx = Wp
+      W16 = Wp >> 1
+      Bh = W16
+      return
+    end if
+  else
+    Wp = Bx - 1
+    if Wp >= $1A then
+      Bx = Wp
+      W16 = Wp >> 1
+      Bh = W16
+      return
+    end if
+  end if
+  SndQ = SndWall
+  Dir = Dir ^ 1
+  return
+end sub
+
+' the net ($0B90): X low byte 163..180, Y >= 173; on its top the ball
+' bounces up with a random sideways speed
+sub NetChk:
+  if By < $AD then return
+  Dl = Bx
+  if Dl < $A3 then return
+  if Dl >= $B5 then return
+  if By = $AD then
+    Up = 1
+    T = Jif | 8
+    Hs = T & $1F
+  else
+    Dir = 0
+    if Dl < $AC then Dir = 1
+  end if
+  SndQ = SndNet
+  return
+end sub
+
+sub PlaySnd:
+  if SndQ = SndHit then play sound SndHit
+  if SndQ = SndWall then play sound SndWall
+  if SndQ = SndNet then play sound SndNet
+  return
+end sub
+
+' the ball rests on the floor: half a second, then the side it is on
+' loses the rally ($0993): the server scores, or the serve changes
+sub RallyEnd:
+  State = StRally
+  for Wt = 1 to 30
+    Frame1
+  next
+  Winner = 0
+  if Bx < $AC then Winner = 1
+  if Winner <> Srv then
+    Srv = Winner
+    return
+  end if
+  if Winner = 0 then
+    inc Sc0
+  else
+    inc Sc1
+  end if
+  DrawScores
+  play sound SndPoint
+  for Wt = 1 to 15
+    Frame1
+  next
+  return
+end sub
+
+' a new serve ($08FE): the server's ball floats at Y 212 over X 94 / 251
+sub Serve:
+  Jc0 = 0
+  Jc1 = 0
+  Hs = 0
+  Vs = 0
+  Ha = 0
+  Va = 0
+  Dir = 0
+  Up = 0
+  Aic = 0
+  InCnt = 0
+  By = $D4
+  Bx = $5E
+  if Srv = 1 then Bx = $FB
+  W16 = Bx >> 1
+  Bh = W16
+  DrawSprites
+  State = StPlay
+  return
+end sub
+
+sub NewGame:
+  StopTitleTune
+  Sc0 = 0
+  Sc1 = 0
+  Px0 = $5C
+  Px1 = $C1
+  Hb0 = $2E + 8
+  Hb1 = $60 + 8
+  Py0 = $DC
+  Py1 = $DC
+  Fr0 = 0
+  Fr1 = 0
+  ' the jiffy clock: anything at power-on; the first server is its bit 0
+  Rand
+  W16 = Rs & 255
+  Jif = W16
+  Srv = Jif & 1
+  DrawCourt
+  Serve
+  update sprites
+  play sound SndTone
+  GameMusic
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' C64 sprite X (u16 Wp) -> screen pixel Mx
+sub MapX:
+  if Wp < 256 then
+    T = Wp
+    Mx = XMapA[T]
+  else
+    W16 = Wp - 256
+    T = W16
+    Mx = XMapB[T]
+  end if
+  return
+end sub
+
+sub DrawSprites:
+  ' the ball: pixels at C64 sprite columns 8-15
+  Wp = Bx + 8
+  MapX
+  My = By - YOff
+  My -= 11
+  set sprite 0 to My,Mx,SBall,15
+  ' yellow: back (1), front (3)
+  My = Py0 - YOff
+  K = My + 16
+  C = TopPat[Fr0]
+  J = BotPat[Fr0]
+  Mx = XMapA[Px0]
+  set sprite 1 to My,Mx,C,ColY
+  set sprite 5 to K,Mx,J,ColLegs
+  T = Px0 + 60
+  Mx = XMapA[T]
+  set sprite 2 to My,Mx,C,ColY
+  set sprite 6 to K,Mx,J,ColLegs
+  ' green: back (2), front (4)
+  My = Py1 - YOff
+  K = My + 16
+  C = TopPat[Fr1]
+  J = BotPat[Fr1]
+  Mx = XMapA[Px1]
+  set sprite 3 to My,Mx,C,ColG
+  set sprite 7 to K,Mx,J,ColLegs
+  Wp = Px1
+  Wp += 60
+  MapX
+  set sprite 4 to My,Mx,C,ColG
+  set sprite 8 to K,Mx,J,ColLegs
+  return
+end sub
+
+' the court: grey ceiling and floor, 4-px walls, the dashed net
+sub DrawCourt:
+  NewScreen
+  DrawField
+  DrawScores
+  if NPl = 1 then
+    print at 12,3, "LEVEL"
+    T = Lvl + 49
+    put char T at 18,3
+  end if
+  ShowScreen
+  return
+end sub
+
+sub DrawField:
+  fill TCeil count 28 at 2,1
+  fill TFloor count 28 at 2,22
+  for Li = 2 to 21
+    put char TWallL at 2,Li
+    put char TWallR at 29,Li
+  next
+  for Li = 14 to 21
+    put char TNetL at 15,Li
+    put char TNetR at 16,Li
+  next
+  return
+end sub
+
+' the original's 2 x 3 character digits ($0D53): yellow at the left,
+' green at the right, tens and units a column apart
+sub DrawScores:
+  T = Sc0 / 10
+  C = 4
+  K = 0
+  DigitAt
+  T = Sc0 % 10
+  C = 7
+  DigitAt
+  T = Sc1 / 10
+  C = 23
+  K = 1
+  DigitAt
+  T = Sc1 % 10
+  C = 26
+  DigitAt
+  return
+end sub
+
+' digit T at column C, rows 3-5; K = team
+sub DigitAt:
+  J = T * 6
+  for Li = 0 to 5
+    if K = 0 then
+      V = DigY[J]
+    else
+      V = DigG[J]
+    end if
+    T = Li >> 1
+    T += 3
+    Dl = Li & 1
+    if Dl = 0 then
+      put char V at C,T
+    else
+      Mx = C + 1
+      put char V at Mx,T
+    end if
+    inc J
+  next
+  return
+end sub
+
+sub GameOver:
+  set sprite 0 to HideY,0,SBall,0
+  update sprites
+  print at 11,8, "GAME OVER"
+  if Sc0 >= 15 then
+    print at 10,10, "YELLOW WINS"
+  else
+    print at 10,10, "GREEN WINS"
+  end if
+  print at 8,12, "PRESS THE BUTTON"
+  play sound SndTone
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' music
+
+sub GameMusic:
+  play sound SndGameA
+  play sound SndGameB
+  play sound SndGameC
+  play sound SndGameD
+  GzLeft = GameFrames
+  GzOn = 1
+  return
+end sub
+
+sub StopGameMusic:
+  stop sound SndGameA
+  stop sound SndGameB
+  stop sound SndGameC
+  stop sound SndGameD
+  mute all
+  GzOn = 0
+  return
+end sub
+
+' (the restart is spread over two frames: four `play sound` in one frame
+' made a busy play frame miss its slot)
+sub MusicTick:
+  if GzOn = 1 then
+    dec GzLeft
+    if GzLeft = 1 then
+      play sound SndGameC
+      play sound SndGameD
+    end if
+    if GzLeft = 0 then
+      play sound SndGameA
+      play sound SndGameB
+      GzLeft = GameFrames
+    end if
+  end if
+  return
+end sub
+
+sub StopTitleTune:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  return
+end sub
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the title tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then StopTitleTune
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over); the jiffy clock ticks
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  inc Jif
+  MusicTick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0; the ball (0) stays on top,
+' the players rotate when 5 share a line
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 0
+  sprites flicker on
+  for J = 0 to 8
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a player standing on the title/HOW TO PLAY floor: Mx, My (top), C = colour
+sub ShowMan:
+  K = My + 16
+  set sprite Li to My,Mx,4,C
+  T = Li + 4
+  set sprite T to K,Mx,8,ColLegs
+  return
+end sub
+
+' the title: the original's logo, the menu (cursor back on START), the tune
+sub TitlePage:
+  NewScreen
+  for Li = 0 to 3
+    T = Li + 2
+    for J = 0 to 25
+      K = Li * 26
+      K += J
+      V = LogoMap[K]
+      C = J + 3
+      put char V at C,T
+    next
+  next
+  print at 6,7, "TWO-ON-TWO VOLLEYBALL"
+  print at 11,10, "START"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  ShowOpts
+  print at 8,20, "BY TONY BRANTNER"
+  fill TFloor count 28 at 2,22
+  Li = 1
+  Mx = 26
+  My = 154
+  C = ColY
+  ShowMan
+  Li = 2
+  Mx = 214
+  C = ColG
+  ShowMan
+  set sprite 0 to 109,31,SBall,15
+  update sprites
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 4
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 4 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  ' PLAYERS and LEVEL change with the button or left/right
+  K = Edge & 12
+  if Press = 1 then K = 8
+  if K > 0 then
+    if Menu = 1 then
+      NPl = 3 - NPl
+      play sound SndClick
+      ShowOpts
+      goto tp_loop
+    end if
+    if Menu = 2 then
+      if K = 4 then
+        if Lvl = 0 then
+          Lvl = 2
+        else
+          dec Lvl
+        end if
+      else
+        inc Lvl
+        if Lvl > 2 then Lvl = 0
+      end if
+      play sound SndClick
+      ShowOpts
+      goto tp_loop
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  StopTitleTune
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  HideSprites
+  return
+end sub
+
+sub ShowOpts:
+  print at 11,12, "PLAYERS  "
+  T = NPl + 48
+  put char T at 20,12
+  print at 11,14, "LEVEL    "
+  T = Lvl + 49
+  put char T at 20,14
+  return
+end sub
+
+sub ShowMenu:
+  for Li = 0 to 4
+    C = Li << 1
+    C += 10
+    put char 32 at 9,C
+  next
+  C = Menu << 1
+  C += 10
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 10,2, "VOLLEYBOUND"
+  TxT = TxtCredits
+  TxX0 = 3
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,22, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages, pictures made of the game's own tiles/sprites
+sub HowTo:
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  ' a little court: floor, net, two players, the ball over the net
+  fill TFloor count 20 at 6,8
+  put char TNetL at 15,6
+  put char TNetR at 16,6
+  put char TNetL at 15,7
+  put char TNetR at 16,7
+  Li = 1
+  Mx = 64
+  My = 43
+  C = ColY
+  ShowMan
+  Li = 2
+  Mx = 176
+  C = ColG
+  ShowMan
+  set sprite 0 to 15,124,SBall,15
+  update sprites
+  print at 3,10, "TWO-ON-TWO VOLLEYBALL."
+  print at 3,12, "KEEP THE BALL UP ON YOUR"
+  print at 3,14, "SIDE, AND MAKE IT HIT THE"
+  print at 3,16, "FLOOR ON THE OTHER SIDE."
+  print at 3,18, "IT BOUNCES OFF THE WALLS"
+  print at 3,20, "AND THE CEILING."
+  print at 8,22, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  Page = 2
+  NewScreen
+  print at 8,1, "HOW TO PLAY  2/3"
+  fill TFloor count 12 at 10,8
+  ' a jumping player under the ball
+  Li = 1
+  Mx = 112
+  My = 28
+  C = ColY
+  ShowMan
+  set sprite 0 to 11,117,SBall,15
+  update sprites
+  print at 3,10, "YELLOW: CONTROLLER 1."
+  print at 3,12, "GREEN: COMPUTER (LEVEL 1"
+  print at 3,14, "TO 3) OR CONTROLLER 2."
+  print at 3,16, "STICK: BOTH PLAYERS MOVE."
+  print at 3,18, "BUTTON: BOTH JUMP. SERVE:"
+  print at 3,20, "JUMP UNDER THE BALL."
+  print at 8,22, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  Page = 3
+  NewScreen
+  print at 8,1, "HOW TO PLAY  3/3"
+  Sc0 = 15
+  Sc1 = 7
+  DrawScores
+  print at 3,8, "ONLY THE SERVING TEAM"
+  print at 3,10, "SCORES. IF IT LOSES THE"
+  print at 3,12, "RALLY, THE OTHER TEAM"
+  print at 3,14, "WINS THE SERVE."
+  print at 3,16, "A TEAM MAY HIT THE BALL"
+  print at 3,18, "ANY NUMBER OF TIMES."
+  print at 3,20, "FIRST TO 15 POINTS WINS."
+  print at 8,22, "PRESS THE BUTTON"
+  PageWait
+ht_end:
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $85,$00,$8A,$08,$00,$21,$80,$F0,$5A,$07,$69,$00,$A7,$E0,$97,$98,$DE,$C0,$E0,$57,$DF,$D8,$F0,$7C
+  $90,$56,$F2,$03,$FE,$96,$C0,$97,$E0,$D7,$80,$87,$70,$D6,$FE,$BF,$80,$94,$D7,$D4,$7E,$4C,$55,$38
+  $01,$01,$C0,$7F,$E9,$E1,$F5,$D9,$C0,$FE,$F1,$C9,$81,$28,$80,$80,$A2,$40,$04,$20,$02,$A0,$80,$35
+  $55,$58
+end data
+data TileColZ bytes
+  $66,$0E,$0F,$0E,$E8,$01,$FB,$0F,$A6,$1E,$F2,$E1,$FE,$96,$1E,$96,$E1,$9A,$F1,$01,$7D,$F0,$F6,$FE
+  $96,$B1,$96,$0B,$97,$1B,$FF,$E8,$C0,$FD,$F0,$C0,$FF,$D0,$90,$6F,$31,$FE,$29,$03,$69,$13,$7F,$E8
+  $FF,$C0,$F0,$DF,$C0,$D5,$A1,$FF,$16,$5A,$06,$5A,$16,$5A,$61,$5F,$30,$79,$C4,$FE,$EC,$D0,$1F,$DC
+  $F7,$CC,$F7,$DD,$70,$C7,$F0,$DF,$94,$5C,$7D,$FA,$98,$0A,$BA,$BA,$6F,$04,$FE,$35,$55,$58
+end data
+data SpritePatZ bytes
+  $84,$00,$88,$78,$FC,$88,$78,$00,$06,$79,$E7,$F7,$E7,$FB,$28,$79,$7F,$1F,$07,$07,$01,$EA,$0F,$1E
+  $E0,$EF,$E4,$FB,$A4,$9E,$FE,$F8,$E0,$E0,$80,$E5,$F0,$78,$78,$70,$18,$18,$96,$8E,$1E,$0E,$E1,$E5
+  $1E,$80,$66,$0F,$7F,$7E,$00,$BB,$1E,$9F,$0E,$97,$A4,$9E,$E1,$18,$70,$78,$00,$15,$9A,$F0,$FE,$7E
+  $AE,$78,$0E,$20,$5D,$AE,$DE,$70,$84,$5D,$55,$56
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$07,$28,$43,$2D
+  $36,$34,$29,$2E,$09,$28,$4F,$52,$49,$47,$49,$4E,$41,$4C,$04,$31,$39,$39,$31,$05,$32,$30,$32,$36
+  $2E,$03,$41,$4E,$44,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$09,$42,$52,$41,$4E,$54,$4E,$45,$52
+  $2C,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$04,$47,$41
+  $4D,$45,$02,$49,$4E,$02,$49,$54,$06,$4D,$55,$53,$49,$43,$3A
+end data
+data TxD_1 bytes
+  $07,$4E,$4F,$56,$2F,$44,$45,$43,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$04,$50,$4F,$52,$54,$05,$52
+  $41,$4C,$4C,$59,$05,$52,$45,$52,$55,$4E,$05,$53,$45,$52,$56,$45,$04,$54,$4F,$4E,$59,$07,$54,$55
+  $4E,$45,$53,$29,$2E,$02,$55,$50
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $11,$0C,$01,$FE,$16,$09,$14,$FE,$10,$05,$03,$FE,$0B,$12,$0D,$00,$FE,$01,$0A,$02,$FE,$00,$01,$00
+  $08,$06,$FE,$0F,$15,$0E,$18,$07,$FE,$13,$04,$17,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScHit:
+    db $40,$DE,$11,$01,$40,$DE,$31,$01,$40,$DE,$61,$01,$50
+ScWall:
+    db $40,$67,$11,$01,$40,$67,$31,$01,$40,$67,$61,$01,$50
+ScNet:
+    db $40,$8A,$12,$01,$40,$8A,$32,$01,$40,$8A,$62,$01,$50
+ScPoint:
+    db $40,$EF,$10,$0F,$50
+ScTone:
+    db $40,$67,$11,$0F,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScHit,$705D
+    dw ScWall,$705D
+    dw ScNet,$705D
+    dw ScPoint,$705D
+    dw ScTone,$705D
+    dw ScGameMel,$702B
+    dw ScGameHarm,$7035
+    dw ScGameBassVol,$703F
+    dw ScGameBassPitch,$7049
+; Serve It Up (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$26,$01,$23,$01,$26,$01,$2B,$01,$2A,$01,$26,$01
+    db $28,$01,$01,$01,$24,$01,$28,$01,$2B,$01,$28,$01,$26,$01,$23,$01
+    db $21,$01,$01,$01,$23,$01,$26,$01,$2B,$01,$2D,$01,$2F,$01,$2D,$01
+    db $2B,$01,$28,$01,$26,$01,$28,$01,$24,$01,$21,$01,$1F,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$23,$01,$01,$01,$1F,$01,$01,$01,$21,$01,$01,$01
+    db $24,$01,$01,$01,$1C,$01,$01,$01,$1F,$01,$01,$01,$1E,$01,$01,$01
+    db $1A,$01,$01,$01,$1F,$01,$01,$01,$23,$01,$01,$01,$26,$01,$01,$01
+    db $24,$01,$01,$01,$23,$01,$01,$01,$21,$01,$01,$01,$17,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$25,$C0,$98,$F0,$1F,$C0,$72,$F0,$21,$C0,$AB,$F0,$40,$C0,$72,$F0,$1F,$C0,$98,$F0,$40
+    db $C0,$72,$F0,$21,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$AB,$F0,$1F,$C0,$72,$F0,$21,$C0,$98,$F0,$1F
+    db $C0,$72,$F0,$1A,$FF,$E3
+    db $D0
+; Rally (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScGameMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$1A,$21,$1A,$00,$01,$1E,$01,$21,$01,$1E,$00,$01,$1A,$01
+    db $1C,$01,$1E,$01,$1F,$00,$01,$1E,$01,$1C,$01,$1A,$00,$01,$17,$01
+    db $19,$01,$1A,$01,$1A,$00,$01,$1E,$01,$21,$01,$23,$00,$01,$21,$01
+    db $1E,$01,$1A,$01,$1C,$00,$01,$1E,$01,$1F,$01,$1E,$00,$01,$1C,$01
+    db $1A,$00,$00,$01,$23,$00,$01,$21,$01,$1F,$01,$21,$00,$01,$23,$01
+    db $26,$00,$00,$01,$21,$00,$01,$1E,$01,$1A,$01,$1E,$00,$01,$21,$01
+    db $23,$00,$00,$01,$1F,$00,$01,$23,$01,$21,$01,$1F,$00,$01,$1E,$01
+    db $1C,$01,$1E,$01,$1C,$00,$01,$19,$01,$15,$01,$19,$00,$01,$1C,$01
+    db $1A,$00,$00,$00
+    db $FF
+ScGameHarm:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$60,$1A,$21,$15,$01,$01,$15,$01,$01,$15,$01,$01,$01,$15,$01
+    db $01,$15,$01,$01,$17,$01,$01,$17,$01,$01,$17,$01,$01,$01,$17,$01
+    db $01,$17,$01,$01,$15,$01,$01,$15,$01,$01,$15,$01,$01,$01,$15,$01
+    db $01,$15,$01,$01,$19,$01,$01,$19,$01,$01,$19,$01,$01,$01,$19,$01
+    db $01,$19,$01,$01,$1F,$01,$01,$1F,$01,$01,$1F,$01,$01,$01,$1F,$01
+    db $01,$1F,$01,$01,$1E,$01,$01,$1E,$01,$01,$1E,$01,$01,$01,$1E,$01
+    db $01,$1E,$01,$01,$1C,$01,$01,$1C,$01,$01,$1C,$01,$01,$01,$1C,$01
+    db $01,$1C,$01,$01,$1E,$01,$01,$1E,$01,$01,$1E,$01,$01,$01,$1E,$01
+    db $01,$1E,$01,$01
+    db $FF
+ScGameBassVol:
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $10
+ScGameBassPitch:
+    db $C0,$98,$F0,$4C,$C0,$66,$F0,$48,$C0,$72,$F0,$48,$C0,$66,$F0,$48,$C0,$98,$F0,$48,$C0,$5A,$F0,$48
+    db $C0,$88,$F0,$48,$C0,$66,$F0,$48,$C0,$72,$F0,$90,$C0,$98,$F0,$48,$C0,$5A,$F0,$48,$C0,$88,$F0,$48
+    db $C0,$66,$F0,$90,$C0,$98,$F0,$42,$E2
+    db $D0
+}

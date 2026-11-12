@@ -1,0 +1,1521 @@
+cartridge "SEVEN DEVILS SKI RACE/G. FIELDS/1984"
+' SEVEN DEVILS SKI RACE - ColecoVision port of the Commodore 64 BASIC game
+' by G. Fields (10/84), from the ReRUN Game Pak. Port in Amy (2026).
+'
+' How the original works (listing SKI, lines 400-612): the slope is the C64
+' text screen itself. Every pass of the BASIC loop pokes the skier into the
+' screen at row 12, reads the stick, peeks the character below the skier
+' (anything but a space, the gate rope or the devil-with-fork is a fall),
+' runs a FOR delay of BR (the speed), then PRINTs one course row at the
+' bottom so the whole screen scrolls up one line.
+'
+' The port keeps that model exactly: the C64's 40 x 25 screen lives in VRAM
+' ($1C00-$1FE7, a 25-row ring: one scroll = one index step), a small
+' printer runs the listing's PRINT statements (TAB, SPC, cursor up, newline
+' with scroll, literal spaces overwrite, SPC moves only) from byte-code made
+' by art.py, and every pass rereads the cell below the skier from that
+' screen. The TV shows C64 rows 4-23 in rows 3-22, 28 of the 40 columns,
+' through a camera that follows the skier (the slope spans columns 0-38).
+'
+' Pace: the original is timed by its own BASIC. Each pass costs the
+' measured C64 cycles of the lines it ran (c64/pass2.mjs over four traces:
+' 202,200 for a plain pass + 1,040 per BR; stick, course piece and crash
+' extras), spent against 14,016 free C64 cycles a frame (units of 64
+' cycles, 219 a frame). So a pass at full brake takes ~22 frames, at top
+' speed ~14, as on a C64.
+'
+' Controls: either controller. Stick left/right steers, up = faster, down =
+' slower. The button starts, gets you up after a fall, restarts after a
+' stop, turns pages. No keypad.
+
+const TEtree = 128
+const TPtree = 129
+const TPbush = 130
+const TRock = 131
+const TKrock = 132
+const TBman = 133
+const TLman = 134
+const TPost = 135
+const TRope = 136
+const TBare1 = 137
+const TBare2 = 138
+const TBare3 = 139
+const TTrunk = 140
+const TDevil = 141
+const TFork = 142
+const TFlag = 143
+const TSki = 144
+const TSkil = 145
+const TSkir = 146
+const TFall1 = 147
+const TFall2 = 148
+const TFall3 = 149
+const TFall4 = 150
+const TFall5 = 151
+const TFlagl = 152
+const TFlagr = 153
+const TVbar = 154
+const THline = 155
+const TCul = 156
+const TCur = 157
+const TCdl = 158
+const TCdr = 159
+const TPostl = 160
+const TPostr = 161
+const TUline = 162
+const TGdevil = 163
+const TRedS = 164
+const TRedE = 165
+const TRedV = 166
+const TRedN = 167
+const TRedD = 168
+const TRedI = 169
+const TRedL = 170
+const TSnow = 171
+const TTi0 = 172
+const TTi1 = 173
+const TTi2 = 174
+const TTi3 = 175
+const TTi4 = 176
+const TTi5 = 177
+const TTi6 = 178
+const TTi7 = 179
+const TTi8 = 180
+const TTi9 = 181
+const TTi10 = 182
+const TTi11 = 183
+const TTi12 = 184
+const TTi13 = 185
+const TTi14 = 186
+const TTi15 = 187
+const TTi16 = 188
+const TTi17 = 189
+const TTi18 = 190
+const TTi19 = 191
+const TTi20 = 192
+const TTi21 = 193
+const TTi22 = 194
+const TTi23 = 195
+const TTi24 = 196
+const TTi25 = 197
+const TTi26 = 198
+const TTi27 = 199
+const NTiles8 = 576
+const SprBytes = 0
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndSwish = 6
+const SndStart = 7
+const SndCrash = 8
+const SndThud = 9
+const TuneFrames = 960
+const TxtCredits = 0
+const TxtHow1 = 1
+const TxtHow2 = 2
+const TxtHow3 = 3
+const TxtHow4 = 4
+const NSpr = 4
+const HideY = 192
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StWaitGo = 5
+const StFall = 6
+const StNext = 7
+const StOver = 9
+' cost units: 64 C64 cycles; 219 units = one frame (14,016 cycles)
+const FrameU = 219
+const CostPre = 516
+const CostStick = 1171
+const CostLR = 94
+const CostUp = 870
+const CostDown = 796
+const CostPick = 172
+const CostDelay = 425
+const CostPrint = 781
+const CostTail = 266
+const CostEndRun = 264
+' the skier's C64 row and the first C64 row shown (TV row 2)
+const SkRow = 12
+const ViewRow = 4
+
+' the C64 screen: ring top, printer cursor
+u8 RingTop = 0
+u8 CurR = 0
+u8 CurC = 0
+u8 Ph = 0
+u16 VA = 0
+u16 VB = 0
+u16 PA = 0
+' the listing's variables
+u8 SkC = 19
+u8 Dh = 0
+u8 Brv = 100
+u8 Spd = 0
+u8 Kst = 0
+u8 Rp = 32
+u8 Tg = 0
+u8 Eg = 0
+u8 Sc = 0
+u8 Dc = 0
+u8 Tf = 0
+u16 Lc = 0
+u16 Ck = 0
+u8 Ta = 2
+u8 Xx = 0
+u8 Pl = 0
+u8 Erc = 0
+u8 Q = 0
+u8 FirstPass = 0
+u8 Fin = 0
+' TI$ (jiffies since the race screen) and the camera
+u16 Jsec = 0
+u8 Jfr = 0
+u8 Vx = 6
+u8 HudSec = 255
+u8 HudSc = 255
+u8 HudTg = 255
+u8 HudSp = 255
+u8 Tmin = 0
+u8 Tsec = 0
+u8 RenderPend = 0
+' pace
+u16 Cu = 0
+u16 WU = 0
+u16 PieceCost = 0
+' scoring at the finish
+u16 Pos = 0
+u16 Neg = 0
+u16 Tval = 0
+u16 Fsp = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Li = 0
+u8 Ri = 0
+u8 Fi = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Cr = 0
+u8 Cc = 0
+u8 Ct = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+' ---------------------------------------------------------------------------
+' the pass (listing lines 400-612)
+race_loop:
+  ' 400: distance, and what the skier landed on last pass
+  if FirstPass = 0 then
+    inc Lc
+    if Rp = TRope then
+      inc Sc
+      WU = CostPick
+      Spend
+    end if
+    if Rp = TFork then
+      inc Dc
+      WU = CostPick
+      Spend
+    end if
+  end if
+  FirstPass = 0
+  ' 412: the skier into the screen at row 12; ER = the cell above
+  Cr = SkRow
+  Cc = SkC
+  Ct = Dh
+  PutCell
+  Erc = SkC
+  Camera
+  Hud
+  RenderA
+  RenderPend = 1
+  ' 420: K = 0 (race start, or a stop) waits for the button
+  if Kst = 0 then
+    Kst = 1
+    WaitGo
+  end if
+  ' 430: the stick (read after the lines before it have run)
+  WU = CostPre
+  Spend
+  Q = Jk
+  WU = CostStick
+  if Q = 4 then
+    ' 432: left
+    Dh = TSkil
+    if SkC > 0 then dec SkC
+    WU += CostLR
+    goto l556
+  end if
+  if Q = 8 then
+    ' 433: right
+    Dh = TSkir
+    if SkC < 39 then inc SkC
+    WU += CostLR
+    goto l556
+  end if
+  if Q = 1 then
+    ' 434: faster (BR - 9), the speed printed one line up; 435: S% = 110
+    ' (BR was already 0) is a fall
+    WU += CostUp
+    if Brv >= 9 then
+      Brv -= 9
+      Spd = 101 - Brv
+    else
+      Spd = 110 - Brv
+      Brv = 0
+    end if
+    PrintSpeed
+    if Spd = 110 then
+      Spend
+      WU = 0
+      Fall
+      Kst = 1
+      WaitGo
+    end if
+  end if
+  if Q = 2 then
+    ' 436: slower (BR + 9); the speed printed while it is above 0
+    WU += CostDown
+    Brv += 9
+    if Brv <= 100 then
+      Spd = 101 - Brv
+      PrintSpeed
+    end if
+  end if
+  ' 540: no key: straight
+  Dh = TSki
+l556:
+  ' 556: the cell below the skier
+  Cr = SkRow + 1
+  Cc = SkC
+  GetCell
+  Rp = Ct
+  ' the banner's black border is the C64's code 64 (the rope) and its green
+  ' devil is code 41: same codes for the rules
+  if Rp = THline then Rp = TRope
+  if Rp = TGdevil then Rp = TDevil
+  ' 557: anything but space, rope or the devil with the fork: a fall
+  K = 1
+  if Rp = 32 then K = 0
+  if Rp = TRope then K = 0
+  if Rp = TFork then K = 0
+  if K = 1 then
+    Spend
+    WU = 0
+    Fall
+    Kst = 1
+    WaitGo
+  end if
+  Spend
+  ' 600: the swish while the FOR delay of BR runs
+  play sound SndSwish
+  WU = Brv << 4
+  W16 = Brv >> 2
+  WU += W16
+  WU += CostDelay
+  Spend
+  stop sound SndSwish
+  ' 600-604: the next course row
+  PieceCost = 0
+  if Tg > 19 then
+    inc Eg
+    PieceCost = 0
+    PrintEdge
+  else
+    ' 601: PL% = INT(RND*40), TA% = 2..9; 602: ON PL% GOTO the pieces
+    Pl = RandBelow(40)
+    Ta = RandBelow(8)
+    Ta += 2
+    if Pl >= 1 then
+      if Pl <= 8 then
+        RunPiece
+      else
+        PrintEdge
+      end if
+    else
+      PrintEdge
+    end if
+  end if
+  WU = CostPrint
+  WU += PieceCost
+  if Tg > 19 then
+    if Eg > 0 then WU -= CostEndRun
+  end if
+  Spend
+  ' 605: too slow: a stop (K = 0) and BR back to 100
+  if Brv > 100 then
+    Kst = 0
+    Brv = 100
+  end if
+  ' 610: the old skier (now one row up) is erased
+  Cr = SkRow - 1
+  Cc = Erc
+  Ct = 32
+  PutCell
+  WU = CostTail
+  Spend
+  ' 608: twenty gates and sixteen more rows: the finish
+  if Tg > 19 then
+    if Eg > 15 then goto race_end
+  end if
+  goto race_loop
+
+race_end:
+  State = StNext
+  Render
+  Finish
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' 16-bit xorshift: stepped every title frame, so each race is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random number from 0 to M - 1 ((low byte * M) >> 8)
+function RandBelow(u8 M) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs & 255
+  W16 = W16 * M
+  W16 = W16 >> 8
+  Rv = W16
+  return Rv
+
+' spend WU units of C64 time: whole frames go by (stick read every frame)
+sub Spend:
+  Cu += WU
+  WU = 0
+sp_more:
+  if Cu >= FrameU then
+    Cu -= FrameU
+    RaceFrame
+    if RenderPend = 1 then
+      RenderPend = 0
+      RenderB
+    end if
+    goto sp_more
+  end if
+  return
+end sub
+
+' one frame in the race: wait, stick, TI$ and its HUD clock
+sub RaceFrame:
+  Frame1
+  ReadPad
+  inc Jfr
+  if Jfr >= 60 then
+    Jfr = 0
+    inc Jsec
+    inc Tsec
+    if Tsec >= 60 then
+      Tsec = 0
+      if Tmin < 9 then inc Tmin
+    end if
+    ShowTime
+  end if
+  return
+end sub
+
+' line 5000: wait for the button (the race start, after a fall or a stop),
+' then 5005: the start noise, 5010: the skier's cell cleared
+sub WaitGo:
+  T = State
+  State = StWaitGo
+  print at 2,1, " PRESS THE BUTTON TO START "
+  WasBtn = 16
+wg_loop:
+  RaceFrame
+  if RenderPend = 1 then
+    RenderPend = 0
+    RenderB
+  end if
+  if Press = 0 then goto wg_loop
+  play sound SndStart
+  HudSc = 255
+  HudTg = 255
+  HudSp = 255
+  print at 2,1, "                            "
+  State = StPlay
+  Hud
+  ShowTime
+  Cr = SkRow
+  Cc = SkC
+  Ct = 32
+  PutCell
+  RenderA
+  RenderPend = 1
+  WU = 400
+  Spend
+  return
+end sub
+
+' 50000-50090: the fall. The cells below and beside the skier are cleared,
+' a fall counted, the tumble shown (frames at the traced C64 times), the
+' skier set down where the cell two rows below is clear
+sub Fall:
+  State = StFall
+  inc Tf
+  Cr = SkRow + 1
+  Cc = SkC
+  Ct = 32
+  PutCell
+  Cr = SkRow
+  if SkC < 39 then
+    Cc = SkC + 1
+    PutCell
+  end if
+  if SkC > 0 then
+    Cc = SkC - 1
+    PutCell
+  end if
+  WU = 1205
+  Spend
+  play sound SndCrash
+  WU = 109
+  Spend
+  Ct = TFall1
+  SkierCell
+  WU = 2650
+  Spend
+  play sound SndThud
+  WU = 88
+  Spend
+  Ct = TFall2
+  SkierCell
+  ' 50025-50026: hitting a devil face costs 80 more, a bunny 40
+  if Rp = TDevil then Ck += 80
+  if Rp = TBman then Ck += 40
+  if Rp = TLman then Ck += 40
+  WU = 4621
+  Spend
+  Ct = TFall3
+  SkierCell
+  WU = 2672
+  Spend
+  Ct = TFall4
+  SkierCell
+  WU = 4883
+  Spend
+  Ct = TFall5
+  SkierCell
+  WU = 3650
+  Spend
+  Ct = TSki
+  SkierCell
+  ' 50070: slide right until the cell two rows below is clear
+fl_slide:
+  Cr = SkRow + 2
+  Cc = SkC
+  GetCell
+  if Ct <> 32 then
+    if SkC < 39 then
+      Cr = SkRow
+      Ct = 32
+      PutCell
+      inc SkC
+      Ct = TSki
+      SkierCell
+      ' one more pass of line 50070: 7.1k C64 cycles
+      WU = 111
+      Spend
+      goto fl_slide
+    end if
+  end if
+  WU = 460
+  Spend
+  Brv = 100
+  State = StPlay
+  return
+end sub
+
+' the skier's cell (row 12) set to Ct and shown
+sub SkierCell:
+  Cr = SkRow
+  Cc = SkC
+  PutCell
+  Camera
+  RenderRow
+  return
+end sub
+
+' 434/436: PRINT CHR$(145) S%: one line up, a space, the digits (then a
+' cursor-right), newline (no scroll: the cursor was on the last row)
+sub PrintSpeed:
+  if CurR > 0 then dec CurR
+  CurC = 0
+  Ct = 32
+  PutChar
+  NumU = Spd
+  if Spd >= 100 then
+    Ct = 49
+    PutChar
+    NumU -= 100
+  end if
+  if Spd >= 10 then
+    T = NumU / 10
+    Ct = T + 48
+    PutChar
+    T = T * 10
+    NumU -= T
+  end if
+  T = NumU
+  Ct = T + 48
+  PutChar
+  Newline
+  Hud
+  return
+end sub
+
+' 604: the edge trees (TAB(2) ";; ;" SPC(TA%+15) ";  ; ;")
+sub PrintEdge:
+  PA = @PEdge
+  RunCode
+  return
+end sub
+
+' 70-96: piece Pl (1-8) and its traced extra cost
+sub RunPiece:
+  T = Pl - 1
+  PA = PieceAt[T]
+  PieceCost = PieceExtra[T]
+  RunCode
+  return
+end sub
+
+' the print byte-code (art.py): 0 end, 1 up, 2 newline, 3 TAB(TA%),
+' 4 SPC(n), 5 TAB(XX%), 6 TAB(n), 7 SPC(TA%+15), 8 XX% = 4..23, 9 TG += 1;
+' anything else is a character written at the cursor
+sub RunCode:
+rc_next:
+  K = peek(PA)
+  PA += 1
+  if K = 0 then return
+  if K >= 32 then
+    Ct = K
+    PutChar
+    goto rc_next
+  end if
+  if K = 1 then
+    if CurR > 0 then dec CurR
+    goto rc_next
+  end if
+  if K = 2 then
+    Newline
+    goto rc_next
+  end if
+  if K = 3 then
+    if CurC < Ta then CurC = Ta
+    goto rc_next
+  end if
+  if K = 4 then
+    K = peek(PA)
+    PA += 1
+    CurC += K
+    goto rc_next
+  end if
+  if K = 5 then
+    if CurC < Xx then CurC = Xx
+    goto rc_next
+  end if
+  if K = 6 then
+    K = peek(PA)
+    PA += 1
+    if CurC < K then CurC = K
+    goto rc_next
+  end if
+  if K = 7 then
+    CurC += Ta
+    CurC += 15
+    goto rc_next
+  end if
+  if K = 8 then
+    Xx = RandBelow(20)
+    Xx += 4
+    goto rc_next
+  end if
+  if K = 9 then inc Tg
+  goto rc_next
+end sub
+
+' ---------------------------------------------------------------------------
+' the C64 screen in VRAM: 25 rows of 40 at vram.name + $400, a ring
+
+' VA = the VRAM offset of C64 row Cr
+sub RowAddr:
+  Ph = RingTop + Cr
+  if Ph >= 25 then Ph -= 25
+  VA = RowOff[Ph]
+  return
+end sub
+
+sub PutCell:
+  RowAddr
+  VA += Cc
+  vpoke vram.name + VA, Ct
+  return
+end sub
+
+sub GetCell:
+  RowAddr
+  VA += Cc
+  vpeek vram.name + VA into Ct
+  return
+end sub
+
+' a character at the printer's cursor (columns past 39 are dropped)
+sub PutChar:
+  if CurC < 40 then
+    Cr = CurR
+    Cc = CurC
+    PutCell
+  end if
+  inc CurC
+  return
+end sub
+
+' newline: on the last row the screen scrolls up one line
+sub Newline:
+  CurC = 0
+  if CurR < 24 then
+    inc CurR
+    return
+  end if
+  VA = RowOff[RingTop]
+  fill 32 count 40 to vram.name + VA
+  inc RingTop
+  if RingTop >= 25 then RingTop = 0
+  return
+end sub
+
+sub ClearC64:
+  RingTop = 0
+  for Li = 0 to 24
+    VA = RowOff[Li]
+    fill 32 count 40 to vram.name + VA
+  next
+  return
+end sub
+
+' the camera: 28 of the 40 columns, moved when the skier is within 8
+' columns of a side
+sub Camera:
+  T = Vx + 8
+  if SkC < T then
+    if SkC >= 8 then
+      Vx = SkC - 8
+    else
+      Vx = 0
+    end if
+  end if
+  T = Vx + 19
+  if SkC > T then Vx = SkC - 19
+  if Vx > 12 then Vx = 12
+  return
+end sub
+
+' C64 rows 4-23 to TV rows 3-22 (row 2 stays a margin under the HUD),
+' columns Vx..Vx+27 to TV columns 2-29
+sub Render:
+  RenderA
+  RenderB
+  return
+end sub
+
+' rows 0-9 (TV 3-12), then RenderB rows 10-19 (TV 13-22): a whole view
+' is too much for one frame next to the pass's work
+sub RenderA:
+  VB = 98
+  for Ri = 0 to 9
+    Ph = RingTop + Ri
+    Ph += ViewRow
+    if Ph >= 25 then Ph -= 25
+    VA = RowOff[Ph]
+    VA += Vx
+    copy vram.name + VA count 28 to vram.name + VB
+    VB += 32
+  next
+  return
+end sub
+
+sub RenderB:
+  VB = 418
+  for Ri = 10 to 19
+    Ph = RingTop + Ri
+    Ph += ViewRow
+    if Ph >= 25 then Ph -= 25
+    VA = RowOff[Ph]
+    VA += Vx
+    copy vram.name + VA count 28 to vram.name + VB
+    VB += 32
+  next
+  return
+end sub
+
+' only the skier's rows (12-14) during a fall
+sub RenderRow:
+  VB = SkRow - ViewRow
+  VB += 3
+  VB = VB << 5
+  VB += 2
+  for Ri = 0 to 2
+    Ph = RingTop + SkRow
+    Ph += Ri
+    if Ph >= 25 then Ph -= 25
+    VA = RowOff[Ph]
+    VA += Vx
+    copy vram.name + VA count 28 to vram.name + VB
+    VB += 32
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens
+
+' the HUD (row 1): gates cleared / gates so far, speed (101 - BR), TI$
+sub Hud:
+  if HudSc = 255 then print at 2,1, "GATES "
+  if Sc <> HudSc then
+    HudSc = Sc
+    NumU = Sc
+    print at 8,1, digits$(NumU, 2)
+  end if
+  if Tg <> HudTg then
+    HudTg = Tg
+    put char 47 at 10,1
+    NumU = Tg
+    print at 11,1, digits$(NumU, 2)
+  end if
+  T = 0
+  if Brv <= 100 then T = 101 - Brv
+  if T <> HudSp then
+    if HudSp = 255 then print at 13,1, "  SPEED "
+    HudSp = T
+    NumU = T
+    print at 21,1, digits$(NumU, 3)
+  end if
+  return
+end sub
+
+sub ShowTime:
+  if State = StWaitGo then return
+  T = Tmin + 48
+  put char T at 25,1
+  put char 58 at 26,1
+  T = Tsec / 10
+  C = T + 48
+  put char C at 27,1
+  T = T * 10
+  T = Tsec - T
+  C = T + 48
+  put char C at 28,1
+  return
+end sub
+
+sub NewGame:
+  State = StNext
+  NewScreen
+  backdrop gray
+  ClearC64
+  CurR = 0
+  CurC = 0
+  ' lines 3-50: the race screen starts with the banner (GOSUB 4000), the
+  ' cursor left on row 20
+  PA = @PBanner
+  RunCode
+  SkC = 19
+  Dh = TSki
+  Brv = 100
+  Spd = 0
+  Kst = 0
+  Rp = 32
+  Tg = 0
+  Eg = 0
+  Sc = 0
+  Dc = 0
+  Tf = 0
+  Lc = 0
+  Ck = 0
+  Xx = 0
+  Ta = 2
+  Jsec = 0
+  Jfr = 0
+  Tmin = 0
+  Tsec = 0
+  RenderPend = 0
+  HudSc = 255
+  HudTg = 255
+  HudSp = 255
+  Cu = 0
+  Vx = 6
+  FirstPass = 1
+  Camera
+  Render
+  Hud
+  ShowScreen
+  State = StPlay
+  return
+end sub
+
+' lines 1000-1026: the results
+sub Finish:
+  Rearm
+  wait
+  nmi off
+  play sound SndClick
+  ' C64 TI$ as HHMMSS read as a number: VAL(TI$) = M * 100 + S
+  W16 = Jsec / 60
+  Tval = W16 * 100
+  NumU = W16 * 60
+  NumU = Jsec - NumU
+  Tval += NumU
+  if Tval = 0 then Tval = 1
+  ' FS% = (DC*1000 + SC*100) - (TF*50 + INT(LC/VAL(TI$)*100)) - CK%
+  Fsp = Lc * 100
+  Fsp = Fsp / Tval
+  Pos = Dc * 1000
+  W16 = Sc * 100
+  Pos += W16
+  Neg = Tf * 50
+  Neg += Fsp
+  Neg += Ck
+  NewScreen
+  put char TPost at 9,2
+  fill TRope count 10 at 10,2
+  put char TPost at 20,2
+  print at 12,3, "FINISH"
+  print at 2,4, " "
+  print at 2,5, "TOTAL GATES"
+  NumU = Tg
+  print at 20,5, digits$(NumU, 3)
+  print at 2,7, "GATES CLEARED"
+  NumU = Sc
+  print at 20,7, digits$(NumU, 3)
+  print at 2,9, "DEVILS CAUGHT"
+  NumU = Dc
+  print at 20,9, digits$(NumU, 3)
+  print at 2,11, "DISTANCE"
+  NumU = Lc
+  print at 20,11, digits$(NumU, 3)
+  print at 2,13, "FALLS"
+  NumU = Tf
+  print at 20,13, digits$(NumU, 3)
+  print at 2,15, "RECORD TIME"
+  W16 = Jsec / 60
+  NumU = W16
+  print at 20,15, digits$(NumU, 2)
+  W16 = W16 * 60
+  NumU = Jsec - W16
+  print at 22,15, digits$(NumU, 2)
+  print at 2,17, "FINAL SCORE"
+  if Pos >= Neg then
+    NumU = Pos - Neg
+    print at 19,17, " "
+  else
+    NumU = Neg - Pos
+    print at 19,17, "-"
+  end if
+  print at 20,17, digits$(NumU, 5)
+  print at 7,21, "PRESS THE BUTTON"
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $1E
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop gray
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the C64's own title screen (listing 2020-2122: the "SKI" logo
+' and the reverse banner, from a real-VICE dump; see art.py), the menu where
+' the C64 lists its keys, cursor back on START, the tune once
+sub TitlePage:
+  State = StNext
+  NewScreen
+  backdrop light blue
+  fill mode 2 text color with $15
+  decompress zx0 TileColZ to vram.color + 1024
+  VB = 32
+  VB += 2
+  W16 = 0
+  for Li = 0 to 13
+    for Ri = 0 to 27
+      T = TitleMap[W16]
+      vpoke vram.name + VB, T
+      W16 += 1
+      VB += 1
+    next
+    VB += 4
+  next
+  print at 11,16, "START"
+  print at 11,18, "HOW TO PLAY"
+  print at 11,20, "CREDITS"
+  print at 2,22, "BY G.FIELDS"
+  print at 25,22, "10/84"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,16
+  put char 32 at 9,18
+  put char 32 at 9,20
+  C = Menu << 1
+  C += 16
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StNext
+  NewScreen
+  print at 6,1, "SEVEN DEVILS SKI RACE"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: four pages, each with a picture made of the game's tiles
+sub HowTo:
+  Page = 1
+  TimedOut = 0
+ht_page:
+  State = StNext
+  NewScreen
+  print at 8,1, "HOW TO PLAY"
+  C = Page + 48
+  put char C at 21,1
+  print at 22,1, " OF 4"
+  if Page = 1 then
+    ' a slope: edge trees, the skier, a gate below
+    put char TEtree at 6,3
+    put char TEtree at 7,3
+    put char TEtree at 23,3
+    put char TEtree at 25,3
+    put char TSkil at 13,4
+    put char TPost at 11,6
+    put char TRope at 12,6
+    put char TRope at 13,6
+    put char TRope at 14,6
+    put char TPost at 15,6
+    put char TPtree at 19,5
+    put char TPbush at 19,6
+    TxT = TxtHow1
+  end if
+  if Page = 2 then
+    put char TPost at 9,4
+    put char TRope at 10,4
+    put char TRope at 11,4
+    put char TRope at 12,4
+    put char TPost at 13,4
+    put char TSki at 11,3
+    put char TFork at 20,4
+    put char TSki at 20,3
+    TxT = TxtHow2
+  end if
+  if Page = 3 then
+    put char TEtree at 4,4
+    put char TPtree at 7,3
+    put char TPbush at 7,4
+    put char TBare1 at 10,3
+    put char TBare2 at 11,3
+    put char TBare3 at 12,3
+    put char TTrunk at 11,4
+    put char TRock at 15,4
+    put char TBman at 18,4
+    put char TDevil at 21,4
+    put char TPost at 24,4
+    put char TFall2 at 27,4
+    TxT = TxtHow3
+  end if
+  if Page = 4 then
+    print at 4,3, "SPEED 109"
+    put char TSki at 15,3
+    put char TFall3 at 17,3
+    print at 20,3, "STOP"
+    put char TSki at 25,3
+    TxT = TxtHow4
+  end if
+  TxX0 = 2
+  TxY = 8
+  TxGap = 2
+  TextShow
+  if Page < 4 then
+    print at 4,21, "BUTTON: THE NEXT PAGE"
+  else
+    print at 5,21, "BUTTON: BACK TO TITLE"
+  end if
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    inc Page
+    if Page <= 4 then goto ht_page
+  end if
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+' course pieces (art.py): ops 0 end, 1 up, 2 newline, 3 TAB(TA%), 4 SPC(n),
+' 5 TAB(XX%), 6 TAB(n), 7 SPC(TA%+15), 8 XX% = random 4..23, 9 TG += 1
+data PBanner bytes = 2, 2, 2, 2, 2, 2, 6, 15, 152, 156, 155, 155, 155, 155, 155, 155, 155, 155, 155, 155, 155, 155, 157, 153, 2, 6, 15, 160, 154, 164, 165, 166, 165, 167, 32, 168, 165, 166, 169, 170, 164, 154, 161, 2, 6, 15, 160, 154, 32, 32, 83, 75, 73, 32, 82, 65, 67, 69, 32, 32, 154, 161, 2, 129, 129, 129, 129, 32, 129, 129, 137, 138, 139, 32, 129, 129, 32, 129, 160, 158, 155, 155, 155, 155, 155, 155, 155, 155, 155, 155, 155, 155, 159, 161, 32, 32, 32, 32, 129, 32, 129, 2, 130, 130, 130, 130, 32, 130, 130, 162, 140, 162, 162, 130, 130, 32, 130, 160, 141, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 163, 141, 161, 32, 131, 133, 128, 130, 128, 130, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0
+data P70 bytes = 1, 3, 137, 138, 139, 4, 10, 135, 136, 136, 136, 135, 4, 3, 137, 138, 139, 4, 3, 129, 129, 9, 2, 3, 32, 140, 4, 19, 32, 140, 4, 3, 133, 129, 129, 2, 0
+data P74 bytes = 1, 3, 129, 129, 129, 129, 4, 6, 135, 136, 136, 132, 136, 135, 4, 3, 129, 129, 9, 2, 3, 130, 130, 130, 130, 4, 15, 130, 130, 2, 0
+data P78 bytes = 1, 3, 129, 129, 4, 6, 129, 4, 8, 129, 129, 32, 129, 2, 3, 130, 130, 4, 6, 130, 4, 8, 130, 130, 131, 130, 2, 0
+data P80 bytes = 8, 5, 141, 2, 0
+data P84 bytes = 5, 131, 131, 129, 32, 32, 134, 134, 135, 136, 133, 136, 136, 135, 9, 2, 0
+data P95 bytes = 1, 3, 137, 138, 139, 4, 9, 137, 138, 139, 2, 3, 32, 140, 131, 131, 129, 135, 143, 143, 143, 143, 143, 135, 32, 140, 142, 129, 2, 0
+data P88 bytes = 6, 7, 135, 136, 136, 135, 9, 2, 0
+data P90 bytes = 3, 129, 129, 135, 136, 136, 136, 136, 136, 136, 135, 134, 9, 2, 0
+data PEdge bytes = 6, 2, 128, 128, 32, 128, 7, 128, 32, 32, 128, 32, 128, 2, 0
+data PieceAt words = @P70, @P74, @P78, @P80, @P84, @P95, @P88, @P90
+data PieceExtra words = 703, 713, 625, 19, 59, 411, 0, 67
+data TitleMap bytes = 172, 173, 173, 173, 173, 173, 173, 173, 173, 174, 32, 32, 32, 174, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 172, 173, 174, 175, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 32, 176, 32, 32, 32, 32, 32, 32, 32, 175, 32, 175, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 176, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 177, 173, 173, 173, 173, 173, 173, 173, 173, 174, 32, 32, 32, 175, 32, 32, 176, 32, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 177, 32, 176, 178, 32, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 172, 176, 32, 32, 178, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 175, 32, 32, 32, 32, 178, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 175, 32, 32, 32, 175, 32, 32, 32, 32, 32, 178, 32, 32, 32, 32, 32, 32, 175, 32, 177, 173, 173, 173, 173, 173, 173, 173, 173, 179, 32, 32, 32, 179, 32, 32, 32, 32, 32, 32, 178, 32, 32, 32, 32, 177, 173, 179, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 180, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 182, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 183, 184, 184, 184, 184, 185, 186, 187, 184, 184, 184, 183, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 188, 187, 189, 187, 190, 184, 191, 187, 189, 192, 193, 188, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 183, 184, 188, 194, 192, 184, 195, 196, 197, 187, 184, 183, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 198, 181, 181, 181, 181, 181, 181, 181, 181, 181, 181, 199, 32, 32, 32, 32, 32
+data RowOff words = 1024, 1064, 1104, 1144, 1184, 1224, 1264, 1304, 1344, 1384, 1424, 1464, 1504, 1544, 1584, 1624, 1664, 1704, 1744, 1784, 1824, 1864, 1904, 1944, 1984
+
+data TilePatZ bytes
+  $A4,$00,$F6,$08,$1C,$0C,$3E,$7C,$3E,$F0,$00,$81,$7E,$BF,$7E,$BF,$3E,$FF,$99,$18,$00,$00,$00,$38
+  $7C,$7F,$EF,$FF,$96,$28,$28,$10,$38,$6C,$38,$00,$02,$3B,$81,$FF,$FC,$A8,$FE,$00,$AE,$FF,$F6,$91
+  $6E,$01,$07,$61,$30,$DC,$07,$38,$07,$02,$24,$19,$8A,$59,$31,$F1,$31,$10,$0C,$30,$41,$AA,$04,$38
+  $E0,$3B,$AC,$68,$FF,$4A,$6C,$AF,$99,$5A,$66,$18,$0A,$3C,$24,$66,$05,$59,$8A,$72,$76,$FA,$72,$DA
+  $00,$AA,$FF,$00,$AA,$24,$BD,$88,$66,$24,$90,$E0,$02,$64,$EB,$36,$3C,$18,$30,$E0,$40,$26,$D7,$6C
+  $F1,$E9,$0C,$07,$84,$44,$D0,$17,$14,$0C,$04,$A0,$50,$28,$3C,$76,$93,$09,$04,$A1,$81,$A1,$B9,$F5
+  $11,$02,$04,$04,$88,$50,$38,$58,$88,$04,$02,$D8,$60,$07,$03,$0E,$1E,$16,$35,$6E,$68,$C0,$C0,$70
+  $78,$68,$AC,$76,$16,$03,$18,$CF,$FE,$42,$3E,$FE,$78,$07,$0F,$1C,$E0,$9F,$E0,$F0,$38,$C6,$99,$1C
+  $0F,$07,$E6,$F1,$38,$F0,$E0,$E9,$FF,$03,$69,$C0,$7F,$9E,$FD,$8A,$40,$87,$3C,$66,$60,$3C,$06,$87
+  $F5,$00,$7E,$60,$60,$78,$9F,$FB,$7E,$00,$66,$FE,$DE,$BF,$F1,$0E,$76,$7E,$7E,$6E,$ED,$6E,$00,$78
+  $6C,$DB,$63,$6C,$78,$00,$FA,$FE,$B1,$60,$29,$60,$E7,$72,$C7,$00,$77,$E0,$7F,$F0,$FE,$36,$D1,$02
+  $03,$07,$0E,$1C,$38,$70,$E0,$C0,$4E,$C5,$AA,$C0,$70,$0D,$1C,$0E,$07,$03,$CF,$C0,$97,$82,$FF,$F8
+  $F0,$E3,$E7,$EF,$F0,$E6,$F8,$FE,$20,$1F,$0F,$C7,$E7,$69,$FF,$6F,$81,$E2,$2E,$99,$FF,$EE,$81,$F8
+  $E1,$78,$9F,$9F,$87,$FB,$68,$81,$FF,$C3,$99,$9F,$BF,$F9,$99,$D1,$FE,$BA,$C3,$C0,$2A,$89,$81,$91
+  $67,$87,$93,$99,$AF,$F5,$93,$C1,$8F,$92,$C1,$FF,$A9,$FF,$A0,$AF,$D8,$8F,$C9,$BB,$C1,$83,$C5,$83
+  $FE,$F0,$CB,$60,$3F,$70,$EE,$FF,$70,$1D,$67,$E3,$F0,$F8,$99,$F1,$C7,$0F,$1F,$D5,$55,$60
+end data
+data TileColZ bytes
+  $96,$CE,$96,$3E,$96,$CE,$96,$AE,$96,$1E,$96,$4E,$96,$5E,$96,$1E,$96,$FE,$95,$1E,$69,$6E,$5A,$FE
+  $5A,$6E,$05,$5A,$1E,$01,$5A,$CE,$5A,$6E,$45,$69,$0E,$69,$F5,$55,$A0,$15,$55,$75,$55,$58
+end data
+
+data TxD_0 bytes
+  $03,$54,$48,$45,$03,$41,$4D,$59,$02,$42,$59,$05,$53,$54,$49,$43,$4B,$03,$59,$4F,$55,$01,$41,$03
+  $41,$4E,$44,$07,$42,$55,$4E,$4E,$49,$45,$53,$05,$44,$45,$56,$49,$4C,$04,$44,$4F,$57,$4E,$05,$46
+  $41,$43,$45,$53,$04,$47,$41,$4D,$45,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$07,$50,$4F,$49,$4E,$54
+  $53,$2E,$05,$53,$45,$56,$45,$4E,$05,$53,$50,$45,$45,$44
+end data
+data TxD_1 bytes
+  $08,$28,$31,$30,$2F,$38,$34,$29,$2C,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$06,$28
+  $44,$45,$56,$49,$4C,$0A,$28,$4F,$52,$49,$47,$49,$4E,$41,$4C,$2C,$03,$31,$30,$30,$04,$31,$30,$30
+  $30,$04,$31,$30,$39,$3A,$02,$32,$30,$05,$32,$30,$32,$36,$2E,$02,$34,$30,$02,$35,$30,$02,$38,$30
+  $05,$41,$46,$54,$45,$52,$06,$41,$47,$41,$49,$4E,$2E,$07,$41,$56,$45,$52,$41,$47,$45,$07,$42,$45
+  $54,$57,$45,$45,$4E
+end data
+data TxD_2 bytes
+  $09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$06,$42,$55,$54,$54,$4F,$4E,$07,$42,$55,$54,$54,$4F,$4E
+  $2E,$04,$43,$2D,$36,$34,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49
+  $4F,$4E,$04,$43,$4F,$53,$54,$07,$44,$45,$56,$49,$4C,$53,$2E,$05,$44,$4F,$57,$4E,$3A,$05,$46,$41
+  $4C,$4C,$3A,$05,$46,$41,$4C,$4C,$2E,$03,$46,$41,$52,$07,$46,$41,$53,$54,$45,$52,$2E,$06,$46,$49
+  $45,$4C,$44,$53,$07,$46,$49,$4E,$49,$53,$48,$2E,$03,$46,$4F,$52
+end data
+data TxD_3 bytes
+  $05,$46,$4F,$52,$4B,$3A,$04,$46,$52,$4F,$4D,$02,$47,$2E,$06,$47,$41,$54,$45,$27,$53,$06,$47,$41
+  $54,$45,$53,$3A,$04,$47,$45,$54,$53,$02,$49,$4E,$0B,$4C,$45,$46,$54,$2F,$52,$49,$47,$48,$54,$3A
+  $04,$4D,$41,$4B,$45,$05,$4D,$4F,$52,$45,$2C,$06,$4D,$4F,$52,$45,$2E,$29,$06,$4D,$55,$53,$49,$43
+  $3A,$02,$4F,$46,$03,$4F,$46,$46,$04,$4F,$46,$46,$2E,$04,$4F,$56,$45,$52
+end data
+data TxD_4 bytes
+  $04,$50,$41,$4B,$2E,$04,$50,$41,$53,$54,$05,$50,$45,$41,$4B,$53,$06,$50,$4F,$49,$4E,$54,$53,$04
+  $50,$4F,$52,$54,$05,$50,$4F,$52,$54,$29,$06,$50,$4F,$53,$54,$53,$2C,$06,$50,$4F,$53,$54,$53,$3A
+  $05,$50,$52,$45,$53,$53,$04,$50,$55,$53,$48,$04,$52,$41,$43,$45,$05,$52,$45,$52,$55,$4E,$06,$52
+  $4F,$43,$4B,$53,$2C,$05,$52,$4F,$50,$45,$2C,$06,$53,$43,$4F,$52,$45,$2E,$03,$53,$4B,$49
+end data
+data TxD_5 bytes
+  $05,$53,$4C,$4F,$50,$45,$04,$53,$4C,$4F,$57,$07,$53,$4C,$4F,$57,$45,$52,$2E,$06,$53,$54,$45,$45
+  $52,$2E,$05,$53,$54,$4F,$50,$3A,$05,$54,$41,$4B,$45,$53,$04,$54,$48,$49,$53,$03,$54,$4F,$4F,$06
+  $54,$52,$45,$45,$53,$2C,$02,$55,$50,$03,$55,$50,$3A,$05,$57,$41,$4C,$54,$5A,$04,$57,$49,$54,$48
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3, @TxD_4, @TxD_5
+end data
+data TxM_Credits bytes
+  $0C,$23,$0B,$02,$FE,$32,$2D,$10,$31,$00,$FE,$4B,$0B,$40,$FE,$25,$44,$36,$01,$FE,$02,$24,$11,$FE
+  $01,$02,$01,$20,$18,$FE,$3B,$0E,$42,$5B,$FE,$13,$2F,$56,$45,$FF
+end data
+data TxM_How1 bytes
+  $4A,$09,$00,$50,$3C,$00,$FE,$0E,$27,$FE,$03,$37,$53,$FE,$03,$5A,$2C,$FE,$03,$28,$52,$FF
+end data
+data TxM_How2 bytes
+  $4F,$3F,$05,$33,$4D,$FE,$1F,$00,$47,$FE,$14,$0D,$FE,$00,$08,$5C,$00,$30,$FE,$15,$0D,$FF
+end data
+data TxM_How3 bytes
+  $58,$4C,$46,$07,$FE,$06,$08,$0A,$38,$04,$FE,$29,$1A,$43,$3E,$12,$FE,$0A,$26,$1B,$39,$07,$FE,$19
+  $3A,$00,$21,$35,$FE,$04,$59,$1D,$FF
+end data
+data TxM_How4 bytes
+  $49,$41,$0F,$16,$05,$2A,$FE,$51,$09,$57,$2B,$06,$04,$FE,$54,$48,$00,$22,$FE,$1C,$17,$34,$00,$2E
+  $FE,$00,$0C,$55,$00,$FE,$1E,$0F,$3D,$00,$4E,$FF
+end data
+data TxMsg words
+  @TxM_Credits, @TxM_How1, @TxM_How2, @TxM_How3, @TxM_How4
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScSwish:
+    db $00,$00,$B4,$04,$00,$00,$A4,$04,$00,$00,$A4,$3C,$10
+ScStart:
+    db $00,$00,$54,$03,$00,$00,$64,$06,$00,$00,$84,$08,$10
+ScCrash:
+    db $00,$00,$06,$02,$00,$00,$15,$03,$00,$00,$26,$04,$00,$00,$46,$06,$00,$00,$57,$08,$00,$00,$77,$0A
+    db $10
+ScThud:
+    db $40,$F9,$23,$03,$40,$FF,$43,$06,$40,$FF,$53,$08,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScSwish,$7053
+    dw ScStart,$7053
+    dw ScCrash,$7053
+    dw ScThud,$705D
+; Seven Peaks Waltz (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$40,$1A,$21,$1F,$00,$23,$00,$26,$00,$2B,$00,$00,$00,$26,$00
+    db $28,$00,$24,$00,$28,$00,$26,$00,$00,$00,$01,$01,$23,$00,$26,$00
+    db $2B,$00,$2A,$00,$28,$00,$26,$00,$24,$00,$21,$00,$1E,$00,$1F,$00
+    db $00,$00,$01,$01,$26,$00,$23,$26,$2B,$00,$28,$00,$24,$28,$2B,$00
+    db $26,$00,$23,$00,$1F,$00,$21,$00,$00,$00,$01,$01,$23,$00,$26,$00
+    db $2B,$00,$2D,$00,$2A,$00,$26,$00,$28,$00,$24,$00,$21,$00,$1F,$00
+    db $00,$00,$00,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$60,$1A,$21,$01,$01,$17,$00,$1A,$00,$01,$01,$17,$00,$1A,$00
+    db $01,$01,$1C,$00,$1F,$00,$01,$01,$1E,$00,$21,$00,$01,$01,$17,$00
+    db $1A,$00,$01,$01,$1E,$00,$21,$00,$01,$01,$1E,$00,$21,$00,$01,$01
+    db $17,$00,$1A,$00,$01,$01,$17,$00,$1A,$00,$01,$01,$1C,$00,$1F,$00
+    db $01,$01,$17,$00,$1A,$00,$01,$01,$1E,$00,$21,$00,$01,$01,$17,$00
+    db $1A,$00,$01,$01,$1E,$00,$21,$00,$01,$01,$1C,$00,$1F,$00,$01,$01
+    db $17,$00,$1A,$00
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$18,$14,$66,$22,$02,$33,$1C,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$10,$14,$66,$02,$45,$05,$13,$11,$02,$33,$03,$14,$66,$22,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$0D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$18,$14,$66,$22,$02,$33,$1C,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$10,$14,$66,$02,$45,$05,$13,$11,$02,$33,$03,$14,$66,$22
+    db $02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$18,$14,$66
+    db $22,$02,$33,$1C,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$10,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$03,$14,$66,$22,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$18,$14,$66,$22,$02,$33,$1C,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$10,$14,$66,$02,$45,$05,$13,$11,$02,$33,$03,$14,$66,$22,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$0D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$18,$14,$66,$22,$02,$33,$1C,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$10,$14,$66,$02,$45,$05,$13,$11,$02,$33,$03,$14,$66,$22
+    db $02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$18,$14,$66
+    db $22,$02,$33,$1C,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$10,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$03,$14,$66,$22,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$18,$14,$66,$22,$02,$33,$1C,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$10,$14,$66,$02,$45,$05,$13,$11,$02,$33,$03,$14,$66,$22,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$0D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$18,$14,$66,$22,$02,$33,$1C,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$10,$14,$66,$02,$45,$05,$13,$11,$02,$33,$03,$14,$66,$22
+    db $02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$1E,$C0,$98,$F0,$22,$C0,$72,$F0,$1A,$C0,$98,$F0,$22,$C0,$AB,$F0,$1A,$C0,$72,$F0,$22
+    db $C0,$98,$F0,$1A,$C0,$66,$F0,$22,$C0,$72,$F0,$1A,$C0,$98,$F0,$3C,$C0,$66,$F0,$22,$C0,$98,$F0,$1A
+    db $C0,$66,$F0,$22,$C0,$72,$F0,$1A,$C0,$98,$F0,$22,$C0,$72,$F0,$1A,$C0,$98,$F0,$22,$C0,$AB,$F0,$1A
+    db $C0,$72,$F0,$3C,$C0,$98,$F0,$3C,$C0,$66,$F0,$22,$C0,$72,$F0,$1A,$C0,$98,$F0,$3C,$C0,$66,$F0,$22
+    db $C0,$AB,$F0,$1A,$C0,$72,$F0,$3C,$C0,$98,$F0,$1C,$E2
+    db $D0
+}

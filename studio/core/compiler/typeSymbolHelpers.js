@@ -1,3 +1,8 @@
+const INLINE_ASM_REGISTER_OR_CONDITION_NAMES = new Set([
+  "a", "b", "c", "d", "e", "h", "l", "af", "bc", "de", "hl",
+  "ix", "iy", "sp", "i", "r", "m", "nc", "nz", "p", "pe", "po", "z"
+]);
+
 export function createTypeSymbolHelpers(ctx) {
   const {
     lowerName,
@@ -187,9 +192,32 @@ export function createTypeSymbolHelpers(ctx) {
     const comment = commentIndex >= 0 ? line.slice(commentIndex) : "";
     const instruction = code.match(/^(\s*(?:[A-Za-z_][A-Za-z0-9_]*:\s*)?)([A-Za-z_.][A-Za-z0-9_.]*)([\s\S]*)$/);
     if (!instruction) return line;
+    const explicitSymbols = new Map();
+    let explicitIndex = 0;
+    const operands = instruction[3].replace(/\bamy\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/gi, (_match, name) => {
+      const resolved = resolveNamedAsmSymbol(name);
+      if (!resolved) {
+        throw new Error(`Unknown Amy symbol '${name}' in inline ASM expression amy(${name}).`);
+      }
+      const placeholder = `__AMY_EXPLICIT_${explicitIndex++}__`;
+      explicitSymbols.set(placeholder, resolved);
+      return placeholder;
+    });
+    const rewrittenOperands = operands.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name, offset, expression) => {
+      if (explicitSymbols.has(name)) return name;
+      if (offset > 0 && expression[offset - 1] === "$") return name;
+      const resolved = resolveNamedAsmSymbol(name);
+      if (resolved && INLINE_ASM_REGISTER_OR_CONDITION_NAMES.has(name.toLowerCase())) {
+        throw new Error(
+          `Ambiguous inline ASM name '${name}': it is both a Z80 register/condition and an Amy symbol. ` +
+          `Use amy(${name}) for the Amy symbol, or lowercase '${name.toLowerCase()}' for the Z80 name.`
+        );
+      }
+      return resolved || name;
+    }).replace(/__AMY_EXPLICIT_\d+__/g, (placeholder) => explicitSymbols.get(placeholder));
     // The first token is an opcode/directive, not an Amy expression. Rewriting
     // it would turn a mnemonic such as OUT into a same-named Amy label.
-    return `${instruction[1]}${instruction[2]}${rewriteUserSymbolsInExpression(instruction[3])}${comment}`;
+    return `${instruction[1]}${instruction[2]}${rewrittenOperands}${comment}`;
   }
 
   function symbolOrValue(token) {

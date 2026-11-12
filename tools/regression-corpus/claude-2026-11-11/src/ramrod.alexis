@@ -1,0 +1,1502 @@
+cartridge "RAM ROD/TONY BRANTNER/1990"
+' RAM ROD - a ColecoVision port of the Commodore 64 game RAM ROD (ReRUN,
+' May/June/July 1990; disk file DODGE 'EM; the ReRUN index credits Tony
+' Brantner). A Dodge 'Em-style race: drive round five rounded rings, eat the
+' 144 dashes (10 points each) and change lanes at the gaps while the white
+' car drives the other way and changes lanes to ram you.
+'
+' The rules are the original's 6502 code, pass for pass (model.mjs, checked
+' against the C64 in jsc64: 82,904 passes, 0 mismatches), in the original's
+' units: sprite coordinates (Y 0-255, X 0-511) and main-loop passes. The
+' original's pass is timed by a delay loop (3 x 1287 cycles + the logic,
+' 4,820 cycles median): about 3 passes per NTSC frame, so this port runs 3
+' passes a frame. The track is drawn at 3/4 scale (38 columns -> 28).
+'
+' Controls: stick changes lanes at the gaps, the button doubles your speed
+' (and starts each turn). Either controller (turns alternate).
+
+const TTrk0 = 128
+const TTrk1 = 129
+const TTrk2 = 130
+const TTrk3 = 131
+const TTrk4 = 132
+const TTrk5 = 133
+const TTrk6 = 134
+const TTrk7 = 135
+const TTrk8 = 136
+const TTrk9 = 137
+const TTrk10 = 138
+const TTrk11 = 139
+const TTrk12 = 140
+const TTrk13 = 141
+const TTrk14 = 142
+const TTrk15 = 143
+const TTrk16 = 144
+const TTrk17 = 145
+const TTrk18 = 146
+const TTrk19 = 147
+const TTrk20 = 148
+const TTrk21 = 149
+const TTrk22 = 150
+const TTrk23 = 151
+const TTrk24 = 152
+const TTrk25 = 153
+const TTrk26 = 154
+const TTrk27 = 155
+const TTrk28 = 156
+const TTrk29 = 157
+const TTrk30 = 158
+const TTrk31 = 159
+const TTrk32 = 160
+const TTrk33 = 161
+const TTrk34 = 162
+const TTrk35 = 163
+const TTrk36 = 164
+const TTrk37 = 165
+const TTrk38 = 166
+const TTrk39 = 167
+const TTrk40 = 168
+const TTrk41 = 169
+const TTrk42 = 170
+const TTrk43 = 171
+const TTrk44 = 172
+const TTrk45 = 173
+const TTrk46 = 174
+const TTrk47 = 175
+const TTrk48 = 176
+const TTrk49 = 177
+const TTrk50 = 178
+const TTrk51 = 179
+const TTrk52 = 180
+const TTrk53 = 181
+const TTrk54 = 182
+const TTrk55 = 183
+const TTrk56 = 184
+const TTrk57 = 185
+const TTrk58 = 186
+const TTrk59 = 187
+const TTrk60 = 188
+const TTrk61 = 189
+const TTrk62 = 190
+const TTrk63 = 191
+const TTrk64 = 192
+const TTrk65 = 193
+const TTrk66 = 194
+const TTrk67 = 195
+const TTrk68 = 196
+const TTrk69 = 197
+const TTrk70 = 198
+const THud71 = 199
+const THud72 = 200
+const THud73 = 201
+const THud74 = 202
+const THud75 = 203
+const THud76 = 204
+const THud77 = 205
+const THud78 = 206
+const THud79 = 207
+const THud80 = 208
+const THud81 = 209
+const THud82 = 210
+const THud83 = 211
+const THud84 = 212
+const THud85 = 213
+const THud86 = 214
+const THud87 = 215
+const THud88 = 216
+const THud89 = 217
+const THud90 = 218
+const THud91 = 219
+const THud92 = 220
+const THud93 = 221
+const THud94 = 222
+const THud95 = 223
+const THud96 = 224
+const THud97 = 225
+const THud98 = 226
+const THud99 = 227
+const TBar = 228
+const SCarH = 0
+const SCarV = 4
+const SWinR = 8
+const SWinU = 12
+const SWinL = 16
+const SWinD = 20
+const SSpark = 24
+const NTiles8 = 808
+const SprBytes = 224
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndDot = 6
+const SndGo = 7
+const SndRev = 8
+const SndCrash = 9
+const SndClear = 10
+const SndOver = 11
+const SndGameA = 12
+const SndGameB = 13
+const SndGameC = 14
+const SndGameD = 15
+const TuneFrames = 448
+const GameFrames = 1024
+const TxtHow1 = 0
+const TxtHow2 = 1
+const TxtHow3 = 2
+const TxtHow4 = 3
+const TxtCredits = 4
+const NSpr = 4
+const HideY = 192
+const Passes = 3
+const NDots = 144
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StReady = 5
+const StCrash = 6
+const StClear = 7
+const StNext = 8
+const StOver = 9
+' car colours: player 1 red (C-64 red -> TMS dark red), player 2 green, the computer white
+const ColP1 = 6
+const ColP2 = 3
+const ColCpu = 15
+' windscreen layer: off (transparent; the C-64 car is symmetrical)
+const ColWin = 0
+
+' the two cars: 0 = the player, 1 = the computer (the original's $0E9F..)
+u8 CY[2]
+u16 CX[2]
+u8 CD[2]
+u8 CLc[2]
+u8 CLd[2]
+u8 CLn[2]
+u8 Dots[144]
+u16 Sc[2]
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 GzLeft = 0
+u16 Kx = 0
+u16 Gx = 0
+u16 Off = 0
+u16 Adr = 0
+u16 Ma = 0
+u16 Mb = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Level = 1
+u8 NPl = 1
+u8 Pl = 0
+u8 Round = 1
+u8 Mask = 7
+u8 C3 = 0
+u8 Eaten = 0
+u8 Ended = 0
+u8 Slow = 1
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 Flash = 0
+' current car (copied in and out of the arrays)
+u8 Kk = 0
+u8 Ky = 0
+u8 Kd = 0
+u8 Klc = 0
+u8 Kld = 0
+u8 Kln = 0
+u8 Kt = 0
+u8 Gd = 0
+u8 Ci = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Pi = 0
+u8 Li = 0
+u8 Ri = 0
+u8 Ai = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 R = 0
+u8 Rb = 0
+u8 Dy = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 3 then
+    HowTo
+    goto title
+  end if
+  if Menu = 4 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+round_loop:
+  Pl = 0
+turn_loop:
+  TurnStart
+play_loop:
+  Frame1
+  ReadPad
+  Slow = 1
+  if Btn > 0 then Slow = 0
+  for Pi = 0 to 2
+    if Ended = 0 then PlayPass
+  next
+  DrawCars
+  if Press > 0 then play sound SndRev
+  dec GzLeft
+  if GzLeft = 0 then GameTune
+  if Ended = 0 then goto play_loop
+
+  if Ended = 1 then
+    CrashAnim
+  else
+    ClearAnim
+  end if
+  inc Pl
+  if Pl < NPl then goto turn_loop
+  inc Round
+  if Round <= 5 then goto round_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (the original's main loop, $08B6-$095F)
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub NewGame:
+  State = StNext
+  Sc[0] = 0
+  Sc[1] = 0
+  Round = 1
+  Mask = LvMask[Level - 1]
+  C3 = Rs
+  DrawPlay
+  return
+end sub
+
+' a turn: dashes back, cars at their start, wait for the button
+sub TurnStart:
+  State = StNext
+  HideSprites
+  DrawTrack
+  for Li = 0 to 143
+    Dots[Li] = 1
+  next
+  Eaten = 0
+  Ended = 0
+  CY[0] = 217
+  CX[0] = 192
+  CD[0] = 0
+  CLc[0] = 0
+  CLd[0] = 0
+  CLn[0] = 0
+  ' the computer: a random lane, a random place on the bottom side
+  Rand
+  T = Rs & 3
+  CLn[1] = T
+  CY[1] = CompY[T]
+  T = Rs >> 8
+  T = T & $3C
+  T += $5C
+  CX[1] = T
+  CD[1] = 2
+  CLc[1] = 0
+  CLd[1] = 0
+  ShowHud
+  print at 4,22, "PRESS THE BUTTON TO GO"
+  DrawCars
+  State = StReady
+  WasBtn = 16
+ts_wait:
+  Frame1
+  ReadPad
+  if Press = 0 then goto ts_wait
+  fill 32 count 28 at 2,22
+  play sound SndGo
+  GameTune
+  State = StPlay
+  return
+end sub
+
+' one pass of the original's main loop
+sub PlayPass:
+  inc C3
+  ' the player: every pass with the button, else every other pass
+  T = C3 & Slow
+  if T = 0 then
+    Kk = 0
+    Kt = 1
+    LoadCar
+    if Klc > 0 then
+      ContLane
+    else
+      T = Kd & 1
+      if T = 0 then
+        V = Jk & 1
+        T = Jk & 2
+        if V > 0 then
+          Gd = 1
+          TryLane
+        else
+          if T > 0 then
+            Gd = 3
+            TryLane
+          else
+            MoveCar
+          end if
+        end if
+      else
+        V = Jk & 4
+        T = Jk & 8
+        if V > 0 then
+          Gd = 2
+          TryLane
+        else
+          if T > 0 then
+            Gd = 0
+            TryLane
+          else
+            MoveCar
+          end if
+        end if
+      end if
+    end if
+    SaveCar
+    EatDot
+    if Eaten >= NDots then
+      Ended = 2
+      return
+    end if
+  end if
+  ' the computer: every 8th / 4th / 2nd pass (level 1 / 2 / 3)
+  T = C3 & Mask
+  if T = 0 then
+    Kk = 1
+    Kt = 3
+    LoadCar
+    if Klc > 0 then
+      ContLane
+    else
+      if Kln = CLn[0] then
+        MoveCar
+      else
+        if Kln < CLn[0] then
+          Gd = Kd + 3
+        else
+          Gd = Kd + 1
+        end if
+        Gd = Gd & 3
+        TryLane
+      end if
+    end if
+    SaveCar
+  end if
+  Collide
+  return
+end sub
+
+sub LoadCar:
+  Ky = CY[Kk]
+  Kx = CX[Kk]
+  Kd = CD[Kk]
+  Klc = CLc[Kk]
+  Kld = CLd[Kk]
+  Kln = CLn[Kk]
+  return
+end sub
+
+sub SaveCar:
+  CY[Kk] = Ky
+  CX[Kk] = Kx
+  CD[Kk] = Kd
+  CLc[Kk] = Klc
+  CLd[Kk] = Kld
+  CLn[Kk] = Kln
+  return
+end sub
+
+' one pixel in direction V (0 right, 1 up, 2 left, 3 down)
+sub StepDir:
+  if V = 0 then Kx += 1
+  if V = 1 then dec Ky
+  if V = 2 then Kx -= 1
+  if V = 3 then inc Ky
+  return
+end sub
+
+' a normal move: turn at a corner (player +1, computer -1), then a pixel
+sub MoveCar:
+  Ci = 0
+  while Ci < 16
+    if Ky = CornY[Ci] then
+      Gx = CornX[Ci]
+      if Kx = Gx then
+        Kd += Kt
+        Kd = Kd & 3
+        Ci = 16
+      end if
+    end if
+    inc Ci
+  end while
+  V = Kd
+  StepDir
+  return
+end sub
+
+' a lane change towards Gd when the car is at a gap, else a normal move
+sub TryLane:
+  Ci = Gd * 6
+  K = Ci + 6
+  T = 255
+  while Ci < K
+    if Ky = GapY[Ci] then
+      Gx = GapX[Ci]
+      if Kx = Gx then
+        T = Ci
+        Ci = K
+      end if
+    end if
+    inc Ci
+  end while
+  if T = 255 then
+    MoveCar
+    return
+  end if
+  Kld = Gd
+  Klc = 16
+  Kln = GapLn[T]
+  ContLane
+  return
+end sub
+
+' a lane change goes on: one pixel sideways; the 16th also moves on
+sub ContLane:
+  V = Kld
+  StepDir
+  dec Klc
+  if Klc = 0 then MoveCar
+  return
+end sub
+
+' the dash under the player's car (the original's $0AFE): row and column
+' of the C64 screen cell, then its dash, if still there
+sub EatDot:
+  T = Ky - 46
+  T = T >> 3
+  if T >= 32 then return
+  R = DotRowIx[T]
+  if R = 255 then return
+  W16 = Kx - 20
+  W16 = W16 >> 3
+  T = W16
+  if T >= 64 then return
+  C = DotColIx[T]
+  if C = 255 then return
+  K = R * 18
+  K += C
+  if Dots[K] = 0 then return
+  Dots[K] = 0
+  inc Eaten
+  Adr = DotAdr[K]
+  T = DotOff[K]
+  vpoke vram.name + Adr, T
+  Sc[Pl] += 10
+  ShowScore
+  play sound SndDot
+  return
+end sub
+
+' pixel overlap of the two cars' sprites, like the C64's $D01E: a table
+' (rules.py) by shape pair, dx = -15..15, dy = -8..8
+sub Collide:
+  Gx = CX[1] + 15
+  Gx -= CX[0]
+  if Gx >= 31 then return
+  Dy = CY[1] + 8
+  Dy -= CY[0]
+  if Dy >= 17 then return
+  Adr = Gx * 17
+  Adr += Dy
+  T = CD[0] & 1
+  if T > 0 then Adr += 1054
+  T = CD[1] & 1
+  if T > 0 then Adr += 527
+  Ma = CollTab[0]
+  Ma += Adr
+  T = peek(Ma)
+  if T > 0 then Ended = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' sprite slots: 0 player windscreen, 1 player car, 2 computer windscreen,
+' 3 computer car; C64 sprite (X, Y) -> screen (3X/4 - 13, 3Y/4 - 29)
+sub DrawCars:
+  for Li = 0 to 1
+    W16 = CX[Li] * 3
+    W16 = W16 >> 2
+    W16 -= 13
+    C = W16
+    W16 = CY[Li] * 3
+    W16 = W16 >> 2
+    W16 -= 29
+    R = W16
+    T = CD[Li]
+    K = SCarH
+    V = T & 1
+    if V > 0 then K = SCarV
+    V = SWinR
+    if T = 1 then V = SWinU
+    if T = 2 then V = SWinL
+    if T = 3 then V = SWinD
+    J = Li << 1
+    set sprite J to R,C,V,ColWin
+    inc J
+    T = ColCpu
+    if Li = 0 then
+      T = ColP1
+      if Pl = 1 then T = ColP2
+    end if
+    if State = StCrash then T = Flash
+    set sprite J to R,C,K,T
+  next
+  update sprites
+  return
+end sub
+
+' the in-game tune (quiet), from the top; restarted when it ends
+sub GameTune:
+  play sound SndGameA
+  play sound SndGameB
+  play sound SndGameC
+  play sound SndGameD
+  GzLeft = GameFrames
+  return
+end sub
+
+sub StopMusic:
+  stop sound SndGameA
+  stop sound SndGameB
+  stop sound SndGameC
+  stop sound SndGameD
+  mute all
+  return
+end sub
+
+sub DrawTrack:
+  Off = 0
+  Adr = 130
+  for Li = 0 to 14
+    copy TrackNT + Off count 28 to vram.name + Adr
+    Off += 28
+    Adr += 32
+  next
+  return
+end sub
+
+sub ShowScore:
+  copy WScore count 5 to vram.name + 363
+  NumU = Sc[Pl]
+  print at 17,11, digits$(NumU, 4)
+  if NPl = 2 then
+    NumU = Sc[0]
+    print at 5,20, digits$(NumU, 4)
+    NumU = Sc[1]
+    print at 26,20, digits$(NumU, 4)
+  end if
+  return
+end sub
+
+sub ShowHud:
+  Rb = 1
+  DrawLogo
+  copy WLevel count 5 to vram.name + 98
+  NumU = Level
+  print at 8,3, digits$(NumU, 1)
+  copy WPlayers count 7 to vram.name + 116
+  NumU = NPl
+  print at 28,3, digits$(NumU, 1)
+  if NPl = 2 then
+    print at 2,20, "P1"
+    print at 23,20, "P2"
+    copy WRound count 5 to vram.name + 652
+    NumU = Round
+    print at 18,20, digits$(NumU, 1)
+  else
+    copy WRound count 5 to vram.name + 652
+    NumU = Round
+    print at 18,20, digits$(NumU, 1)
+  end if
+  ShowScore
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  DrawTrack
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' a crash: the cars change colour (slowly: 4 colours, 20 frames each)
+' over the original's crash noise, then the score stays a moment
+sub CrashAnim:
+  State = StCrash
+  StopMusic
+  play sound SndCrash
+  for Ai = 0 to 79
+    T = Ai / 20
+    Flash = 6
+    if T = 1 then Flash = 11
+    if T = 2 then Flash = 13
+    if T = 3 then Flash = 15
+    DrawCars
+    Frame1
+  next
+  return
+end sub
+
+' all 144 dashes: the original flashes the border; here the backdrop
+' changes colour every 20 frames for 2 seconds over a fanfare
+sub ClearAnim:
+  State = StClear
+  StopMusic
+  play sound SndClear
+  for Ai = 0 to 119
+    T = Ai / 20
+    T = T & 1
+    if T = 0 then
+      backdrop dark blue
+    else
+      backdrop black
+    end if
+    Frame1
+  next
+  backdrop black
+  return
+end sub
+
+sub GameOver:
+  State = StNext
+  HideSprites
+  fill 32 count 28 at 2,22
+  print at 10,22, "GAME OVER"
+  Pl = 0
+  if NPl = 2 then
+    ' the centre box names the winner (both scores stay on row 20)
+    print at 11,11, "          "
+    if Sc[0] > Sc[1] then print at 12,11, "P1 WINS"
+    if Sc[1] > Sc[0] then print at 12,11, "P2 WINS"
+    if Sc[0] = Sc[1] then print at 12,11, "A DRAW"
+  else
+    ShowScore
+  end if
+  play sound SndOver
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Btn = button held, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the original's RAM ROD logo (20 x 2 PETSCII cells from the VICE dump) at row Rb (set by the caller)
+sub DrawLogo:
+  W16 = Rb << 5
+  W16 += 6
+  copy LogoNT count 20 to vram.name + W16
+  W16 += 32
+  copy LogoNT + 20 count 20 to vram.name + W16
+  return
+end sub
+
+' the title: logo, menu (cursor back on START), the tune once
+sub TitlePage:
+  State = StNext
+  NewScreen
+  Rb = 3
+  DrawLogo
+  fill TBar count 28 at 2,6
+  print at 6,8, "A RACE FOR TWO CARS"
+  print at 11,10, "START"
+  print at 11,12, "LEVEL"
+  print at 11,14, "PLAYERS"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  print at 5,21, "RERUN 1990, T.BRANTNER"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  ' the two cars, head to head under the menu
+  set sprite 0 to 149,64,SWinR,ColWin
+  set sprite 1 to 149,64,SCarH,ColP1
+  set sprite 2 to 149,176,SWinL,ColWin
+  set sprite 3 to 149,176,SCarH,ColCpu
+  update sprites
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+  State = StTitle
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 4
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 4 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  ' LEVEL / PLAYERS: left, right or the button change the value
+  K = Edge & 12
+  if Press > 0 then K = 8
+  if K > 0 then
+    if Menu = 1 then
+      if K = 4 then
+        dec Level
+        if Level = 0 then Level = 3
+      else
+        inc Level
+        if Level > 3 then Level = 1
+      end if
+      play sound SndClick
+      ShowMenu
+      Press = 0
+    end if
+    if Menu = 2 then
+      NPl = 3 - NPl
+      play sound SndClick
+      ShowMenu
+      Press = 0
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 4
+    T = J << 1
+    T += 10
+    put char 32 at 9,T
+  next
+  T = Menu << 1
+  T += 10
+  put char 62 at 9,T
+  NumU = Level
+  print at 19,12, digits$(NumU, 1)
+  NumU = NPl
+  print at 19,14, digits$(NumU, 1)
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StNext
+  NewScreen
+  print at 12,2, "RAM ROD"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,22, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' a strip of the real track (4 tile rows from TrackNT row Off) at row R
+sub TrackStrip:
+  Adr = R * 32
+  Adr += 2
+  for Li = 0 to 3
+    copy TrackNT + Off count 28 to vram.name + Adr
+    Off += 28
+    Adr += 32
+  next
+  return
+end sub
+
+' HOW TO PLAY: four pages, pictures from the game's own track and cars
+sub HowTo:
+  State = StNext
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/4"
+  TxT = TxtHow1
+  TxX0 = 2
+  TxY = 3
+  TextShow
+  ' the bottom of the track, your car eating dashes
+  Off = 280
+  R = 12
+  TrackStrip
+  set sprite 0 to 115,140,SWinR,ColWin
+  set sprite 1 to 115,140,SCarH,ColP1
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  State = StNext
+  NewScreen
+  print at 8,1, "HOW TO PLAY  2/4"
+  TxT = TxtHow2
+  TxX0 = 2
+  TxY = 3
+  TextShow
+  Off = 280
+  R = 12
+  TrackStrip
+  set sprite 0 to 115,100,SWinR,ColWin
+  set sprite 1 to 115,100,SCarH,ColP1
+  set sprite 2 to 115,160,SWinL,ColWin
+  set sprite 3 to 115,160,SCarH,ColCpu
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  State = StNext
+  NewScreen
+  print at 8,1, "HOW TO PLAY  3/4"
+  TxT = TxtHow3
+  TxX0 = 2
+  TxY = 3
+  TextShow
+  ' the middle of the track: the gaps where lanes change
+  Off = 140
+  R = 13
+  TrackStrip
+  set sprite 0 to 108,22,SWinU,ColWin
+  set sprite 1 to 108,22,SCarV,ColP1
+  update sprites
+  print at 8,22, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  State = StNext
+  NewScreen
+  print at 8,1, "HOW TO PLAY  4/4"
+  TxT = TxtHow4
+  TxX0 = 2
+  TxY = 3
+  TextShow
+  print at 8,22, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+ht_end:
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+' rules tables of the C64 original (rules.py; orig/ramrod.dis $0CAC-$0D69, model.mjs)
+data CornY bytes 81,97,113,129,217,201,185,169,129,113,97,81,169,185,201,217
+data CornX words 37,53,69,85,37,53,69,85,269,285,301,317,269,285,301,317
+data GapY bytes 149,149,149,149,149,149,97,113,129,185,201,217,149,149,149,149,149,149,81,97,113,169,185,201
+data GapX words 37,53,69,269,285,301,177,177,177,177,177,177,53,69,85,285,301,317,177,177,177,177,177,177
+data GapLn bytes 1,2,3,2,1,0,0,1,2,3,2,1,0,1,2,3,2,1,1,2,3,2,1,0
+data CompY bytes 217,201,185,169
+data LvMask bytes 7,3,1
+data CollBits bytes
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1,1,0,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,0,1,1,1,1,1,0,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0
+  0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0
+  0,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0
+  0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1
+  1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1
+  0,1,1,1,0,0,0,1,1,1,0,0,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+  0,1,1,1,0,0,0,1,1,1,0,0,0,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1
+  1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+end data
+data CollTab words @CollBits
+
+data TrackNT bytes
+  129,130,130,130,130,130,130,130,130,130,130,130,130,131,132,130,130,130,130,130,130,130,130,130,130,130,130,133
+  134,135,136,137,138,136,137,138,136,137,138,136,137,139,140,141,142,138,141,142,138,141,142,138,141,142,143,144
+  145,146,147,148,128,147,148,128,147,148,128,147,148,128,128,149,150,128,149,150,128,149,150,128,149,150,151,144
+  134,152,128,129,130,130,130,130,130,130,130,130,130,131,132,130,130,130,130,130,130,130,130,130,133,128,153,144
+  154,152,155,134,135,136,137,138,136,137,138,136,137,139,140,141,142,138,141,142,138,141,142,143,144,156,157,144
+  145,152,147,145,146,147,148,128,147,148,128,147,148,128,128,149,150,128,149,150,128,149,150,151,144,150,158,144
+  159,160,128,159,160,128,161,130,130,130,130,130,130,131,132,130,130,130,130,130,130,162,128,163,164,128,163,164
+  128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128
+  165,166,128,165,166,128,167,168,168,168,168,168,168,169,170,168,168,168,168,168,168,171,128,172,173,128,172,173
+  174,152,175,174,152,175,176,128,175,176,128,175,176,128,128,177,178,128,177,178,128,177,178,179,144,178,179,144
+  180,152,181,134,182,183,184,185,183,184,185,183,184,186,187,188,189,185,188,189,185,188,189,190,144,191,192,144
+  134,152,128,193,168,168,168,168,168,168,168,168,168,169,170,168,168,168,168,168,168,168,168,168,194,128,153,144
+  174,152,175,176,128,175,176,128,175,176,128,175,176,128,128,177,178,128,177,178,128,177,178,128,177,178,179,144
+  134,182,183,184,185,183,184,185,183,184,185,183,184,186,187,188,189,185,188,189,185,188,189,185,188,189,190,144
+  193,168,168,168,168,168,168,168,168,168,168,168,168,169,170,168,168,168,168,168,168,168,168,168,168,168,168,194
+end data
+data DotAdr words
+  163,164,165,167,168,170,171,173,174,177,178,180,181,183,184,186,187,188
+  194,196,197,199,200,202,203,205,206,209,210,212,213,215,216,218,219,220
+  258,260,262,263,264,266,267,269,270,273,274,276,277,279,280,281,283,284
+  290,292,293,295,296,298,299,301,302,305,306,308,309,311,312,313,315,316
+  418,420,421,423,424,426,427,429,430,433,434,436,437,439,440,441,443,444
+  450,452,454,455,456,458,459,461,462,465,466,468,469,471,472,473,475,476
+  514,516,517,519,520,522,523,525,526,529,530,532,533,535,536,538,539,540
+  547,548,549,551,552,554,555,557,558,561,562,564,565,567,568,570,571,572
+end data
+data DotOff bytes
+  195,138,138,138,138,138,138,138,138,138,138,138,138,138,138,138,138,139
+  134,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,196
+  134,128,195,138,138,138,138,138,138,138,138,138,138,138,138,139,128,153
+  134,128,134,128,128,128,128,128,128,128,128,128,128,128,128,196,128,153
+  134,128,134,128,128,128,128,128,128,128,128,128,128,128,128,153,128,153
+  134,128,197,185,185,185,185,185,185,185,185,185,185,185,185,198,128,153
+  134,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,153
+  197,185,185,185,185,185,185,185,185,185,185,185,185,185,185,185,185,198
+end data
+data DotOn bytes
+  135,136,137,136,137,136,137,136,137,141,142,141,142,141,142,141,142,143
+  145,147,148,147,148,147,148,147,148,149,150,149,150,149,150,149,150,151
+  154,155,135,136,137,136,137,136,137,141,142,141,142,141,142,143,156,157
+  145,147,145,147,148,147,148,147,148,149,150,149,150,149,150,151,150,158
+  174,175,174,175,176,175,176,175,176,177,178,177,178,177,178,179,178,179
+  180,181,182,183,184,183,184,183,184,188,189,188,189,188,189,190,191,192
+  174,175,176,175,176,175,176,175,176,177,178,177,178,177,178,177,178,179
+  182,183,184,183,184,183,184,183,184,188,189,188,189,188,189,188,189,190
+end data
+data LogoNT bytes
+  199,200,201,32,200,201,199,200,201,201,32,199,200,201,32,200,201,199,200,201
+  202,203,204,205,203,204,202,203,32,206,205,202,203,204,205,203,207,202,203,207
+end data
+data WLevel bytes
+  208,209,210,209,208
+end data
+data WPlayers bytes
+  211,212,213,214,215,216,217
+end data
+data WScore bytes
+  218,219,220,221,222
+end data
+data WRound bytes
+  223,224,225,226,227
+end data
+data DotRowIx bytes
+  255,255,255,255,0,255,1,255,2,255,3,255,255,255,255,4,255,5,255,6,255,7,255,255,255,255,255,255,255,255,255,255
+end data
+data DotColIx bytes
+  255,255,0,255,1,255,2,255,3,255,4,255,5,255,6,255,7,255,8,255,255,9,255,10,255,11,255,12,255,13,255,14,255,15,255,16,255,17,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+end data
+
+data TilePatZ bytes
+  $84,$00,$98,$E0,$20,$40,$E4,$E0,$BC,$C0,$F0,$A0,$03,$23,$02,$01,$A5,$FF,$40,$B9,$F0,$C6,$89,$01
+  $87,$7F,$E1,$FE,$1F,$78,$5F,$C0,$69,$E1,$69,$F0,$6F,$01,$FE,$3E,$54,$B8,$B0,$FF,$93,$02,$04,$FD
+  $C6,$48,$79,$78,$63,$20,$10,$88,$FF,$E0,$10,$A5,$04,$A5,$10,$F9,$79,$FE,$BD,$87,$20,$3E,$A9,$FE
+  $1F,$E8,$E7,$B4,$E7,$D1,$84,$77,$00,$77,$30,$E7,$F7,$AC,$D9,$F1,$C4,$FF,$D2,$9C,$5E,$39,$20,$20
+  $E0,$C9,$9C,$5E,$95,$EF,$02,$F0,$6C,$5D,$FF,$34,$FE,$74,$44,$7F,$94,$67,$9C,$FF,$A8,$98,$FF,$D8
+  $98,$78,$C9,$A8,$79,$78,$35,$C0,$94,$F5,$48,$8F,$20,$C0,$E0,$1C,$DF,$DC,$39,$67,$60,$76,$BD,$90
+  $73,$92,$22,$01,$20,$5F,$10,$FF,$FE,$81,$CE,$5C,$FE,$A4,$00,$68,$03,$7D,$C8,$E5,$D0,$6F,$03,$FE
+  $0A,$00,$A1,$60,$9E,$81,$00,$81,$F1,$82,$87,$F8,$99,$FE,$6B,$C3,$18,$00,$83,$99,$83,$B8,$CE,$C0
+  $20,$EF,$18,$C3,$99,$81,$CC,$C1,$FF,$C4,$FF,$A0,$78,$B0,$8E,$87,$93,$D1,$AA,$C3,$60,$F9,$06,$CB
+  $F0,$7F,$FF,$F0,$E7,$5E,$DF,$B0,$90,$5F,$C0,$7F,$51,$F0,$60,$E9,$89,$81,$81,$91,$C9,$00,$EB,$F5
+  $93,$60,$74,$D5,$55,$60
+end data
+data TileColZ bytes
+  $84,$01,$89,$1D,$D1,$EA,$E0,$0D,$5B,$D1,$D3,$F0,$E5,$C1,$FE,$F2,$C8,$92,$1D,$F7,$0D,$F0,$F8,$F6
+  $78,$4F,$A0,$69,$0D,$5F,$5A,$0E,$3E,$5E,$1E,$3D,$0E,$F4,$66,$FF,$E0,$A0,$5F,$78,$5F,$88,$4F,$F1
+  $90,$30,$DD,$FE,$E7,$BA,$97,$F0,$D7,$C0,$81,$DC,$F7,$36,$25,$9C,$7D,$C0,$F7,$A0,$C7,$04,$74,$44
+  $7F,$A4,$71,$9C,$F7,$C8,$73,$E8,$FF,$18,$E0,$DD,$F0,$70,$94,$3F,$D1,$A0,$1C,$D7,$4C,$30,$DC,$EC
+  $D2,$87,$86,$5D,$C0,$75,$C6,$6E,$EA,$15,$FE,$01,$68,$05,$1A,$51,$1A,$01,$69,$14,$A0,$04,$68,$41
+  $69,$01,$A0,$41,$1A,$04,$A1,$31,$9E,$13,$01,$13,$F1,$87,$13,$89,$FE,$9A,$31,$01,$17,$71,$22,$01
+  $71,$1B,$17,$FF,$F1,$E3,$FE,$82,$D0,$8A,$17,$17,$0A,$17,$07,$BA,$E0,$F0,$7F,$16,$16,$61,$FD,$F7
+  $E8,$F0,$61,$7F,$FE,$97,$F0,$F8,$D5,$FA,$E7,$01,$1A,$FE,$D5,$F0,$C8,$7C,$35,$55,$58
+end data
+data SpritePatZ bytes
+  $BA,$00,$FC,$27,$3F,$0C,$FF,$F3,$FE,$E0,$28,$FF,$59,$F3,$0C,$0F,$0C,$F4,$98,$FE,$23,$CC,$FC,$CC
+  $C0,$BD,$F4,$BE,$F5,$F0,$46,$0A,$08,$04,$22,$10,$A2,$30,$10,$22,$B8,$08,$E0,$98,$20,$40,$88,$A2
+  $18,$67,$88,$40,$20,$55,$55,$80
+end data
+
+data TxD_0 bytes
+  $03,$54,$48,$45,$02,$42,$59,$03,$43,$41,$52,$04,$59,$4F,$55,$52,$03,$41,$4D,$59,$03,$41,$4E,$44
+  $02,$54,$4F,$01,$41,$06,$42,$55,$54,$54,$4F,$4E,$05,$44,$52,$49,$56,$45,$06,$44,$52,$49,$56,$45
+  $53,$04,$45,$41,$43,$48,$02,$49,$4E,$05,$52,$4F,$55,$4E,$44,$05,$54,$55,$52,$4E,$2E,$05,$57,$48
+  $49,$54,$45
+end data
+data TxD_1 bytes
+  $05,$27,$45,$4D,$29,$2E,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$05,$28,$44,$49,$53
+  $4B,$02,$31,$2C,$02,$31,$30,$03,$31,$34,$34,$04,$31,$34,$34,$30,$04,$31,$39,$39,$30,$01,$32,$05
+  $32,$30,$32,$36,$2E,$01,$33,$01,$35,$03,$41,$4C,$4C,$0E,$41,$4E,$54,$49,$43,$4C,$4F,$43,$4B,$57
+  $49,$53,$45,$2E,$02,$41,$53,$02,$41,$54
+end data
+data TxD_2 bytes
+  $09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$09,$42,$52,$41,$4E,$54,$4E,$45,$52,$2C,$05,$43,$41,$52
+  $27,$53,$06,$43,$48,$41,$4E,$47,$45,$07,$43,$48,$41,$4E,$47,$45,$53,$06,$43,$4C,$41,$55,$44,$45
+  $07,$43,$4C,$41,$55,$44,$45,$2E,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$05,$43,$52
+  $41,$53,$48,$06,$44,$41,$53,$48,$45,$53,$07,$44,$41,$53,$48,$45,$53,$3A,$05,$44,$4F,$44,$47,$45
+  $05,$45,$41,$43,$48,$2E,$03,$45,$41,$54,$06,$45,$41,$54,$45,$4E,$3A,$04,$45,$4E,$44,$53
+end data
+data TxD_3 bytes
+  $05,$45,$4E,$44,$53,$2E,$05,$45,$56,$45,$52,$59,$05,$46,$41,$53,$54,$2E,$04,$46,$49,$4C,$45,$04
+  $47,$41,$50,$2C,$04,$47,$4F,$45,$53,$04,$48,$4F,$4C,$44,$04,$4C,$41,$4E,$45,$05,$4C,$41,$4E,$45
+  $2E,$05,$4C,$41,$4E,$45,$53,$05,$4C,$45,$56,$45,$4C,$0B,$4D,$41,$59,$2F,$4A,$55,$4E,$2F,$4A,$55
+  $4C,$06,$4D,$55,$53,$49,$43,$3A,$04,$4E,$45,$58,$54,$02,$4F,$46,$03,$4F,$4E,$45
+end data
+data TxD_4 bytes
+  $02,$4F,$52,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$05,$4F,$54,$48,$45,$52,$06,$50,$4C,$41,$59,$45
+  $52,$07,$50,$4C,$41,$59,$45,$52,$53,$06,$50,$4F,$49,$4E,$54,$53,$07,$50,$4F,$49,$4E,$54,$53,$2C
+  $04,$50,$4F,$52,$54,$04,$50,$55,$53,$48,$03,$52,$41,$4D,$05,$52,$45,$41,$43,$48,$05,$52,$45,$52
+  $55,$4E,$03,$52,$4F,$44,$07,$52,$4F,$55,$4E,$44,$53,$2E,$04,$53,$45,$54,$53,$06,$53,$50,$45,$45
+  $44,$2E
+end data
+data TxD_5 bytes
+  $06,$53,$54,$41,$52,$54,$53,$05,$53,$54,$49,$43,$4B,$04,$54,$41,$4B,$45,$04,$54,$4F,$4E,$59,$07
+  $54,$4F,$57,$41,$52,$44,$53,$05,$54,$52,$41,$43,$4B,$05,$54,$55,$4E,$45,$53,$04,$54,$55,$52,$4E
+  $06,$54,$55,$52,$4E,$53,$2E,$05,$54,$57,$49,$43,$45,$03,$54,$57,$4F,$03,$57,$41,$59,$06,$59,$4F
+  $55,$52,$53,$2E
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3, @TxD_4, @TxD_5
+end data
+data TxM_How1 bytes
+  $09,$03,$02,$0D,$00,$FE,$55,$05,$2D,$00,$2A,$FE,$14,$45,$2C,$03,$02,$FE,$35,$0D,$1D,$FF
+end data
+data TxM_How2 bytes
+  $00,$0F,$02,$0A,$00,$FE,$42,$5B,$05,$24,$39,$FE,$06,$4A,$5C,$07,$28,$FE,$2F,$03,$0E,$FF
+end data
+data TxM_How3 bytes
+  $1F,$07,$34,$48,$00,$51,$FE,$54,$00,$3D,$37,$06,$FE,$23,$38,$36,$00,$08,$FE,$06,$09,$59,$1E,$32
+  $FF
+end data
+data TxM_How4 bytes
+  $1C,$15,$29,$2E,$16,$FE,$46,$05,$03,$57,$30,$FE,$31,$43,$0A,$3F,$02,$FE,$0C,$0B,$3E,$00,$1B,$4D
+  $FE,$5A,$44,$52,$58,$FE,$3A,$13,$18,$40,$1A,$4E,$00,$FE,$0F,$22,$4F,$FE,$00,$08,$50,$0B,$0E,$FF
+end data
+data TxM_Credits bytes
+  $49,$4C,$01,$53,$21,$FE,$4B,$3B,$17,$FE,$12,$33,$2B,$10,$FE,$27,$47,$0C,$04,$FE,$01,$25,$11,$FE
+  $04,$01,$04,$20,$19,$FE,$3C,$41,$56,$FE,$01,$26,$FF
+end data
+data TxMsg words
+  @TxM_How1, @TxM_How2, @TxM_How3, @TxM_How4, @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScDot:
+    db $40,$B7,$10,$02,$40,$B7,$30,$02,$50
+ScGo:
+    db $40,$D6,$20,$05,$40,$AA,$20,$05,$40,$8F,$20,$08,$50
+ScRev:
+    db $40,$F9,$23,$03,$40,$31,$33,$03,$40,$6D,$42,$04,$40,$FC,$51,$04,$50
+ScCrash:
+    db $00,$00,$04,$06,$00,$00,$15,$0A,$00,$00,$35,$0E,$00,$00,$56,$14,$00,$00,$86,$14,$10
+ScClear:
+    db $40,$6F,$21,$03,$40,$B7,$20,$03,$40,$7A,$20,$03,$40,$5C,$20,$03,$40,$49,$20,$03,$40,$3D,$20,$03
+    db $40,$34,$20,$03,$40,$2E,$20,$03,$40,$29,$20,$03,$40,$25,$20,$03,$40,$6F,$21,$03,$40,$B7,$20,$03
+    db $40,$7A,$20,$03,$40,$5C,$20,$03,$40,$49,$20,$03,$40,$3D,$20,$03,$40,$34,$20,$03,$40,$2E,$20,$03
+    db $40,$29,$20,$03,$40,$25,$20,$03,$40,$6F,$31,$03,$40,$B7,$30,$03,$40,$7A,$30,$03,$40,$5C,$30,$03
+    db $40,$49,$30,$03,$40,$3D,$30,$03,$40,$34,$30,$03,$40,$2E,$30,$03,$40,$29,$30,$03,$40,$25,$30,$03
+    db $40,$6F,$31,$03,$40,$B7,$30,$03,$40,$7A,$30,$03,$40,$5C,$30,$03,$40,$49,$30,$03,$40,$3D,$30,$03
+    db $40,$34,$30,$03,$40,$2E,$30,$03,$40,$29,$30,$03,$40,$25,$30,$03,$50
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScDot,$705D
+    dw ScGo,$705D
+    dw ScRev,$705D
+    dw ScCrash,$7053
+    dw ScClear,$705D
+    dw ScOver,$705D
+    dw ScGameMel,$702B
+    dw ScGameHarm,$7035
+    dw ScGameBassVol,$703F
+    dw ScGameBassPitch,$7049
+; Ram Rod Rally (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$30,$1A,$21,$1C,$01,$1F,$23,$28,$01,$26,$23,$24,$01,$23,$21
+    db $23,$01,$01,$01,$1C,$01,$1F,$23,$28,$01,$2A,$2B,$2A,$01,$26,$23
+    db $26,$01,$01,$01,$24,$01,$28,$2B,$24,$01,$23,$21,$23,$01,$26,$2A
+    db $23,$01,$01,$01,$21,$01,$24,$28,$26,$01,$23,$1F,$1E,$01,$1F,$21
+    db $1C,$01,$00,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$10,$01,$01,$01,$17,$01,$01,$01,$15,$01,$01,$01
+    db $13,$01,$01,$01,$10,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01
+    db $17,$01,$01,$01,$18,$01,$01,$01,$13,$01,$01,$01,$17,$01,$01,$01
+    db $1A,$01,$01,$01,$18,$01,$01,$01,$17,$01,$01,$01,$17,$01,$01,$01
+    db $13,$01,$00,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$37
+    db $10
+ScTuneBassPitch:
+    db $C0,$88,$F0,$3C,$C0,$66,$F0,$1D,$C0,$72,$F0,$1B,$C0,$88,$F0,$1D,$C0,$5A,$F0,$1B,$C0,$98,$F0,$1D
+    db $C0,$5A,$F0,$1B,$C0,$AB,$F0,$38,$C0,$72,$F0,$1D,$C0,$5A,$F0,$1B,$C0,$66,$F0,$1D,$C0,$5A,$F0,$1B
+    db $C0,$88,$F0,$16,$FE
+    db $D0
+; Ring Road (original, in game) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScGameMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$60,$1A,$21,$21,$01,$01,$23,$24,$01,$28,$01,$26,$01,$24,$01
+    db $23,$01,$1F,$01,$21,$01,$01,$01,$1C,$01,$01,$1F,$21,$01,$01,$01
+    db $00,$01,$01,$01,$24,$01,$01,$26,$28,$01,$2B,$01,$2A,$01,$28,$01
+    db $26,$01,$23,$01,$24,$01,$23,$01,$21,$01,$01,$01,$00,$01,$01,$01
+    db $00,$01,$01,$01,$28,$01,$01,$26,$24,$01,$23,$01,$21,$01,$23,$01
+    db $24,$01,$26,$01,$28,$01,$01,$01,$2B,$01,$01,$01,$28,$01,$26,$01
+    db $23,$01,$01,$01,$21,$01,$24,$01,$23,$01,$1F,$01,$21,$01,$1C,$01
+    db $1F,$01,$23,$01,$21,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ScGameHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$18,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$18,$01,$01,$01,$01,$01,$01,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$1A,$01,$01,$01
+    db $01,$01,$01,$01,$1C,$01,$01,$01,$01,$01,$01,$01,$18,$01,$01,$01
+    db $17,$01,$01,$01,$15,$01,$01,$01,$01,$01,$01,$01,$18,$01,$01,$01
+    db $01,$01,$01,$01,$17,$01,$01,$01,$01,$01,$01,$01,$13,$01,$01,$01
+    db $01,$01,$01,$01,$18,$01,$01,$01,$01,$01,$01,$01,$17,$01,$01,$01
+    db $01,$01,$01,$01,$18,$01,$01,$01,$01,$01,$01,$01,$1C,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScGameBassVol:
+    db $02,$86,$04,$13,$11,$02,$63,$1A,$14,$66,$22,$02,$63,$1E,$14,$66,$22,$02,$95,$05,$13,$11
+    db $02,$63,$19,$14,$66,$22,$02,$63,$1E,$14,$66,$22,$02,$86,$04,$13,$11,$02,$63,$1A,$14,$66
+    db $22,$02,$63,$1E,$14,$66,$22,$02,$95,$05,$13,$11,$02,$63,$19,$14,$66,$22
+    db $02,$63,$1E,$14,$66,$22,$02,$86,$04,$13,$11,$02,$63,$1A,$14,$66,$22,$02,$63,$1E,$14,$66
+    db $22,$02,$95,$05,$13,$11,$02,$63,$19,$14,$66,$22,$02,$63,$1E,$14,$66,$22
+    db $02,$86,$04,$13,$11,$02,$63,$1A,$14,$66,$22,$02,$63,$1E,$14,$66,$22,$02,$95,$05,$13,$11
+    db $02,$63,$19,$14,$66,$22,$02,$63,$1E,$14,$66,$22,$02,$86,$04,$13,$11,$02,$63,$1A,$14,$66
+    db $22,$02,$63,$1E,$14,$66,$22,$02,$95,$05,$13,$11,$02,$63,$19,$14,$66,$22
+    db $02,$63,$1E,$14,$66,$22,$02,$86,$04,$13,$11,$02,$63,$1A,$14,$66,$22,$02,$63,$1E,$14,$66
+    db $22,$02,$95,$05,$13,$11,$02,$63,$19,$14,$66,$22,$02,$63,$1E,$14,$66,$22
+    db $02,$86,$04,$13,$11,$02,$63,$1A,$14,$66,$22,$02,$63,$1E,$14,$66,$22,$02,$95,$05,$13,$11
+    db $02,$63,$19,$14,$66,$22,$02,$63,$1E,$14,$66,$22,$02,$86,$04,$13,$11,$02,$63,$1A,$14,$66
+    db $22,$02,$63,$1E,$14,$66,$22,$02,$95,$05,$13,$11,$02,$63,$19,$14,$66,$3F
+    db $23
+    db $10
+ScGameBassPitch:
+    db $C0,$66,$F0,$45,$C0,$72,$F0,$3F,$C0,$66,$F0,$41,$C0,$88,$F0,$3F,$C0,$AB,$F0,$41,$C0,$98,$F0,$3F
+    db $C0,$66,$F0,$1C,$C0,$72,$F0,$25,$C0,$88,$F0,$3F,$C0,$66,$F0,$41,$C0,$AB,$F0,$3F,$C0,$72,$F0,$41
+    db $C0,$88,$F0,$3F,$C0,$98,$F0,$41,$C0,$88,$F0,$3F,$C0,$66,$F0,$41,$C0,$88,$F0,$19,$FF
+    db $E3
+    db $D0
+}

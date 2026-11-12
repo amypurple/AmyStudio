@@ -1,0 +1,1215 @@
+cartridge "DRIP-DROP/JOHN FEDOR/1988"
+' DRIP-DROP - ColecoVision port of John Fedor's C-64 game from ReRUN
+' (May/June 1988). Port in Amy from the original's machine code (DATA lines
+' of the BASIC loader, rebuilt and disassembled: orig/dripml.dis).
+'
+' The game: a storm cloud wanders over the sky and lets drips fall. Move
+' your trays (one per life, stacked at C-64 rows 21, 18 and 15) left and
+' right and catch every drip: 5 points each. Level L drops 10 x L drips
+' (240 from level 26); all caught: a jingle and the next level. A drip
+' that reaches the ground costs a tray and restarts the level.
+'
+' Timing: the original is one CPU-bound machine-code loop with no frame
+' wait. Each pass decrements three counters: ground (64 passes), tray
+' (128), cloud (192); the cloud's event also runs the drip counter (1 or 2
+' cloud steps) and the spawn counter (2..10 drip steps). The port runs the
+' original's passes against a C-64 cycle budget per frame (cycles measured
+' in jsc64: c64/cyc.mjs), so speeds stay in the original's units.
+'
+' Controls: either controller; stick left/right moves the trays; the
+' button pauses (the original's SHIFT key). Menus by stick and button.
+
+const TGrass1 = 128
+const TGrass2 = 129
+const TSoil1 = 130
+const TSoil2 = 131
+const TDrop = 132
+const TLogo00 = 133
+const TLogo01 = 134
+const TLogo02 = 135
+const TLogo03 = 136
+const TLogo04 = 137
+const TLogo05 = 138
+const TLogo06 = 139
+const TLogo07 = 140
+const TLogo08 = 141
+const TLogo09 = 142
+const TLogo010 = 143
+const TLogo011 = 144
+const TLogo012 = 145
+const TLogo013 = 146
+const TLogo014 = 147
+const TLogo015 = 148
+const TLogo016 = 149
+const TLogo017 = 150
+const TLogo018 = 151
+const TLogo019 = 152
+const TLogo020 = 153
+const TLogo10 = 154
+const TLogo11 = 155
+const TLogo12 = 156
+const TLogo13 = 157
+const TLogo14 = 158
+const TLogo15 = 159
+const TLogo16 = 160
+const TLogo17 = 161
+const TLogo18 = 162
+const TLogo19 = 163
+const TLogo110 = 164
+const TLogo111 = 165
+const TLogo112 = 166
+const TLogo113 = 167
+const TLogo114 = 168
+const TLogo115 = 169
+const TLogo116 = 170
+const TLogo117 = 171
+const TLogo118 = 172
+const TLogo119 = 173
+const TLogo120 = 174
+const TLogo20 = 175
+const TLogo21 = 176
+const TLogo22 = 177
+const TLogo23 = 178
+const TLogo24 = 179
+const TLogo25 = 180
+const TLogo26 = 181
+const TLogo27 = 182
+const TLogo28 = 183
+const TLogo29 = 184
+const TLogo210 = 185
+const TLogo211 = 186
+const TLogo212 = 187
+const TLogo213 = 188
+const TLogo214 = 189
+const TLogo215 = 190
+const TLogo216 = 191
+const TLogo217 = 192
+const TLogo218 = 193
+const TLogo219 = 194
+const TLogo220 = 195
+const TLogo30 = 196
+const TLogo31 = 197
+const TLogo32 = 198
+const TLogo33 = 199
+const TLogo34 = 200
+const TLogo35 = 201
+const TLogo36 = 202
+const TLogo37 = 203
+const TLogo38 = 204
+const TLogo39 = 205
+const TLogo310 = 206
+const TLogo311 = 207
+const TLogo312 = 208
+const TLogo313 = 209
+const TLogo314 = 210
+const TLogo315 = 211
+const TLogo316 = 212
+const TLogo317 = 213
+const TLogo318 = 214
+const TLogo319 = 215
+const TLogo320 = 216
+const TCloud00 = 217
+const TCloud01 = 218
+const TCloud02 = 219
+const TCloud03 = 220
+const TCloud04 = 221
+const TCloud05 = 222
+const TCloud10 = 223
+const TCloud11 = 224
+const TCloud12 = 225
+const TCloud13 = 226
+const TCloud14 = 227
+const TCloud15 = 228
+const TCloud20 = 229
+const TCloud21 = 230
+const TCloud22 = 231
+const TCloud23 = 232
+const TCloud24 = 233
+const TCloud25 = 234
+const SRim = 0
+const STray = 4
+const SDrip = 8
+const SCloudu = 12
+const SCloud = 16
+const SSplash = 20
+const NTiles8 = 856
+const SprBytes = 192
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndDrip = 6
+const SndCatch = 7
+const SndSplash = 8
+const SndNoteA = 9
+const SndNoteB = 10
+const SndOver = 11
+const TuneFrames = 768
+const TxtCredits = 0
+const NSpr = 28
+const HideY = 192
+' C-64 cycles in units of 8: free cycles per NTSC frame (17045 - 1075 bad
+' lines - 210 KERNAL IRQ) and the measured cost of each kind of pass
+const Budget = 1970
+const LightU = 40
+const GroundU = 156
+const TrayU = 70
+const CloudU = 30
+const RndU = 416
+const DripU = 2019
+const DripEach = 9
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StMiss = 5
+const StLevel = 6
+const StNext = 7
+const StOver = 9
+
+u8 DripR[25]
+u8 GrassBuf[28]
+u16 ScK = 0
+u16 ScL = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Cyc = 0
+u16 Debt = 0
+u16 Cost = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Lives = 0
+u8 Level = 1
+u8 SelLevel = 1
+u8 Need = 0
+u8 Got = 0
+u8 Remain = 0
+u8 DripP = 0
+u8 SpawnS = 0
+u8 Gc = 1
+u8 Bc = 128
+u8 Cc = 3
+u8 Dc = 0
+u8 Spc = 0
+u8 Bx = 20
+u8 Cl = 20
+u8 Ct = 20
+u8 EndF = 0
+u8 MissC = 0
+u8 Paused = 0
+u8 HudDirty = 0
+u8 GrassT = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 Lp = 0
+u8 M = 0
+u8 Ri = 0
+u8 R1 = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Li = 0
+u8 Ni = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Y = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 2 then
+    HowTo
+    goto title
+  end if
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  Flush
+  ReadPad
+  if Press = 1 then TogglePause
+  if Paused = 0 then
+    RunFrame
+    GrassTick
+  end if
+  SetSprites
+  if EndF = 0 then goto play_loop
+  if EndF = 2 then
+    LevelDone
+    goto play_loop
+  end if
+  MissPause
+  dec Lives
+  if Lives > 0 then
+    StartLevel
+    goto play_loop
+  end if
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (the original's machine code, pass by pass)
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' game start ($C517): three trays, trays and cloud at column 20
+sub NewGame:
+  State = StNext
+  ScK = 0
+  ScL = 0
+  Lives = 3
+  Level = SelLevel
+  Bx = 20
+  Cl = 20
+  Ct = 20
+  Cc = 3
+  StartLevel
+  return
+end sub
+
+' level start ($C537 + $C357): the level's numbers, an empty sky
+sub StartLevel:
+  State = StNext
+  ' drips: 10 x level, 240 from level 26
+  Need = 240
+  if Level < 26 then
+    Need = Level * 10
+  end if
+  ' spawn every SpawnS drip steps: 10 - min(L/2, 10), at least 3
+  T = Level >> 1
+  if T > 10 then T = 10
+  SpawnS = 10 - T
+  if SpawnS < 3 then SpawnS = 3
+  ' a drip step every DripP cloud steps: 2 below level 10, else 1;
+  ' from level 20 one spawn step less
+  DripP = 2
+  if Level >= 10 then DripP = 1
+  if Level >= 20 then dec SpawnS
+  Remain = Need
+  Got = 0
+  Dc = 64
+  Spc = 1
+  Gc = 1
+  EndF = 0
+  Paused = 0
+  Cyc = 0
+  Debt = 0
+  fill array DripR with 255
+  DrawPlay
+  State = StPlay
+  return
+end sub
+
+' one frame of the original: passes against the frame's cycle budget; a
+' pass that does not fit ends in the next frame (Debt)
+sub RunFrame:
+  if Debt >= Budget then
+    Debt -= Budget
+    return
+  end if
+  Cyc = Budget - Debt
+  Debt = 0
+rf_loop:
+  ' passes before the next counter event are light (320 cycles each)
+  M = Gc
+  if Bc < M then M = Bc
+  if Cc < M then M = Cc
+  dec M
+  Lp = 0
+rf_light8:
+  ' eight light passes at a time while they fit
+  if M >= 8 then
+    if Cyc > 320 then
+      Cyc -= 320
+      Lp += 8
+      M -= 8
+      goto rf_light8
+    end if
+  end if
+rf_light:
+  if M = 0 then goto rf_event
+  if Cyc <= LightU then
+    Debt = LightU - Cyc
+    Cyc = 0
+    inc Lp
+    Gc -= Lp
+    Bc -= Lp
+    Cc -= Lp
+    return
+  end if
+  Cyc -= LightU
+  inc Lp
+  dec M
+  goto rf_light
+rf_event:
+  Gc -= Lp
+  Bc -= Lp
+  Cc -= Lp
+  Cost = LightU
+  OnePass
+  if EndF <> 0 then
+    Cyc = 0
+    Debt = 0
+    return
+  end if
+  if Cost < Cyc then
+    Cyc -= Cost
+    goto rf_loop
+  end if
+  Debt = Cost - Cyc
+  Cyc = 0
+  return
+end sub
+
+' one pass with an event: ground ($C070), trays ($C096), cloud and drips
+' ($C176, $C214, $C2AB), the level check ($C315)
+sub OnePass:
+  dec Gc
+  if Gc = 0 then
+    Gc = 64
+    Cost += GroundU
+  end if
+  dec Bc
+  if Bc = 0 then
+    Bc = 128
+    TrayStep
+  end if
+  dec Cc
+  if Cc = 0 then
+    Cc = 192
+    Cost += CloudU
+    CloudStep
+  end if
+  if Got = Need then EndF = 2
+  return
+end sub
+
+' the trays: one column a step, columns 0-37; drips in the cells they move
+' onto are caught
+sub TrayStep:
+  V = Jk & 12
+  if V = 0 then return
+  Cost += TrayU
+  V = Jk & 4
+  if V > 0 then
+    if Bx > 0 then dec Bx
+  end if
+  V = Jk & 8
+  if V > 0 then
+    if Bx < 37 then inc Bx
+  end if
+  R1 = 21
+  TrayCatch
+  if Lives >= 2 then
+    R1 = 18
+    TrayCatch
+  end if
+  if Lives >= 3 then
+    R1 = 15
+    TrayCatch
+  end if
+  return
+end sub
+
+' a drip in row R1 inside the trays' three columns is caught
+sub TrayCatch:
+  C = DripR[R1]
+  if C = 255 then return
+  if C < Bx then return
+  T = Bx + 2
+  if C > T then return
+  DripR[R1] = 255
+  Caught1
+  return
+end sub
+
+sub Caught1:
+  inc Got
+  ScL += 5
+  if ScL >= 1000 then
+    ScL -= 1000
+    inc ScK
+  end if
+  HudDirty = 1
+  play sound SndCatch
+  return
+end sub
+
+' the cloud: a new random target column when it got there, then one
+' column toward it; then the drip counter
+sub CloudStep:
+  if Ct = Cl then
+cs_pick:
+    Cost += RndU
+    Rand
+    W16 = Rs & 63
+    T = W16
+    if T >= 38 then goto cs_pick
+    if T = Cl then goto cs_pick
+    Ct = T
+  end if
+  if Cl >= Ct then
+    dec Cl
+  else
+    inc Cl
+  end if
+  dec Dc
+  if Dc > 0 then return
+  Dc = DripP
+  Cost += DripU
+  DripStep
+  ' a new drip under the cloud's middle, every SpawnS drip steps
+  dec Spc
+  if Spc > 0 then return
+  Spc = SpawnS
+  if Remain = 0 then return
+  dec Remain
+  T = Cl + 1
+  DripR[4] = T
+  play sound SndDrip
+  return
+end sub
+
+' every drip one row down (rows 22 .. 4, bottom first): into a tray's
+' cells it is caught; into row 23 (the grass) it is lost
+sub DripStep:
+  for Ri = 22 downto 4
+    C = DripR[Ri]
+    if C <> 255 then
+      Cost += DripEach
+      R1 = Ri + 1
+      K = 0
+      if R1 = 21 then K = 1
+      if R1 = 18 then
+        if Lives >= 2 then K = 1
+      end if
+      if R1 = 15 then
+        if Lives >= 3 then K = 1
+      end if
+      if K = 1 then
+        if C < Bx then K = 0
+        T = Bx + 2
+        if C > T then K = 0
+      end if
+      DripR[Ri] = 255
+      if K = 1 then
+        Caught1
+      else
+        DripR[R1] = C
+        if R1 = 23 then
+          EndF = 1
+          MissC = C
+          play sound SndSplash
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+sub TogglePause:
+  if Paused = 0 then
+    Paused = 1
+    backdrop light blue
+  else
+    Paused = 0
+    backdrop cyan
+  end if
+  return
+end sub
+
+' the original redraws the tufts at random every 64 passes (about 45 times
+' a second); here at most 3 times a second (house rule on flashing)
+sub GrassTick:
+  inc GrassT
+  if GrassT < 20 then return
+  GrassT = 0
+  DrawGrass
+  return
+end sub
+
+sub DrawGrass:
+  Rand
+  W16 = Rs & 31
+  T = W16
+  copy GrassTab + T count 28 to GrassBuf
+  put GrassBuf at 2,21
+  return
+end sub
+
+' drip lost: the original's pause (329,000 cycles, 21 frames)
+sub MissPause:
+  State = StMiss
+  for Ni = 0 to 20
+    Frame1
+    Flush
+  next
+  return
+end sub
+
+' level done: pause, the original's 5-note jingle ($C425: 456 and 349 Hz,
+' 22 frames each), the next level (up to 99)
+sub LevelDone:
+  State = StLevel
+  for Ni = 0 to 20
+    Frame1
+    Flush
+  next
+  for Ni = 0 to 4
+    V = Ni & 1
+    if V = 0 then
+      play sound SndNoteA
+    else
+      play sound SndNoteB
+    end if
+    for Li = 0 to 22
+      Frame1
+    next
+  next
+  if Level < 99 then inc Level
+  StartLevel
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' slots: 0-5 the trays (rim, body; bottom tray first), 6-7 the cloud,
+' 8-28 one drip per row 4..23 (a row never holds two drips)
+sub SetSprites:
+  Y = YRow[21] - 1
+  set sprite 0 to Y,XMap[Bx],SRim,1
+  set sprite 1 to Y,XMap[Bx],STray,6
+  T = HideY
+  if Lives >= 2 then T = YRow[18] - 1
+  set sprite 2 to T,XMap[Bx],SRim,1
+  set sprite 3 to T,XMap[Bx],STray,6
+  T = HideY
+  if Lives >= 3 then T = YRow[15] - 1
+  set sprite 4 to T,XMap[Bx],SRim,1
+  set sprite 5 to T,XMap[Bx],STray,6
+  Y = YRow[2] - 1
+  set sprite 6 to Y,XMap[Cl],SCloudu,14
+  set sprite 7 to Y,XMap[Cl],SCloud,1
+  for Li = 4 to 23
+    C = DripR[Li]
+    K = Li + 4
+    if C = 255 then
+      set sprite K to HideY,0,SDrip,0
+    else
+      T = YRow[Li] - 1
+      set sprite K to T,XMap[C],SDrip,4
+    end if
+  next
+  if EndF = 1 then
+    T = YRow[23] - 1
+    set sprite 27 to T,XMap[MissC],SSplash,4
+  end if
+  return
+end sub
+
+' right after the frame wait: the sprites and the HUD of the last pass
+sub Flush:
+  update sprites
+  if HudDirty = 1 then ShowHud
+  return
+end sub
+
+sub ShowHud:
+  HudDirty = 0
+  ' the original's two HUD lines (C-64 rows 0-1)
+  print at 4,1, "DRIP-DROP  BY JOHN FEDOR"
+  print at 4,2, "SCORE:"
+  NumU = ScK
+  print at 11,2, digits$(NumU, 3)
+  NumU = ScL
+  print at 14,2, digits$(NumU, 3)
+  print at 19,2, "LEVEL:"
+  NumU = Level
+  print at 26,2, digits$(NumU, 2)
+  return
+end sub
+
+sub DrawGround:
+  DrawGrass
+  for J = 2 to 29
+    T = J & 1
+    T += TSoil1
+    put char T at J,22
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  DrawGround
+  ShowHud
+  ShowScreen
+  SetSprites
+  update sprites
+  return
+end sub
+
+sub GameOver:
+  HideSprites
+  print at 11,10, "GAME OVER"
+  print at 9,12, "SCORE"
+  NumU = ScK
+  print at 15,12, digits$(NumU, 3)
+  NumU = ScL
+  print at 18,12, digits$(NumU, 3)
+  print at 10,14, "PRESS BUTTON"
+  play sound SndOver
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker off
+  for J = 0 to 27
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles, clear (black text on the cyan sky)
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $17
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop cyan
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+sub DrawLogo:
+  for J = 0 to 20
+    T = TLogo00 + J
+    put char T at J + 5,5
+    T = TLogo10 + J
+    put char T at J + 5,6
+    T = TLogo20 + J
+    put char T at J + 5,7
+    T = TLogo30 + J
+    put char T at J + 5,8
+  next
+  for J = 0 to 5
+    T = TCloud00 + J
+    put char T at J + 13,1
+    T = TCloud10 + J
+    put char T at J + 13,2
+    T = TCloud20 + J
+    put char T at J + 13,3
+  next
+  return
+end sub
+
+' the title: cloud and logo, author, menu (cursor back on START), the tune
+sub TitlePage:
+  State = StBoot
+  NewScreen
+  DrawLogo
+  put char TDrop at 15,4
+  put char TDrop at 7,2
+  put char TDrop at 24,3
+  put char TDrop at 3,10
+  put char TDrop at 28,9
+  print at 10,10, "BY JOHN FEDOR"
+  print at 11,12, "START"
+  print at 11,14, "LEVEL"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  DrawGround
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 3
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 3 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Menu = 1 then
+    K = Edge & 12
+    if K > 0 then
+      if K = 4 then
+        if SelLevel > 1 then dec SelLevel
+      else
+        if SelLevel < 25 then inc SelLevel
+      end if
+      play sound SndClick
+      ShowMenu
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,12
+  put char 32 at 9,14
+  put char 32 at 9,16
+  put char 32 at 9,18
+  C = Menu << 1
+  C += 12
+  put char 62 at 9,C
+  NumU = SelLevel
+  print at 17,14, digits$(NumU, 2)
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen
+  print at 11,2, "DRIP-DROP"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' a picture: ground on rows 8-9 and a tray at C-64 column Ni
+sub HowGround:
+  fill TGrass1 count 12 at 10,8
+  fill TSoil1 count 12 at 10,9
+  return
+end sub
+
+' HOW TO PLAY: three airy pages with the game's own sprites and tiles
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  HowGround
+  set sprite 6 to 23,112,SCloudu,14
+  set sprite 7 to 23,112,SCloud,1
+  set sprite 8 to 40,114,SDrip,4
+  set sprite 0 to 57,108,SRim,1
+  set sprite 1 to 57,108,STray,6
+  update sprites
+  print at 2,11, "A STORM CLOUD DRIFTS OVER"
+  print at 2,13, "THE SKY AND DROPS RAIN."
+  print at 2,15, "MOVE YOUR TRAYS LEFT AND"
+  print at 2,17, "RIGHT AND CATCH EVERY DRIP."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    print at 2,3, "EACH DRIP CAUGHT: 5 POINTS."
+    print at 2,5, "CATCH ALL THE DRIPS OF A"
+    print at 2,7, "LEVEL (10 TIMES ITS NUMBER)"
+    print at 2,9, "TO GO ON TO THE NEXT ONE."
+    print at 2,11, "HIGHER LEVELS: FASTER DRIPS"
+    print at 2,13, "AND MORE OF THEM."
+    print at 2,15, "CHOOSE THE FIRST LEVEL ON"
+    print at 2,17, "THE TITLE. BUTTON: PAUSE."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    HowGround
+    set sprite 0 to 54,100,SRim,1
+    set sprite 1 to 54,100,STray,6
+    set sprite 2 to 40,100,SRim,1
+    set sprite 3 to 40,100,STray,6
+    set sprite 4 to 26,100,SRim,1
+    set sprite 5 to 26,100,STray,6
+    set sprite 8 to 62,140,SSplash,4
+    update sprites
+    print at 2,11, "THREE TRAYS, ONE ABOVE THE"
+    print at 2,13, "OTHER. A DRIP THAT HITS THE"
+    print at 2,15, "GROUND TAKES ONE AWAY, AND"
+    print at 2,17, "THE LEVEL STARTS AGAIN."
+    print at 2,19, "NO TRAYS LEFT: GAME OVER."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+' C-64 row -> top pixel row (rows 2..24 at 7 px from y = 24)
+data YRow bytes = 10,17,24,31,38,45,52,59,66,73,80,87,94,101,108,115,122,129,136,143,150,157,164,171,178
+data XMap bytes = 16,22,27,33,38,44,50,55,61,66,72,78,83,89,94,100,106,111,117,122,128,134,139,145,150,156,162,167,173,178,184,190,195,201,206,212,218,223,229,234
+data GrassTab bytes = 128,129,128,128,129,128,128,129,129,128,129,129,128,129,129,128,128,129,128,128,129,129,128,129,129,128,129,129,128,128,129,128,128,129,129,128,129,129,128,129,129,128,128,129,128,128,129,128,128,129,129,128,129,129,128,128,129,128,128,129,128,128,129,129
+
+data TilePatZ bytes
+  $A2,$00,$10,$51,$82,$85,$8C,$0C,$00,$8A,$08,$8A,$0A,$8E,$31,$30,$08,$86,$00,$BC,$10,$F0,$E0,$DF
+  $8B,$1C,$C1,$C1,$1C,$E0,$A6,$FF,$1C,$24,$00,$01,$88,$00,$07,$A6,$38,$80,$00,$A2,$81,$9A,$70,$00
+  $69,$07,$88,$00,$03,$A0,$00,$A3,$80,$FF,$D0,$D6,$8F,$D0,$FE,$5F,$D0,$5B,$81,$A6,$FF,$8E,$9A,$00
+  $C0,$78,$10,$2F,$F0,$FF,$97,$70,$75,$E0,$F6,$A0,$F2,$1C,$FE,$96,$01,$97,$38,$8E,$48,$D0,$F6,$7D
+  $DE,$FF,$12,$10,$4E,$D0,$3B,$40,$83,$D6,$F7,$3E,$B2,$0E,$76,$E4,$A0,$BC,$8E,$FE,$FB,$1D,$E6,$BF
+  $CA,$4D,$A0,$E9,$FF,$70,$7D,$40,$E3,$D0,$77,$E0,$63,$B8,$9B,$80,$1C,$CF,$9E,$D7,$EB,$FE,$40,$CC
+  $44,$97,$92,$23,$F4,$98,$1A,$BC,$02,$02,$CA,$FE,$4D,$FE,$90,$00,$77,$54,$1F,$91,$B2,$76,$5C,$FF
+  $10,$FE,$D7,$72,$78,$70,$CB,$5C,$87,$A0,$27,$94,$E5,$A1,$50,$6D,$40,$AB,$A4,$40,$C1,$10,$A7,$02
+  $C0,$86,$F5,$90,$78,$A0,$51,$B2,$01,$AF,$28,$07,$D8,$F6,$08,$80,$E2,$F2,$30,$8A,$BB,$E0,$CF,$01
+  $83,$B6,$DB,$B9,$03,$E0,$3C,$DD,$76,$0F,$AC,$63,$80,$F0,$E8,$93,$90,$CA,$C0,$80,$82,$F2,$E0,$0C
+  $93,$1C,$BC,$7B,$40,$B8,$B3,$08,$B8,$2D,$04,$7F,$B6,$4F,$B5,$0A,$55,$58
+end data
+data TileColZ bytes
+  $A9,$07,$67,$AF,$76,$F0,$7A,$FF,$06,$1F,$F0,$6E,$47,$FE,$A8,$74,$A8,$47,$07,$75,$A3,$57,$F7,$EF
+  $F0,$BA,$F6,$EA,$7A,$74,$07,$05,$FF,$07,$7F,$E0,$FF,$D0,$E0,$DE,$B0,$D4,$E0,$90,$79,$FE,$3D,$90
+  $7F,$E2,$97,$50,$DF,$30,$80,$7D,$F0,$0E,$FE,$FF,$F0,$FE,$5A,$74,$5A,$07,$A3,$04,$DE,$D6,$A8,$E0
+  $EA,$F3,$FE,$8F,$AC,$9C,$78,$DC,$F3,$F0,$FD,$90,$C0,$E4,$A0,$F7,$50,$EF,$DD,$C0,$8A,$7F,$B0,$D3
+  $FE,$D7,$50,$DF,$7C,$DE,$7D,$BE,$F7,$44,$BD,$F6,$C0,$76,$8E,$37,$DE,$77,$94,$39,$FE,$4F,$C0,$0E
+  $90,$F0,$50,$F4,$F0,$FE,$CA,$F0,$5F,$4C,$47,$DF,$C6,$C0,$10,$F5,$90,$78,$A0,$45,$EA,$FF,$E7,$A1
+  $17,$A8,$71,$07,$E7,$7E,$0E,$01,$FE,$E3,$EF,$F0,$3E,$EE,$E9,$71,$FF,$07,$68,$17,$A0,$71,$A1,$01
+  $5F,$CC,$7F,$AF,$B1,$9A,$FE,$74,$7F,$0D,$DD,$5F,$20,$FE,$81,$F0,$E0,$1A,$47,$07,$F7,$B0,$BE,$D5
+  $55,$60
+end data
+data SpritePatZ bytes
+  $A4,$00,$84,$40,$80,$45,$AA,$55,$00,$9F,$01,$00,$05,$E0,$08,$61,$C0,$C0,$ED,$FF,$FF,$66,$01,$01
+  $2D,$16,$E2,$10,$FF,$38,$7C,$89,$38,$00,$16,$3B,$3B,$04,$36,$82,$C0,$A8,$F0,$0C,$02,$EA,$3F,$FF
+  $7F,$61,$7D,$18,$00,$AA,$F0,$FC,$19,$F2,$F8,$F0,$70,$C0,$3F,$92,$54,$3D,$46,$03,$55,$55,$80
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2E,$0B,$28,$4F,$52
+  $49,$47,$49,$4E,$41,$4C,$29,$2E,$05,$31,$39,$38,$38,$2E,$05,$32,$30,$32,$36,$2E,$05,$41,$50,$52
+  $49,$4C,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$04,$43,$2D,$36,$34,$06,$43,$4C,$41,$55,$44,$45
+  $0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$06,$46,$45,$44,$4F,$52,$2C,$04,$47,$41,$4D
+  $45,$02,$49,$4E,$04,$4A,$4F,$48,$4E,$08,$4D,$41,$59,$2F,$4A,$55,$4E,$45
+end data
+data TxD_1 bytes
+  $02,$4F,$4E,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$04,$50,$4F,$52,$54,$09,$50,$55,$42,$4C,$49,$53
+  $48,$45,$44,$06,$52,$45,$52,$55,$4E,$2C,$06,$53,$48,$4F,$57,$45,$52,$05,$54,$49,$54,$4C,$45,$05
+  $54,$55,$4E,$45,$3A
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $11,$08,$0C,$FE,$01,$0E,$0B,$13,$10,$FE,$14,$0F,$04,$FE,$0A,$12,$0D,$00,$FE,$01,$09,$02,$FE,$00
+  $01,$00,$07,$05,$FE,$16,$17,$06,$15,$FE,$03,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScDrip:
+    db $40,$B3,$10,$01,$40,$B3,$30,$02,$40,$B3,$50,$03,$40,$B3,$70,$03,$50
+ScCatch:
+    db $00,$00,$15,$01,$00,$00,$35,$02,$00,$00,$55,$02,$10
+ScSplash:
+    db $00,$00,$04,$02,$00,$00,$24,$04,$00,$00,$44,$06,$00,$00,$64,$08,$10
+ScNoteA:
+    db $40,$F5,$10,$02,$40,$F5,$20,$12,$40,$F5,$50,$02,$50
+ScNoteB:
+    db $40,$41,$11,$02,$40,$41,$21,$12,$40,$41,$51,$02,$50
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScDrip,$705D
+    dw ScCatch,$7053
+    dw ScSplash,$7053
+    dw ScNoteA,$705D
+    dw ScNoteB,$705D
+    dw ScOver,$705D
+; April Shower (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$23,$01,$28,$01,$2B,$01,$2A,$28,$26,$01,$23,$01
+    db $21,$01,$23,$01,$1F,$01,$23,$01,$28,$01,$26,$23,$21,$01,$1F,$01
+    db $21,$01,$01,$01,$23,$01,$26,$01,$2B,$01,$2D,$2B,$2A,$01,$26,$01
+    db $28,$01,$2A,$01,$2B,$01,$2A,$01,$28,$01,$26,$01,$23,$01,$21,$01
+    db $1C,$01,$01,$01,$28,$01,$01,$26,$23,$01,$01,$21,$1F,$01,$21,$01
+    db $23,$01,$26,$01,$28,$01,$2B,$01,$2A,$01,$26,$01,$28,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$1F,$01,$01,$01,$23,$01,$01,$01,$21,$01,$01,$01
+    db $1E,$01,$01,$01,$1C,$01,$01,$01,$1F,$01,$01,$01,$1E,$01,$01,$01
+    db $1A,$01,$01,$01,$1F,$01,$01,$01,$23,$01,$01,$01,$26,$01,$01,$01
+    db $21,$01,$01,$01,$23,$01,$01,$01,$1F,$01,$01,$01,$1E,$01,$01,$01
+    db $18,$01,$01,$01,$23,$01,$01,$01,$1F,$01,$01,$01,$1C,$01,$01,$01
+    db $1E,$01,$01,$01,$1F,$01,$01,$01,$21,$01,$01,$01,$1F,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$88,$F0,$25,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$AB,$F0,$21,$C0,$72,$F0,$1F
+    db $C0,$98,$F0,$21,$C0,$66,$F0,$1F,$C0,$72,$F0,$21,$C0,$98,$F0,$1F,$C0,$72,$F0,$21,$C0,$98,$F0,$1F
+    db $C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$66,$F0,$21,$C0,$5A,$F0,$1F,$C0,$AB,$F0,$21,$C0,$72,$F0,$1F
+    db $C0,$98,$F0,$21,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$88,$F0,$1A,$FF
+    db $E3
+    db $D0
+}

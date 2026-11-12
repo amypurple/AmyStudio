@@ -1,0 +1,1143 @@
+cartridge "BOMBARD/TONY BRANTNER/1992"
+
+' BOMBARD - a ColecoVision port of "Bombard" by Tony Brantner (C64 machine
+' language, ReRUN November/December 1992). A madman on a high-rise drops
+' bombs on the street; catch each one in your bucket of water. Every bomb
+' caught earns 5 x the level. A bomb that hits the ground sets off all the
+' others and costs a turn; 3 turns, one more every 2000 points.
+'
+' The rules run in the original's own units: one PassOne is one pass of the
+' original main loop ($093D-$09AE), 837 C64 cycles, 18 of them per frame
+' (NTSC 17045 cycles a frame less the IRQ and the bad lines). X and Y are
+' the original's sprite coordinates; only DrawSprites scales them to the
+' ColecoVision screen (x 0.7, y 0.88). See README.md.
+'
+' Sprite slots: 0-1 the bucket (stable, on top), 2-3 the bomber, 4-15 the
+' six bombs (two layers each). Bombs are at least 29 px apart vertically
+' (the drop timer), so a scan line holds at most 4 sprites.
+
+const TWall = 128
+const TKerb = 129
+const TStreet = 130
+const TRoof = 131
+const TWin00 = 132
+const TWin01 = 133
+const TWin02 = 134
+const TWin10 = 135
+const TWin11 = 136
+const TWin12 = 137
+const TLB00 = 138
+const TLB01 = 139
+const TLB10 = 140
+const TLB11 = 141
+const TLO00 = 142
+const TLO01 = 143
+const TLO10 = 144
+const TLO11 = 145
+const TLM00 = 146
+const TLM01 = 147
+const TLM10 = 148
+const TLM11 = 149
+const TLA00 = 150
+const TLA01 = 151
+const TLA10 = 152
+const TLA11 = 153
+const TLR00 = 154
+const TLR01 = 155
+const TLR10 = 156
+const TLR11 = 157
+const TLD00 = 158
+const TLD01 = 159
+const TLD10 = 160
+const TLD11 = 161
+const SMank = 0
+const SManp = 4
+const SMan2k = 8
+const SMan2p = 12
+const SBombk = 16
+const SBomby = 20
+const SBomb2k = 24
+const SBomb2y = 28
+const SBoom1y = 32
+const SBoom1r = 36
+const SBoom2y = 40
+const SBoom2r = 44
+const SBoom3y = 48
+const SBoom3r = 52
+const SSpl1b = 56
+const SSpl1k = 60
+const SSpl2b = 64
+const SSpl2k = 68
+const SSpl3b = 72
+const SSpl3k = 76
+const SBuckb = 80
+const SBuckk = 84
+const NTiles8 = 272
+const SprBytes = 704
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndDrop = 6
+const SndSplash = 7
+const SndLevel = 8
+const SndBoom = 9
+const SndOver = 10
+const TuneFrames = 512
+const TxtCredits = 0
+const NSpr = 16
+const HideY = 192
+const Passes = 18
+const BuckTop = 167
+const ManTop = 23
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StBlast = 5
+const StLevel = 6
+const StOver = 9
+
+' the original's variables ($1012.. sprite X, $101C.. sprite Y)
+u16 BombX[6]
+u8 BombY[6]
+u8 BombPx[6]
+u16 BuckX = 172
+u16 ManX = 172
+u8 Level = 1
+u8 Turns = 3
+u8 Togo = 0
+u8 Spl = 0
+u8 Pose = 0
+u8 C26 = 0
+u8 C27 = 0
+u8 C28 = 0
+u8 C2A = 0
+u8 Dir = 0
+u8 Cnt04 = 0
+' bookkeeping for speed (derived from BombY, never rules of their own)
+u8 Live = 0
+u8 AnyE2 = 0
+u8 Low = 0
+u8 Ev = 0
+' score: ScHi * 10000 + ScLo (six digits on screen)
+u16 ScLo = 0
+u8 ScHi = 0
+u16 HiLo = 0
+u8 HiHi = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 W2 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 Anim = 0
+u8 AnimT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (each loop has its own)
+u8 Pi = 0
+u8 Bi = 0
+u8 Ci = 0
+u8 Li = 0
+u8 Ei = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Px = 0
+u8 Py = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  if Ev = 1 then
+    LevelDone
+    NewLevel
+  end if
+  if Ev = 2 then
+    Blast
+    if Turns > 0 then NewLevel
+  end if
+  if Turns > 0 then goto play_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (one PassOne = one pass of the original's main loop)
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' $08F2: level 1, 3 turns, score 0, bucket and bomber at $AC
+sub NewGame:
+  Level = 1
+  Turns = 3
+  ScLo = 0
+  ScHi = 0
+  BuckX = 172
+  ManX = 172
+  DrawPlay
+  NewLevel
+  return
+end sub
+
+' $090E: a level (or a turn) starts: 4 x level + 10 bombs, all counters 0
+sub NewLevel:
+  Togo = Level << 2
+  Togo += 10
+  fill array BombY with 0
+  Live = 0
+  AnyE2 = 0
+  Low = 0
+  Spl = 0
+  Pose = 0
+  C26 = 0
+  C27 = 25
+  C28 = 0
+  C2A = 0
+  Dir = 0
+  Ev = 0
+  ShowHud
+  DrawSprites
+  State = StPlay
+  return
+end sub
+
+' one frame: 18 passes of the original; a pass that ends the level or
+' drops a bomb on the street stops the frame there (Ev)
+sub PlayFrame:
+  Ev = 0
+  for Pi = 1 to Passes
+    PassOne
+    if Ev > 0 then exit for
+  next
+  inc AnimT
+  if AnimT >= 20 then
+    AnimT = 0
+    Anim = Anim ^ 1
+  end if
+  DrawSprites
+  return
+end sub
+
+sub PassOne:
+  inc Cnt04
+  ' $0B2E: the splash runs 255 passes after a catch
+  if Spl > 0 then inc Spl
+  ' $0B4A: the bomber's throwing pose
+  if Pose > 0 then dec Pose
+  ' $0A0C: a bomb whose Y is exactly $E2 is caught if the bucket is near
+  if AnyE2 > 0 then CatchCheck
+  ' $09E2: the bucket moves 1 px every 5 passes
+  inc C2A
+  if C2A >= 5 then
+    C2A = 0
+    MoveBucket
+  end if
+  ' every (14 - level) passes: the bomber moves, the bombs step
+  inc C28
+  if C28 >= 14 then
+    C28 = Level
+    MoveMan
+    StepBombs
+  end if
+  ' $0982: all bombs dropped, none in the air, splash over: level done
+  if Togo = 0 then
+    if Spl = 0 then
+      if Live = 0 then Ev = 1
+    end if
+  end if
+  ' $09A2: a bomb at Y >= $EB hit the ground
+  if Low > 0 then Ev = 2
+  return
+end sub
+
+sub CatchCheck:
+  AnyE2 = 0
+  for Ci = 0 to 5
+    if BombY[Ci] = 226 then
+      ' caught when bucket X + 9 - bomb X is 0..20 (16 bits)
+      W16 = BuckX + 9
+      W2 = BombX[Ci]
+      W16 = W16 - W2
+      if W16 < 21 then
+        BombY[Ci] = 0
+        dec Live
+        Spl = 1
+        play sound SndSplash
+        AddScore
+      else
+        AnyE2 = 1
+      end if
+    end if
+  next
+  return
+end sub
+
+' $0B59: score + 5 x level; a new thousands digit that is even: +1 turn
+sub AddScore:
+  W16 = ScLo / 1000
+  K = W16
+  T = Level * 5
+  ScLo += T
+  if ScLo >= 10000 then
+    ScLo -= 10000
+    inc ScHi
+    if ScHi >= 100 then ScHi = 0
+  end if
+  W16 = ScLo / 1000
+  J = W16
+  if J <> K then
+    V = J & 1
+    if V = 0 then
+      if Turns < 99 then inc Turns
+    end if
+  end if
+  ' $0B8A: the high score follows the score
+  if ScHi > HiHi then
+    HiHi = ScHi
+    HiLo = ScLo
+  else
+    if ScHi = HiHi then
+      if ScLo > HiLo then HiLo = ScLo
+    end if
+  end if
+  ShowHud
+  return
+end sub
+
+' stick: left -1, right +1, both or none 0; X kept in 25..321
+sub MoveBucket:
+  V = Jk & 12
+  if V = 4 then
+    if BuckX > 25 then dec BuckX
+  end if
+  if V = 8 then
+    if BuckX < 321 then inc BuckX
+  end if
+  return
+end sub
+
+' $0A4F: a random 0 (1 in 256) turns the bomber; else 1 px, turning at
+' X 26 and 319
+sub MoveMan:
+  Rand
+  T = Rs & 255
+  if T = 0 then
+    Dir = Dir ^ 1
+    return
+  end if
+  if Dir = 0 then
+    if ManX < 319 then
+      inc ManX
+    else
+      Dir = 1
+    end if
+  else
+    if ManX > 26 then
+      dec ManX
+    else
+      Dir = 0
+    end if
+  end if
+  return
+end sub
+
+' $0A84: every other call the bombs fall 1 px; a free slot gets a new bomb
+' when the drop timer C27 reaches 65 (then back to 4 x level)
+sub StepBombs:
+  inc C26
+  T = C26 & 1
+  if T = 0 then return
+  inc C27
+  Low = 0
+  for Bi = 5 downto 0
+    T = BombY[Bi]
+    if T <> 0 then
+      inc T
+      BombY[Bi] = T
+      if T = 226 then AnyE2 = 1
+      if T >= 235 then Low = 1
+    else
+      if C27 >= 65 then
+        C27 = Level << 2
+        if Togo > 0 then
+          dec Togo
+          BombX[Bi] = ManX
+          W16 = ManX
+          MapX
+          BombPx[Bi] = Px
+          BombY[Bi] = 86
+          inc Live
+          Pose = 250
+          play sound SndDrop
+        end if
+      end if
+    end if
+  next
+  return
+end sub
+
+' $0C0B: the level's tune (about 128 jiffies), then the next level (max 9)
+sub LevelDone:
+  State = StLevel
+  play sound SndLevel
+  for Ei = 1 to 128
+    Frame1
+  next
+  if Level < 9 then inc Level
+  return
+end sub
+
+' $0AE4: the bombs blow up (about 64 frames, pictures F9 FA FB FA), then
+' the bomber giggles (16 x 5 frames) and a turn is lost
+sub Blast:
+  State = StBlast
+  play sound SndBoom
+  for Ei = 0 to 63
+    W16 = Ei * 5
+    W16 = W16 >> 4
+    T = W16 & 3
+    C = SBoom1y
+    if T = 1 then C = SBoom2y
+    if T = 2 then C = SBoom3y
+    if T = 3 then C = SBoom2y
+    DrawBombsAs
+    Frame1
+  next
+  for Li = 0 to 5
+    BombY[Li] = 0
+  next
+  Live = 0
+  for Ei = 16 downto 1
+    T = Ei & 1
+    Pose = 0
+    if T = 0 then Pose = 1
+    DrawSprites
+    for Li = 1 to 5
+      Frame1
+    next
+  next
+  Pose = 0
+  if Turns > 0 then dec Turns
+  ShowHud
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: the original's sprite X (24 + pixel) and Y (50 + line) scaled
+
+' Px from W16 = an original X: 16 + (X - 25) * 0.7 (table, art.py)
+sub MapX:
+  W16 = W16 - 25
+  Px = XMap[W16]
+  return
+end sub
+
+' Py from T = a bomb's original Y (86..235): 36 + (Y - 85) * 0.88
+sub MapY:
+  V = T - 86
+  Py = YMap[V]
+  return
+end sub
+
+sub DrawSprites:
+  ' the bucket: the splash pictures FC FD FE, then FF (Spl / 64)
+  W16 = BuckX
+  MapX
+  C = SBuckb
+  if Spl > 0 then
+    T = Spl >> 6
+    if T = 0 then C = SSpl1b
+    if T = 1 then C = SSpl2b
+    if T = 2 then C = SSpl3b
+  end if
+  set sprite 0 to BuckTop,Px,C,7
+  C += 4
+  set sprite 1 to BuckTop,Px,C,8
+  ' the bomber: F6 while throwing (or giggling), else F5
+  W16 = ManX
+  MapX
+  C = SMank
+  if Pose > 0 then C = SMan2k
+  set sprite 2 to ManTop,Px,C,1
+  C += 4
+  set sprite 3 to ManTop,Px,C,9
+  ' the bombs
+  C = SBombk
+  if Anim = 1 then C = SBomb2k
+  for Li = 0 to 5
+    K = Li << 1
+    K += 4
+    T = BombY[Li]
+    if T = 0 then
+      set sprite K to HideY,0,C,0
+      inc K
+      set sprite K to HideY,0,C,0
+    else
+      MapY
+      Px = BombPx[Li]
+      set sprite K to Py,Px,C,1
+      inc K
+      V = C + 4
+      set sprite K to Py,Px,V,11
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the blast: every bomb in the air drawn with picture C (yellow over red)
+sub DrawBombsAs:
+  for Li = 0 to 5
+    K = Li << 1
+    K += 4
+    T = BombY[Li]
+    if T <> 0 then
+      MapY
+      Px = BombPx[Li]
+      set sprite K to Py,Px,C,11
+      inc K
+      V = C + 4
+      set sprite K to Py,Px,V,8
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 3,1, "SCORE"
+  NumU = ScHi
+  print at 9,1, digits$(NumU, 2)
+  NumU = ScLo
+  print at 11,1, digits$(NumU, 4)
+  print at 18,1, "HIGH"
+  NumU = HiHi
+  print at 23,1, digits$(NumU, 2)
+  NumU = HiLo
+  print at 25,1, digits$(NumU, 4)
+  print at 3,2, "LEVEL"
+  NumU = Level
+  print at 9,2, digits$(NumU, 3)
+  print at 20,2, "TURNS"
+  NumU = Turns
+  print at 26,2, digits$(NumU, 3)
+  return
+end sub
+
+' the building (columns 2-29): roof on row Py, grey wall below, the street
+' on rows 21-22, windows every 4 rows from
+' row R + 2 (5 across)
+sub DrawBuilding:
+  fill TRoof count 28 at 2,Py
+  T = Py + 1
+  for Li = 0 to 22
+    if T > 20 then exit for
+    fill TWall count 28 at 2,T
+    inc T
+  next
+  fill TKerb count 28 at 2,21
+  fill TStreet count 28 at 2,22
+  T = Py + 2
+  for Li = 0 to 4
+    if T > 19 then exit for
+    for Ci = 0 to 4
+      C = Ci * 5
+      C += 5
+      put char TWin00 at C,T
+      inc C
+      put char TWin01 at C,T
+      inc C
+      put char TWin02 at C,T
+      C -= 2
+      V = T + 1
+      put char TWin10 at C,V
+      inc C
+      put char TWin11 at C,V
+      inc C
+      put char TWin12 at C,V
+    next
+    T += 4
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  Py = 5
+  DrawBuilding
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' the BOMBARD letters (2 x 2 tiles each) from column Px on row Py
+sub Logo:
+  C = Px
+  K = TLB00
+  LogoLetter
+  K = TLO00
+  LogoLetter
+  K = TLM00
+  LogoLetter
+  K = TLB00
+  LogoLetter
+  K = TLA00
+  LogoLetter
+  K = TLR00
+  LogoLetter
+  K = TLD00
+  LogoLetter
+  return
+end sub
+
+sub LogoLetter:
+  V = Py + 1
+  put char K at C,Py
+  inc K
+  inc C
+  put char K at C,Py
+  inc K
+  dec C
+  put char K at C,V
+  inc K
+  inc C
+  put char K at C,V
+  inc C
+  return
+end sub
+
+sub GameOver:
+  HideSprites
+  for Li = 9 to 15
+    fill 32 count 18 at 7,Li
+  next
+  print at 11,10, "GAME OVER"
+  print at 9,12, "SCORE"
+  NumU = ScHi
+  print at 15,12, digits$(NumU, 2)
+  NumU = ScLo
+  print at 17,12, digits$(NumU, 4)
+  print at 8,14, "PRESS THE BUTTON"
+  play sound SndOver
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 15
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles, clear (white text on the light-blue sky)
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F5
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop light blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the BOMBARD letters, the author, the menu (cursor back on
+' START), the building with the bomber on its roof; the tune once
+sub TitlePage:
+  NewScreen
+  Px = 9
+  Py = 2
+  Logo
+  print at 8,5, "BY TONY BRANTNER"
+  print at 11,7, "START"
+  print at 11,9, "HOW TO PLAY"
+  print at 11,11, "CREDITS"
+  Py = 13
+  DrawBuilding
+  Menu = 0
+  ShowMenu
+  set sprite 2 to 87,184,SMank,1
+  set sprite 3 to 87,184,SManp,9
+  set sprite 0 to BuckTop,186,SBuckb,7
+  set sprite 1 to BuckTop,186,SBuckk,8
+  set sprite 4 to 128,188,SBombk,1
+  set sprite 5 to 128,188,SBomby,11
+  update sprites
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,7
+  put char 32 at 9,9
+  put char 32 at 9,11
+  C = Menu << 1
+  C += 7
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 12,2, "BOMBARD"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages, pictures made of the game's sprites and tiles
+sub HowTo:
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  print at 2,3, "A MADMAN ON A HIGH-RISE"
+  print at 2,5, "DROPS BOMBS ON THE STREET."
+  ' the picture: the bomber on a roof, a bomb falling into the bucket
+  fill TRoof count 12 at 10,8
+  fill TKerb count 12 at 10,11
+  fill TStreet count 12 at 10,12
+  set sprite 2 to 47,120,SMan2k,1
+  set sprite 3 to 47,120,SMan2p,9
+  set sprite 4 to 74,124,SBombk,1
+  set sprite 5 to 74,124,SBomby,11
+  set sprite 0 to 87,120,SBuckb,7
+  set sprite 1 to 87,120,SBuckk,8
+  update sprites
+  print at 2,14, "CATCH EVERY BOMB IN YOUR"
+  print at 2,16, "BUCKET OF WATER: 5 POINTS"
+  print at 2,18, "TIMES THE LEVEL EACH."
+  print at 2,20, "THE STICK MOVES THE BUCKET"
+  print at 2,22, "LEFT AND RIGHT."
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    print at 2,3, "A BOMB THAT HITS THE STREET"
+    print at 2,5, "SETS OFF ALL THE OTHERS,"
+    print at 2,7, "AND YOU LOSE A TURN."
+    set sprite 4 to 79,96,SBoom3y,11
+    set sprite 5 to 79,96,SBoom3r,8
+    set sprite 6 to 79,144,SBoom2y,11
+    set sprite 7 to 79,144,SBoom2r,8
+    update sprites
+    print at 2,13, "EACH LEVEL THE BOMBER DROPS"
+    print at 2,15, "MORE BOMBS, AND FASTER:"
+    print at 2,17, "14 ON LEVEL 1, 4 MORE A"
+    print at 2,19, "LEVEL, UP TO LEVEL 9."
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    print at 2,3, "YOU START WITH 3 TURNS AND"
+    print at 2,5, "GET ONE MORE EVERY 2000"
+    print at 2,7, "POINTS. NO TURNS LEFT:"
+    print at 2,9, "GAME OVER."
+    print at 2,13, "TIP: WATCH THE BOMBER'S"
+    print at 2,15, "HANDS, AND GO FOR THE"
+    print at 2,17, "LOWEST BOMB FIRST."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $80,$00,$18,$22,$80,$A0,$90,$80,$A0,$00,$8A,$18,$1A,$19,$18,$00,$A1,$01,$EE,$DA,$D4,$7E,$FF,$D4
+  $4F,$F1,$A7,$FF,$F0,$EE,$F4,$C3,$FE,$A1,$F0,$FE,$D4,$E4,$78,$C5,$BC,$C0,$C0,$FE,$FD,$E1,$BC,$F8
+  $D9,$C0,$78,$E5,$88,$03,$03,$8F,$0C,$0C,$F1,$E1,$FF,$7C,$E7,$A4,$FD,$C0,$98,$E7,$7C,$DF,$20,$A8
+  $F8,$FF,$00,$1F,$6D,$F7,$F9,$10,$DE,$C0,$80,$5D,$87,$C0,$67,$F0,$55,$55,$80
+end data
+data TileColZ bytes
+  $80,$0E,$A5,$01,$28,$0F,$FE,$D9,$FB,$FF,$21,$0F,$F1,$F1,$F0,$F7,$FE,$F5,$BF,$F0,$EE,$93,$F5,$FE
+  $FB,$F4,$5F,$BE,$FE,$F5,$E4,$62,$05,$05,$4F,$F1,$DF,$D8,$C0,$F7,$BC,$E1,$F5,$C0,$FF,$E4,$A1,$9E
+  $C8,$7C,$1E,$C0,$79,$B0,$F1,$7C,$FC,$A9,$C0,$7D,$00,$79,$A4,$FD,$D1,$30,$FE,$CC,$80,$5D,$DF,$C0
+  $B0,$75,$55,$58
+end data
+data SpritePatZ bytes
+  $10,$EA,$03,$0F,$1D,$3F,$21,$12,$11,$0C,$03,$0E,$1F,$3F,$3E,$3F,$23,$1E,$F0,$FC,$EE,$FF,$E1,$E2
+  $5A,$F0,$1C,$FE,$FF,$1F,$FF,$F1,$E8,$00,$FE,$61,$1E,$0D,$0E,$03,$00,$8F,$1C,$00,$E0,$82,$DE,$EC
+  $1C,$F0,$4A,$0E,$3E,$7E,$8E,$11,$82,$E3,$81,$2F,$1F,$FA,$E1,$7E,$E2,$3B,$82,$8F,$81,$FD,$FE,$B2
+  $3A,$7F,$01,$0A,$10,$F3,$72,$A0,$7F,$E0,$AF,$02,$FE,$A6,$01,$AB,$02,$03,$E0,$BB,$FE,$89,$C0,$E0
+  $BE,$C0,$EC,$FF,$0C,$C3,$F9,$B8,$F2,$CC,$F3,$20,$F8,$DF,$FE,$80,$57,$F8,$39,$C9,$B8,$E0,$CA,$FF
+  $FD,$F7,$7E,$4F,$FA,$FF,$B4,$80,$6B,$10,$FD,$87,$F7,$C4,$C9,$CB,$39,$0F,$0F,$1E,$1F,$0D,$0F,$3E
+  $E1,$83,$25,$F0,$D0,$EC,$3C,$1E,$3E,$FE,$EC,$F0,$E0,$F2,$FD,$BE,$E4,$7C,$E0,$85,$F7,$30,$D0,$20
+  $EC,$32,$93,$01,$1F,$1E,$32,$31,$3C,$3E,$F6,$7C,$CA,$61,$39,$3C,$1C,$CE,$2E,$DE,$12,$3E,$FC,$F0
+  $C0,$40,$8A,$00,$13,$7D,$0D,$03,$13,$7F,$D9,$3A,$E7,$E0,$2C,$F0,$47,$30,$E0,$CC,$C9,$04,$76,$1C
+  $3F,$2C,$30,$32,$3C,$0C,$FB,$3E,$1F,$01,$82,$42,$F0,$DC,$1E,$D2,$0F,$13,$0E,$CF,$1F,$33,$FC,$D0
+  $C8,$BA,$BB,$C2,$CF,$0C,$61,$86,$82,$00,$20,$C2,$F0,$4E,$F8,$58,$AA,$2E,$0E,$20,$C8,$12,$BC,$6B
+  $EC,$BE,$91,$EC,$80,$0A,$C0,$10,$CC,$2E,$3D,$0C,$01,$9E,$E3,$D5,$20,$22,$BF,$07,$20,$F3,$80,$52
+  $96,$E0,$BA,$10,$F8,$1F,$1F,$C1,$10,$01,$20,$06,$2D,$02,$AB,$BB,$02,$02,$A0,$01,$02,$57,$EF,$FE
+  $1F,$26,$4D,$A1,$81,$00,$03,$55,$55,$80
+end data
+
+data XMap bytes = 16,16,17,18,18,19,20,20,21,22,22,23,24,25,25,26,27,27,28,29,29,30,31,32,32,33,34,34,35,36,36,37,38,39,39,40,41,41,42,43,43,44,45,46,46,47,48,48,49,50,50,51,52,53,53,54,55,55,56,57,57,58,59,60,60,61,62,62,63,64,64,65,66,67,67,68,69,69,70,71,71,72,73,74,74,75,76,76,77,78,78,79,80,81,81,82,83,83,84,85,85,86,87,88,88,89,90,90,91,92,92,93,94,95,95,96,97,97,98,99,99,100,101,102,102,103,104,104,105,106,106,107,108,108,109,110,111,111,112,113,113,114,115,115,116,117,118,118,119,120,120,121,122,122,123,124,125,125,126,127,127,128,129,129,130,131,132,132,133,134,134,135,136,136,137,138,139,139,140,141,141,142,143,143,144,145,146,146,147,148,148,149,150,150,151,152,153,153,154,155,155,156,157,157,158,159,160,160,161,162,162,163,164,164,165,166,167,167,168,169,169,170,171,171,172,173,174,174,175,176,176,177,178,178,179,180,181,181,182,183,183,184,185,185,186,187,188,188,189,190,190,191,192,192,193,194,195,195,196,197,197,198,199,199,200,201,201,202,203,204,204,205,206,206,207,208,208,209,210,211,211,212,213,213,214,215,215,216,217,218,218,219,220,220,221,222,222
+data YMap bytes = 36,37,38,39,40,41,42,43,43,44,45,46,47,48,49,50,50,51,52,53,54,55,56,57,57,58,59,60,61,62,63,64,65,65,66,67,68,69,70,71,72,72,73,74,75,76,77,78,79,79,80,81,82,83,84,85,86,86,87,88,89,90,91,92,93,94,94,95,96,97,98,99,100,101,101,102,103,104,105,106,107,108,108,109,110,111,112,113,114,115,115,116,117,118,119,120,121,122,123,123,124,125,126,127,128,129,130,130,131,132,133,134,135,136,137,137,138,139,140,141,142,143,144,144,145,146,147,148,149,150,151,152,152,153,154,155,156,157,158,159,159,160,161,162,163,164,165,166,166,167
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$0B,$28,$4F,$52
+  $49,$47,$49,$4E,$41,$4C,$29,$2E,$05,$31,$39,$39,$32,$2E,$05,$32,$30,$32,$36,$2E,$09,$42,$49,$45
+  $4E,$56,$45,$4E,$55,$2C,$09,$42,$52,$41,$4E,$54,$4E,$45,$52,$2C,$03,$43,$36,$34,$06,$43,$4C,$41
+  $55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$04,$47,$41,$4D,$45,$02,$49,$4E
+  $06,$4D,$41,$44,$4D,$41,$4E,$07,$4E,$4F,$56,$2F,$44,$45,$43,$02,$4F,$4E
+end data
+data TxD_1 bytes
+  $08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$04,$50,$4F,$52,$54,$05,$52,$45,$52,$55,$4E,$04,$52,$4F,$4F
+  $46,$03,$54,$48,$45,$05,$54,$49,$54,$4C,$45,$04,$54,$4F,$4E,$59,$05,$54,$55,$4E,$45,$3A
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $10,$08,$0B,$01,$FE,$16,$07,$FE,$12,$0E,$04,$FE,$0A,$11,$0C,$00,$FE,$01,$09,$02,$FE,$00,$01,$00
+  $06,$05,$FE,$15,$17,$0D,$0F,$14,$FE,$13,$03,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScDrop:
+    db $40,$1F,$13,$02,$40,$1F,$33,$03,$40,$1F,$53,$04,$40,$1F,$73,$06,$50
+ScSplash:
+    db $40,$56,$22,$01,$40,$56,$F2,$01,$40,$A3,$20,$01,$40,$A3,$F0,$01,$40,$56,$22,$01,$40,$56,$F2,$01
+    db $40,$A3,$20,$01,$40,$A3,$F0,$01,$40,$56,$22,$01,$40,$56,$F2,$01,$40,$A3,$20,$01,$40,$A3,$F0,$01
+    db $40,$56,$22,$01,$40,$56,$F2,$01,$40,$A3,$20,$01,$40,$A3,$F0,$01,$50
+ScLevel:
+    db $40,$BF,$F1,$1E,$40,$70,$20,$02,$40,$95,$20,$02,$40,$E0,$20,$02,$40,$BF,$21,$02,$40,$59,$20,$02
+    db $40,$70,$20,$02,$40,$95,$20,$02,$40,$E0,$20,$02,$40,$BF,$21,$02,$40,$4B,$20,$02,$40,$59,$20,$02
+    db $40,$70,$20,$02,$40,$95,$20,$02,$40,$E0,$20,$02,$40,$BF,$21,$02,$40,$40,$20,$02,$40,$4B,$20,$02
+    db $40,$59,$20,$02,$40,$70,$20,$02,$40,$95,$20,$02,$40,$E0,$20,$02,$40,$BF,$21,$02,$40,$38,$20,$02
+    db $40,$40,$20,$02,$40,$4B,$20,$02,$40,$59,$20,$02,$40,$70,$20,$02,$40,$95,$20,$02,$40,$E0,$20,$02
+    db $40,$BF,$21,$02,$40,$32,$20,$02,$40,$38,$20,$02,$40,$40,$20,$02,$40,$4B,$20,$02,$40,$59,$20,$02
+    db $40,$70,$20,$02,$40,$95,$20,$02,$40,$E0,$20,$02,$40,$BF,$21,$02,$40,$2D,$20,$02,$40,$32,$20,$02
+    db $40,$38,$20,$02,$40,$40,$20,$02,$40,$4B,$20,$02,$40,$59,$20,$02,$40,$70,$20,$02,$40,$95,$20,$02
+    db $40,$E0,$20,$02,$40,$BF,$21,$02,$50
+ScBoom:
+    db $00,$00,$16,$04,$00,$00,$15,$04,$00,$00,$24,$05,$00,$00,$16,$04,$00,$00,$15,$04,$00,$00,$24,$05
+    db $00,$00,$16,$04,$00,$00,$15,$04,$00,$00,$24,$05,$00,$00,$16,$04,$00,$00,$15,$04,$00,$00,$24,$05
+    db $00,$00,$16,$04,$00,$00,$15,$04,$00,$00,$24,$05,$10
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScDrop,$705D
+    dw ScSplash,$705D
+    dw ScLevel,$705D
+    dw ScBoom,$7053
+    dw ScOver,$705D
+; Madman on the Roof (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$1C,$01,$1F,$23,$28,$01,$26,$23,$24,$01,$23,$21
+    db $23,$01,$01,$01,$21,$01,$24,$28,$2D,$01,$2B,$28,$2A,$01,$28,$26
+    db $28,$01,$01,$01,$23,$23,$01,$23,$24,$01,$23,$21,$1F,$01,$21,$01
+    db $23,$01,$1C,$01,$1E,$01,$1F,$21,$23,$01,$21,$1E,$1C,$01,$01,$01
+    db $00,$00,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1C,$01,$01,$01,$1C,$01,$01,$01
+    db $1F,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01
+    db $17,$01,$01,$01,$1F,$01,$01,$01,$1C,$01,$01,$01,$1C,$01,$01,$01
+    db $17,$01,$01,$01,$1A,$01,$01,$01,$1E,$01,$01,$01,$1F,$01,$01,$01
+    db $00,$00,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$88,$F0,$25,$C0,$5A,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$66,$F0,$21,$C0,$88,$F0,$1F
+    db $C0,$98,$F0,$21,$C0,$72,$F0,$1F,$C0,$88,$F0,$21,$C0,$5A,$F0,$1F,$C0,$AB,$F0,$21,$C0,$72,$F0,$1F
+    db $C0,$5A,$F0,$21,$C0,$B5,$F0,$1F,$C0,$88,$F0,$1A,$FF,$E3
+    db $D0
+}

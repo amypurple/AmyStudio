@@ -1,0 +1,1339 @@
+cartridge "GANTRY/COLIN ADAMS/1989"
+' GANTRY - a ColecoVision port of "Gantry" by Colin Adams (ReRUN,
+' September/October 1989, Commodore 64, machine language).
+'
+' Two gantries face each other across two eroding walls. Each player moves
+' a gantry up and down and fires a shell across the field. A shell that
+' strikes a wall knocks out one block of that row (the block nearest the
+' shooter's side); a shell that strikes the other gantry damages it:
+' NONE, MINOR, MEDIUM, SEVERE, SCRAP. The first gantry reduced to scrap
+' loses. Controller 1 = left gantry, controller 2 = right gantry.
+'
+' Numbers traced from the original (orig/ml.dis, c64/cyc.mjs in jsc64):
+' - main loop 192.7 cycles/pass, own IRQ 1761 cycles/frame -> ~74 passes
+'   per NTSC frame; a gantry moves 1 px (and the stick/button is read)
+'   every 150 passes = every 2.03 frames -> every 2nd frame here
+' - a shell moves 5 C64 px per IRQ (60 Hz); the field is scaled 0.73
+'   across (320 -> 224 px), so 3.75 px a frame here (15/4)
+' - gantry Y range 60..220 (C64 sprite Y) -> 16..166 here (Y - 50, top
+'   kept under the HUD row, which the safe area moved from row 0 to 1)
+' - one shell per gantry on screen; 4 hits = SCRAP = game over
+' - a hit on a gantry freezes play for the explosion (~45 frames)
+
+const TWall = 128
+const TStar = 129
+const TTg0 = 130
+const TTg1 = 131
+const TTg2 = 132
+const TTg3 = 133
+const TTg4 = 134
+const TTg5 = 135
+const TTg6 = 136
+const TTg7 = 137
+const TTg8 = 138
+const TTg9 = 139
+const TTg10 = 140
+const TTg11 = 141
+const TTg12 = 142
+const TTg13 = 143
+const TTg14 = 144
+const TTg15 = 145
+const TTg16 = 146
+const TTg17 = 147
+const TTg18 = 148
+const TTg19 = 149
+const TTg20 = 150
+const TTg21 = 151
+const TTg22 = 152
+const TTg23 = 153
+const TTg24 = 154
+const TTg25 = 155
+const TTg26 = 156
+const TTg27 = 157
+const TTg28 = 158
+const TTg29 = 159
+const TTg30 = 160
+const TTg31 = 161
+const TTg32 = 162
+const TTg33 = 163
+const TTg34 = 164
+const TTg35 = 165
+const TTg36 = 166
+const TTg37 = 167
+const TTg38 = 168
+const TTg39 = 169
+const TTg40 = 170
+const TTg41 = 171
+const TTg42 = 172
+const TTg43 = 173
+const TTg44 = 174
+const TTg45 = 175
+const TTg46 = 176
+const TTg47 = 177
+const TTg48 = 178
+const TTg49 = 179
+const TTg50 = 180
+const TTg51 = 181
+const TTg52 = 182
+const TTg53 = 183
+const TTg54 = 184
+const TTg55 = 185
+const TTg56 = 186
+const TTg57 = 187
+const TTg58 = 188
+const TTg59 = 189
+const TTg60 = 190
+const TTg61 = 191
+const TTg62 = 192
+const TTg63 = 193
+const TTg64 = 194
+const TTg65 = 195
+const TTg66 = 196
+const TTg67 = 197
+const TTg68 = 198
+const TTg69 = 199
+const TTg70 = 200
+const TTg71 = 201
+const TTg72 = 202
+const TTg73 = 203
+const TTg74 = 204
+const TTg75 = 205
+const TTg76 = 206
+const TTg77 = 207
+const TTg78 = 208
+const TTg79 = 209
+const TTg80 = 210
+const TTg81 = 211
+const TTg82 = 212
+const TTg83 = 213
+const TTg84 = 214
+const TTg85 = 215
+const TTg86 = 216
+const TTg87 = 217
+const TTg88 = 218
+const TTg89 = 219
+const TTg90 = 220
+const TTg91 = 221
+const TTg92 = 222
+const TTg93 = 223
+const TTg94 = 224
+const TTg95 = 225
+const SGantryl = 0
+const SGantryr = 4
+const SGantrylg = 8
+const SGantryrg = 12
+const SBullet = 16
+const SSpark = 20
+const SBoom1 = 24
+const SBoom2 = 28
+const NTiles8 = 784
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndFire = 6
+const SndChip = 7
+const SndBoom = 8
+const SndOver = 9
+const TuneFrames = 448
+const TxtCredits = 0
+
+const NSpr = 7
+const HideY = 192
+const GyMin = 16
+const GyMax = 166
+const LxG = 16
+const RxG = 224
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+
+' wall rows: left wall cells [WLa, WLb), right wall cells [WRa, WRb)
+u8 WLa[24]
+u8 WLb[24]
+u8 WRa[24]
+u8 WRb[24]
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Ly = 0
+u8 Ry = 0
+u8 Lbx = 0
+u8 LgY = 255
+u8 GCl = 2
+u8 GCr = 28
+u8 RgY = 255
+u8 GY = 0
+u8 GC = 0
+u8 GT = 0
+u8 GO = 0
+u8 GJ = 0
+u8 GK = 0
+u8 GR = 0
+u8 GD = 0
+u8 Lby = 0
+u8 Lbon = 0
+u8 Rbx = 0
+u8 Rby = 0
+u8 Rbon = 0
+u8 LDmg = 0
+u8 RDmg = 0
+u8 LSpk = 0
+u8 LSx = 0
+u8 LSy = 0
+u8 RSpk = 0
+u8 RSx = 0
+u8 RSy = 0
+u8 BAcc = 0
+u8 Mv = 0
+u8 Div = 0
+u8 Winner = 0
+u8 Shots = 0
+u8 Chips = 0
+u8 GTune = 0
+u8 Menu = 0
+' 1 = one player against the computer (right gantry), 2 = two players
+u8 Mode = 1
+' level 0 EASY, 1 NORMAL, 2 HARD: only the computer's reaction delay and aim error
+u8 Diff = 1
+' the computer's view of the left gantry and its shell, kept 32 frames back
+u8 HLy[32]
+u8 HLs[32]
+u8 HLx[32]
+u8 Hi = 0
+u8 React = 16
+u8 CpuErr = 0
+u8 Scoot = 0
+u8 ScootDir = 0
+u8 Dodge = 0
+u8 CpuShot = 0
+u8 SeenY = 0
+u8 SeenS = 0
+u8 SeenX = 0
+u8 Tgt = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Oi = 0
+u8 Li = 0
+u8 Cx = 0
+u8 Cy = 0
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 2 then
+    HowTo
+    goto title
+  end if
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  Mode = Menu + 1
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Winner = 0 then goto play_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 60 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the walls as on the C64 (rows 2-10 and 14-22, 5 blocks a row, slanted),
+' columns moved in so both stay inside columns 4-27
+sub InitWalls:
+  for J = 0 to 23
+    WLa[J] = 0
+    WLb[J] = 0
+    WRa[J] = 0
+    WRb[J] = 0
+  next
+  for J = 2 to 22
+    T = 0
+    if J <= 10 then T = WallS[J]
+    if J >= 14 then
+      K = 24 - J
+      T = WallS[K]
+    end if
+    if T > 0 then
+      WLa[J] = T
+      V = T + 5
+      WLb[J] = V
+      ' mirrored about the screen's middle (column 15.5)
+      V = 27 - T
+      WRa[J] = V
+      WRb[J] = V + 5
+    end if
+  next
+  return
+end sub
+
+sub NewGame:
+  LDmg = 0
+  RDmg = 0
+  Winner = 0
+  Ly = 50
+  Ry = 130
+  Lbon = 0
+  Rbon = 0
+  LSpk = 0
+  RSpk = 0
+  BAcc = 0
+  Div = 0
+  Shots = 0
+  Chips = 0
+  Scoot = 0
+  Dodge = 0
+  CpuShot = 0
+  Hi = 0
+  for J = 0 to 31
+    HLy[J] = Ly
+    HLs[J] = 255
+    HLx[J] = 0
+  next
+  InitWalls
+  DrawPlay
+  State = StPlay
+  GTune = 1
+  TzOn = 0
+  return
+end sub
+
+' one frame of play
+sub PlayStep:
+  Remember
+  if Mode = 1 then CpuThink
+  ' the gantries and the triggers: every 2nd frame (150 C64 passes)
+  inc Div
+  if Div >= 2 then
+    Div = 0
+    MoveGantries
+  end if
+  ' shells: 15/4 px a frame
+  BAcc += 15
+  Mv = BAcc >> 2
+  BAcc = BAcc & 3
+  if Lbon = 1 then MoveLShell
+  if Rbon = 1 then MoveRShell
+  if LSpk > 0 then dec LSpk
+  if RSpk > 0 then dec RSpk
+  DrawSprites
+  GameTune
+  return
+end sub
+
+sub MoveGantries:
+  V = J1 & 1
+  if V > 0 then
+    if Ly > GyMin then dec Ly
+  end if
+  V = J1 & 2
+  if V > 0 then
+    if Ly < GyMax then inc Ly
+  end if
+  V = J1 & 16
+  if V > 0 then
+    if Lbon = 0 then
+      if LSpk = 0 then
+        Lbon = 1
+        Lbx = LxG
+        Lby = Ly
+        inc Shots
+        play sound SndFire
+      end if
+    end if
+  end if
+  V = J2 & 1
+  if V > 0 then
+    if Ry > GyMin then dec Ry
+  end if
+  V = J2 & 2
+  if V > 0 then
+    if Ry < GyMax then inc Ry
+  end if
+  V = J2 & 16
+  if V > 0 then
+    if Rbon = 0 then
+      if RSpk = 0 then
+        Rbon = 1
+        Rbx = RxG
+        Rby = Ry
+        inc Shots
+        play sound SndFire
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the left gantry's shell flies right
+sub MoveLShell:
+  Lbx += Mv
+  ' gone at the right edge of the safe area (the C64 lets it leave the screen)
+  if Lbx > 224 then
+    Lbon = 0
+    return
+  end if
+  ' its nose (pixel 12) and middle row (pixel 8)
+  T = Lbx + 12
+  Cx = T >> 3
+  T = Lby + 8
+  Cy = T >> 3
+  if Cx >= WLa[Cy] then
+    if Cx < WLb[Cy] then
+      ChipLeftmost
+      Lbon = 0
+      LSpk = 12
+      LSx = Lbx
+      LSy = Lby
+      return
+    end if
+  end if
+  if Cx >= WRa[Cy] then
+    if Cx < WRb[Cy] then
+      ChipLeftmost
+      Lbon = 0
+      LSpk = 12
+      LSx = Lbx
+      LSy = Lby
+      return
+    end if
+  end if
+  ' the right gantry (its body: pixels 2-13 across, 0-15 down)
+  if Lbx >= RxG - 10 then
+    T = Lby + 9
+    V = Ry + 15
+    if T >= Ry then
+      T = Lby + 6
+      if T <= V then
+        Lbon = 0
+        inc RDmg
+        HitGantry(2)
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub MoveRShell:
+  if Rbx < Mv + 16 then
+    Rbon = 0
+    return
+  end if
+  Rbx -= Mv
+  T = Rbx + 3
+  Cx = T >> 3
+  T = Rby + 8
+  Cy = T >> 3
+  if Cx >= WRa[Cy] then
+    if Cx < WRb[Cy] then
+      ChipRightmost
+      Rbon = 0
+      RSpk = 12
+      RSx = Rbx
+      RSy = Rby
+      return
+    end if
+  end if
+  if Cx >= WLa[Cy] then
+    if Cx < WLb[Cy] then
+      ChipRightmost
+      Rbon = 0
+      RSpk = 12
+      RSx = Rbx
+      RSy = Rby
+      return
+    end if
+  end if
+  if Rbx <= LxG + 10 then
+    T = Rby + 9
+    V = Ly + 15
+    if T >= Ly then
+      T = Rby + 6
+      if T <= V then
+        Rbon = 0
+        inc LDmg
+        HitGantry(1)
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the C64 erases the first block found from the shooter's side of the row
+sub ChipLeftmost:
+  inc Chips
+  play sound SndChip
+  if WLa[Cy] < WLb[Cy] then
+    T = WLa[Cy]
+    put char 32 at T,Cy
+    WLa[Cy] = T + 1
+    return
+  end if
+  if WRa[Cy] < WRb[Cy] then
+    T = WRa[Cy]
+    put char 32 at T,Cy
+    WRa[Cy] = T + 1
+  end if
+  return
+end sub
+
+sub ChipRightmost:
+  inc Chips
+  play sound SndChip
+  if WRa[Cy] < WRb[Cy] then
+    T = WRb[Cy] - 1
+    put char 32 at T,Cy
+    WRb[Cy] = T
+    return
+  end if
+  if WLa[Cy] < WLb[Cy] then
+    T = WLb[Cy] - 1
+    put char 32 at T,Cy
+    WLb[Cy] = T
+  end if
+  return
+end sub
+
+' a gantry hit: the explosion holds play (as on the C64), damage shown
+sub HitGantry(u8 Who):
+  ' the C64 clears its collision latches after the explosion, so the other
+  ' shell cannot score during it: here it is simply taken off
+  Lbon = 0
+  Rbon = 0
+  play sound SndBoom
+  ShowHud
+  Cx = LxG
+  Cy = Ly
+  if Who = 2 then
+    Cx = RxG
+    Cy = Ry
+  end if
+  for Li = 0 to 44
+    T = SBoom1
+    V = Li & 8
+    if V > 0 then T = SBoom2
+    C = 11
+    if Li >= 24 then C = 6
+    set sprite 2 to HideY,0,SBullet,0
+    set sprite 3 to HideY,0,SBullet,0
+    set sprite 4 to Cy,Cx,T,C
+    Frame1
+    update sprites
+  next
+  set sprite 4 to HideY,0,SBoom1,0
+  if LDmg >= 4 then Winner = 2
+  if RDmg >= 4 then Winner = 1
+  return
+end sub
+
+
+' ---------------------------------------------------------------------------
+' the computer (1 PLAYER): it only sets the right stick bits J2, so it moves
+' and fires exactly as a player on controller 2 could (one pixel every 2nd
+' frame, one shell at a time). It sees the left gantry and the left shell
+' as they were React frames ago (12-25), and aims with an error by level.
+
+sub Remember:
+  Hi = Hi + 1
+  Hi = Hi & 31
+  HLy[Hi] = Ly
+  T = 255
+  if Lbon = 1 then T = Lby
+  HLs[Hi] = T
+  HLx[Hi] = Lbx
+  return
+end sub
+
+' a new reaction delay and aim error, by level
+sub CpuNewLook:
+  Rand
+  T = Rs & 7
+  if Diff = 0 then
+    React = 18 + T
+    T = Rs >> 4
+    CpuErr = T & 31
+  end if
+  if Diff = 1 then
+    T = Rs & 15
+    if T > 13 then T -= 2
+    React = 12 + T
+    T = Rs >> 4
+    CpuErr = T & 15
+  end if
+  if Diff = 2 then
+    T = Rs & 7
+    if T > 5 then T -= 2
+    React = 12 + T
+    T = Rs >> 4
+    CpuErr = T & 3
+  end if
+  return
+end sub
+
+sub CpuThink:
+  T = Tick & 31
+  if T = 0 then CpuNewLook
+  T = Hi - React
+  T = T & 31
+  SeenY = HLy[T]
+  SeenS = HLs[T]
+  SeenX = HLx[T]
+  ' the target: line up with the left gantry, plus the aim error
+  Tgt = SeenY + CpuErr
+  T = CpuErr >> 1
+  Tgt -= T
+  ' after a shot it steps off the line for a while (shoot and step aside)
+  if Scoot > 0 then
+    dec Scoot
+    if ScootDir = 0 then
+      Tgt = SeenY - 24
+      if SeenY < GyMin + 24 then Tgt = GyMin
+    else
+      Tgt = SeenY + 24
+      if SeenY > GyMax - 24 then Tgt = GyMax
+    end if
+  end if
+  ' an incoming shell seen in its band: sometimes it dodges
+  if SeenS <> 255 then
+    if SeenX >= 72 then
+      if Dodge = 0 then
+        Rand
+        T = Rs & 3
+        Dodge = 1
+        if T < Diff then Dodge = 2
+        if T = 0 then Dodge = 2
+      end if
+      if Dodge = 2 then
+        T = SeenS + 16
+        V = Ry + 16
+        if T >= Ry then
+          if SeenS <= V then
+            Tgt = SeenS + 20
+            if SeenS > 90 then Tgt = SeenS - 20
+          end if
+        end if
+      end if
+    end if
+  else
+    Dodge = 0
+  end if
+  if Tgt < GyMin then Tgt = GyMin
+  if Tgt > GyMax then Tgt = GyMax
+  J2 = 0
+  T = Tgt + 1
+  if Ry > T then J2 = 1
+  T = Ry + 1
+  if T < Tgt then J2 = 2
+  ' its shell has left: step aside for a while
+  if Rbon = 1 then
+    if CpuShot = 0 then
+      CpuShot = 1
+      Scoot = 50
+      Rand
+      ScootDir = Rs & 1
+    end if
+  else
+    CpuShot = 0
+  end if
+  ' fire when lined up with what it sees (every line is clear or breakable);
+  ' the button is held until the gantry's next step reads it
+  if Rbon = 0 then
+    if Scoot = 0 then
+      T = SeenY + 6
+      V = Ry + 6
+      if Ry <= T then
+        if SeenY <= V then
+          J2 = J2 | 16
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawSprites:
+  set sprite 0 to Ly,LxG,SGantryl,4
+  set sprite 1 to Ry,RxG,SGantryr,4
+  ' the grey tread links are tiles under each tank (GreyTank), not sprites
+  if Ly <> LgY then GreyTank(0)
+  if Ry <> RgY then GreyTank(1)
+  if Lbon = 1 then
+    set sprite 2 to Lby,Lbx,SBullet,4
+  else
+    if LSpk > 0 then
+      set sprite 2 to LSy,LSx,SSpark,9
+    else
+      set sprite 2 to HideY,0,SBullet,0
+    end if
+  end if
+  if Rbon = 1 then
+    set sprite 3 to Rby,Rbx,SBullet,4
+  else
+    if RSpk > 0 then
+      set sprite 3 to RSy,RSx,SSpark,9
+    else
+      set sprite 3 to HideY,0,SBullet,0
+    end if
+  end if
+  update sprites
+  return
+end sub
+
+' grey tread links as 6 tiles (2 columns x 3 rows) under a tank: the
+' background there is black; art.py pre-shifts them for the 8 pixel
+' offsets (TTg0 + side*48 + offset*6), so a move rewrites name cells only
+sub GreyTank(u8 Side):
+  if Side = 0 then
+    GY = Ly
+    GC = GCl
+    GT = TTg0
+    GO = LgY
+  else
+    GY = Ry
+    GC = GCr
+    GT = TTg48
+    GO = RgY
+  end if
+  GK = GY + 1
+  GR = GK >> 3
+  GK = GK & 7
+  GK = GK * 6
+  GT = GT + GK
+  ' erase only the old cells outside the new 3 rows (no blank frame)
+  if GO < 192 then
+    GO = GO + 1
+    GO = GO >> 3
+    GK = GR + 2
+    for GJ = 0 to 2
+      if GO < GR then fill 32 count 2 at GC,GO
+      if GO > GK then fill 32 count 2 at GC,GO
+      inc GO
+    next
+  end if
+  GD = GC + 1
+  for GJ = 0 to 2
+    fill GT count 1 at GC,GR
+    GK = GT + 3
+    fill GK count 1 at GD,GR
+    inc GT
+    inc GR
+  next
+  if Side = 0 then LgY = Ly else RgY = Ry
+  return
+end sub
+
+' title / HOW TO PLAY tanks at x 40 / 200 (columns 5 / 25): grey as tiles
+' too, so a shell beside them never makes a 5th sprite. Ly, Ry are reset
+' when a game starts.
+sub GreyAt(u8 Y):
+  GCl = 5
+  GCr = 25
+  Ly = Y
+  Ry = Y
+  LgY = 255
+  RgY = 255
+  GreyTank(0)
+  GreyTank(1)
+  return
+end sub
+
+sub ShowDmg(u8 Col, u8 D):
+  print at Col,1, "DAMAGE: "
+  T = Col + 8
+  if D = 0 then print at T,1, "NONE  "
+  if D = 1 then print at T,1, "MINOR "
+  if D = 2 then print at T,1, "MEDIUM"
+  if D = 3 then print at T,1, "SEVERE"
+  if D >= 4 then print at T,1, "SCRAP "
+  return
+end sub
+
+sub ShowHud:
+  ShowDmg(2, LDmg)
+  ShowDmg(16, RDmg)
+  return
+end sub
+
+sub DrawWalls:
+  for J = 2 to 22
+    if WLa[J] < WLb[J] then
+      T = WLa[J]
+      fill TWall count 5 at T,J
+      T = WRa[J]
+      fill TWall count 5 at T,J
+    end if
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  ' HUD text red as on the C64 (colour RAM 2 red #883932 -> TMS 6 dark red):
+  ' the top third holds only the HUD and wall tiles in play
+  fill $61 count 512 to vram.color + 256
+  LgY = 255
+  RgY = 255
+  GCl = 2
+  GCr = 28
+  DrawWalls
+  ShowHud
+  ShowScreen
+  DrawSprites
+  return
+end sub
+
+sub GameOver:
+  HideSprites
+  for J = 2 to 22
+    fill 32 count 28 at 2,J
+  next
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  GTune = 0
+  print at 11,11, "GAME OVER"
+  if Mode = 1 then
+    if Winner = 1 then print at 12,13, "YOU WIN"
+    if Winner = 2 then print at 9,13, "COMPUTER WINS"
+  else
+    if Winner = 1 then print at 7,13, "LEFT GANTRY WINS"
+    if Winner = 2 then print at 7,13, "RIGHT GANTRY WINS"
+  end if
+  print at 9,15, "PRESS BUTTON"
+  play sound SndOver
+  return
+end sub
+
+' the march in play: quiet, restarted when it ends (C,D one frame before A,B)
+sub GameTune:
+  if GTune = 0 then return
+  if GTune = 1 then
+    play sound SndTuneC
+    play sound SndTuneD
+    GTune = 2
+    return
+  end if
+  if GTune = 2 then
+    play sound SndTuneA
+    play sound SndTuneB
+    TzLeft = TuneFrames + 60
+    GTune = 3
+    return
+  end if
+  dec TzLeft
+  if TzLeft = 0 then GTune = 1
+  return
+end sub
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker off
+  for J = 0 to 6
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: banner, name, menu (cursor back on START), the tune once
+sub TitlePage:
+  State = StTitle
+  NewScreen
+  fill TWall count 22 at 5,2
+  fill TWall count 22 at 5,8
+  print at 13,4, "GANTRY"
+  print at 7,6, "BY COLIN ADAMS 1989"
+  print at 11,12, "1 PLAYER"
+  print at 11,14, "2 PLAYERS"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  ShowLevel
+  set sprite 0 to 76,40,SGantryl,4
+  set sprite 1 to 76,200,SGantryr,4
+  GreyAt(76)
+  update sprites
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 3
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 3 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  ' stick left/right: the computer's level
+  K = Edge & 12
+  if K > 0 then
+    if K = 4 then
+      if Diff > 0 then dec Diff
+    else
+      if Diff < 2 then inc Diff
+    end if
+    play sound SndClick
+    ShowLevel
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowLevel:
+  print at 7,21, "LEVEL"
+  if Diff = 0 then print at 13,21, "< EASY   >"
+  if Diff = 1 then print at 13,21, "< NORMAL >"
+  if Diff = 2 then print at 13,21, "< HARD   >"
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,12
+  put char 32 at 9,14
+  put char 32 at 9,16
+  put char 32 at 9,18
+  C = Menu << 1
+  C += 12
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen
+  print at 13,2, "GANTRY"
+  ' packed text (text.mjs -> kit/textpack.mjs), airy: lines 2 rows apart,
+  ' inside the text area [2,4,29,20] of areas.json
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  print at 2,3, "TWO GANTRIES FACE EACH"
+  print at 2,5, "OTHER ACROSS TWO WALLS."
+  fill TWall count 3 at 11,9
+  fill TWall count 3 at 18,9
+  set sprite 0 to 64,40,SGantryl,4
+  set sprite 1 to 64,200,SGantryr,4
+  GreyAt(64)
+  set sprite 2 to 64,64,SBullet,4
+  update sprites
+  print at 2,13, "STICK UP AND DOWN MOVES"
+  print at 2,15, "YOUR GANTRY. THE BUTTON"
+  print at 2,17, "FIRES ONE SHELL AT A TIME."
+  print at 2,19, "1 PLAYER: YOU ARE LEFT,"
+  print at 2,21, "THE COMPUTER IS RIGHT."
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    HideSprites
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    print at 2,3, "A SHELL KNOCKS ONE BLOCK"
+    print at 2,5, "OUT OF A WALL."
+    fill TWall count 4 at 12,7
+    set sprite 2 to 52,72,SSpark,9
+    update sprites
+    print at 2,9, "A HIT ON THE OTHER GANTRY"
+    print at 2,11, "DAMAGES IT: MINOR, MEDIUM,"
+    print at 2,13, "SEVERE, THEN SCRAP."
+    print at 2,15, "SCRAP LOSES THE GAME."
+    print at 2,17, "TIP: OPEN A HOLE, THEN"
+    print at 2,19, "FIRE THROUGH IT."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    HideSprites
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    print at 2,3, "2 PLAYERS: CONTROLLER 1"
+    print at 2,5, "IS LEFT, CONTROLLER 2 IS"
+    print at 2,7, "RIGHT."
+    print at 2,10, "LEVEL: STICK LEFT OR RIGHT"
+    print at 2,12, "ON THE TITLE PICKS EASY,"
+    print at 2,14, "NORMAL OR HARD. IT ONLY"
+    print at 2,16, "CHANGES HOW FAST AND HOW"
+    print at 2,18, "WELL THE COMPUTER AIMS."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+
+' left wall's first column for C64 rows 2-10 (rows 14-22 mirror them)
+data WallS bytes
+  0, 0, 4, 5, 6, 7, 7, 7, 8, 8, 8
+end data
+
+data TilePatZ bytes
+  $84,$00,$BE,$10,$F6,$EA,$40,$FD,$F0,$6B,$0C,$B0,$00,$0C,$EE,$F1,$E8,$C4,$1B,$20,$FD,$FC,$F0,$FE
+  $FD,$9E,$84,$00,$44,$2E,$04,$FC,$3D,$F0,$E9,$FD,$00,$6A,$02,$A6,$0D,$32,$F0,$00,$BF,$32,$F1,$E9
+  $F7,$FD,$D2,$90,$9E,$55,$D5,$55,$60
+end data
+data TileColZ bytes
+  $96,$05,$8B,$01,$F1,$E8,$FB,$FD,$E1,$AE,$1E,$FB,$FE,$01,$F6,$E8,$FD,$DF,$FC,$A0,$E1,$F3,$F0,$DE
+  $CE,$9E,$44,$07,$C5,$7C,$FF,$85,$87,$FB,$A4,$D1,$1E,$39,$9E,$05,$5D,$55,$56
+end data
+data SpritePatZ bytes
+  $2E,$B0,$BF,$FB,$A7,$B3,$FF,$B0,$B3,$B8,$F0,$FB,$E6,$A0,$D0,$FE,$24,$FE,$D0,$89,$50,$0B,$22,$7F
+  $0B,$49,$BA,$0A,$0D,$FD,$FB,$CD,$9E,$FF,$0D,$CD,$F0,$A8,$FD,$59,$05,$40,$00,$40,$0F,$40,$0C,$4F
+  $00,$4F,$0C,$B8,$00,$FD,$87,$00,$20,$DE,$F0,$FD,$86,$04,$A9,$00,$04,$6A,$02,$A6,$F2,$32,$F0,$00
+  $BF,$32,$F1,$E9,$B9,$FC,$FE,$89,$07,$00,$4B,$E0,$82,$EC,$16,$02,$11,$0B,$07,$2E,$1C,$38,$1C,$2E
+  $07,$0B,$EE,$A4,$23,$16,$88,$D0,$E0,$74,$38,$1C,$38,$74,$E0,$D0,$88,$65,$7A,$02,$22,$12,$0B,$47
+  $3F,$1C,$FC,$3C,$1C,$2F,$47,$0B,$12,$22,$10,$46,$44,$A8,$C0,$78,$1C,$1E,$1C,$38,$E8,$C4,$A0,$48
+  $20,$96,$80,$24,$08,$40,$14,$80,$20,$A8,$90,$E0,$50,$09,$E9,$4D,$02,$80,$81,$10,$89,$80,$14,$20
+  $02,$10,$02,$20,$12,$01,$90,$04,$80,$11,$55,$56
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$09,$28,$4F,$52
+  $49,$47,$49,$4E,$41,$4C,$05,$31,$39,$38,$39,$2E,$05,$32,$30,$32,$36,$2E,$06,$41,$44,$41,$4D,$53
+  $2C,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43
+  $4F,$56,$49,$53,$49,$4F,$4E,$05,$43,$4F,$4C,$49,$4E,$03,$46,$4F,$52,$04,$47,$41,$4D,$45,$06,$47
+  $41,$4E,$54,$52,$59,$02,$49,$4E,$05,$4D,$41,$52,$43,$48
+end data
+data TxD_1 bytes
+  $06,$4D,$55,$53,$49,$43,$3A,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$04,$50,$4F,$52,$54,$05,$50,$4F
+  $52,$54,$29,$05,$52,$45,$52,$55,$4E,$04,$54,$48,$49,$53
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $11,$0C,$01,$FE,$0A,$06,$14,$04,$FE,$09,$12,$0E,$00,$FE,$01,$08,$02,$FE,$00,$01,$00,$07,$05,$FE
+  $10,$0D,$0F,$FE,$03,$0B,$15,$13,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScFire:
+    db $40,$47,$10,$02,$40,$5F,$20,$02,$40,$7F,$20,$02,$40,$AA,$30,$02,$50
+ScChip:
+    db $00,$00,$15,$02,$00,$00,$36,$04,$10
+ScBoom:
+    db $00,$00,$06,$06,$00,$00,$27,$0A,$00,$00,$37,$0E,$00,$00,$57,$10,$10
+ScOver:
+    db $40,$1D,$21,$0A,$40,$53,$21,$0A,$40,$AB,$31,$0A,$40,$3B,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScFire,$705D
+    dw ScChip,$7053
+    dw ScBoom,$7053
+    dw ScOver,$705D
+; Gantry March (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$1A,$21,$21,$01,$01,$1C,$21,$01,$24,$01,$23,$01,$21,$01
+    db $1F,$01,$1C,$01,$21,$01,$01,$1C,$21,$01,$24,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$24,$01,$01,$23,$21,$01,$23,$01,$24,$01,$26,$01
+    db $28,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$23,$01,$21,$01,$01,$01
+    db $00,$00,$00,$00
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$18,$01,$01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01
+    db $17,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$01,$01,$1D,$01,$01,$01
+    db $1C,$01,$01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01,$1C,$01,$01,$01
+    db $1F,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01,$18,$01,$01,$01
+    db $00,$00,$00,$00
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$07,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$07,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$07,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$07,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$07,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11,$02,$33,$07,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$0A,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$07,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$3E
+    db $10
+ScTuneBassPitch:
+    db $C0,$66,$F0,$3C,$C0,$72,$F0,$1C,$C0,$88,$F0,$1C,$C0,$66,$F0,$38,$C0,$98,$F0,$1C,$C0,$88,$F0,$1C
+    db $C0,$AB,$F0,$1C,$C0,$72,$F0,$1C,$C0,$AB,$F0,$1C,$C0,$88,$F0,$1C,$C0,$72,$F0,$1C,$C0,$88,$F0,$1C
+    db $C0,$66,$F0,$16,$FE
+    db $D0
+}

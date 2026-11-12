@@ -1,0 +1,1530 @@
+cartridge "HIP HOP/TONY BRANTNER/1992"
+' HIP HOP - "an electrifying arcade-type game" by Tony Brantner (C-64,
+' ReRUN January/February 1992), ported to the ColecoVision in Amy.
+'
+' Hoppin' Clyde jumps from tile to tile of an 8 x 7 grid. A dark tile he
+' lands on lights up (10 points x level); landing on a lit tile turns it
+' off again (and takes the points back). One hot tile runs along each row,
+' pausing at the ends: meet it and Clyde is toast. All 56 tiles lit: next
+' level (an extra life, the timer 2 less, the hot tiles faster). The timer
+' runs down from 100; at 0 Clyde loses a life. 3 lives.
+'
+' Rules and units are the original's (orig/hiphop.dis; model.mjs checked
+' pass by pass against jsc64 traces): the game logic runs in the
+' original's PASSES (one iteration of its main loop, 23,850 C64 cycles =
+' 1.71 NTSC frames): 7 passes every 12 frames (35 a second). A jump lasts
+' 24 passes, the hot tiles step every 40 - 2 x level passes, the timer
+' drops every 32 passes.
+'
+' Controls: either controller; the stick jumps (exact up, down, left,
+' right; diagonals do nothing, as in the original). The button pauses (the
+' C-64 used SHIFT LOCK) and turns pages in the menus. No keypad.
+'
+' House rules: title menu by joystick, HOW TO PLAY with the game's own
+' tiles and sprites, one press to start, game over -> one press or 30 s ->
+' title; everything in columns 2-29 / rows 1-22; nothing flashes faster
+' than 3 Hz (the original flashed the hot tiles at 7.5 Hz: here they swap
+' colour every 20 frames); at most 4 sprites on a line (Clyde's 3 layers +
+' one hot tile: the hot tiles are 16 rows apart); no `call asm`; `for`
+' loops have constant limits.
+
+const TDarkL = 128
+const TDarkR = 129
+const TLitL = 130
+const TLitR = 131
+const TEdgeL = 132
+const TEdgeR = 133
+const TBigH00 = 134
+const TBigH01 = 135
+const TBigH02 = 136
+const TBigH10 = 137
+const TBigH11 = 138
+const TBigH12 = 139
+const TBigH20 = 140
+const TBigH21 = 141
+const TBigH22 = 142
+const TBigI00 = 143
+const TBigI01 = 144
+const TBigI02 = 145
+const TBigI10 = 146
+const TBigI11 = 147
+const TBigI12 = 148
+const TBigI20 = 149
+const TBigI21 = 150
+const TBigI22 = 151
+const TBigP00 = 152
+const TBigP01 = 153
+const TBigP02 = 154
+const TBigP10 = 155
+const TBigP11 = 156
+const TBigP12 = 157
+const TBigP20 = 158
+const TBigP21 = 159
+const TBigP22 = 160
+const TBigO00 = 161
+const TBigO01 = 162
+const TBigO02 = 163
+const TBigO10 = 164
+const TBigO11 = 165
+const TBigO12 = 166
+const TBigO20 = 167
+const TBigO21 = 168
+const TBigO22 = 169
+const TSmH00 = 170
+const TSmH01 = 171
+const TSmH10 = 172
+const TSmH11 = 173
+const TSmI00 = 174
+const TSmI01 = 175
+const TSmI10 = 176
+const TSmI11 = 177
+const TSmP00 = 178
+const TSmP01 = 179
+const TSmP10 = 180
+const TSmP11 = 181
+const TSmO00 = 182
+const TSmO01 = 183
+const TSmO10 = 184
+const TSmO11 = 185
+const SUpW = 0
+const SUpC = 4
+const SUpK = 8
+const SCrouchW = 12
+const SCrouchC = 16
+const SCrouchK = 20
+const SHotA = 24
+const SHotB = 28
+const NTiles8 = 464
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndJump = 6
+const SndLit = 7
+const SndUnlit = 8
+const SndZap = 9
+const SndFry = 10
+const SndLevel = 11
+const SndDead = 12
+const SndGameA = 13
+const SndGameB = 14
+const SndGameC = 15
+const SndGameD = 16
+const LevelFrames = 330
+const DeadFrames = 141
+const TuneFrames = 512
+const GameFrames = 1152
+const TxtHow1 = 0
+const TxtHow2 = 1
+const TxtHow3 = 2
+const TxtCredits = 3
+const NSpr = 10
+const HideY = 192
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StWait = 5
+const StDie = 6
+const StLevel = 7
+const StPause = 8
+const StOver = 9
+' the board: tile (x, y) has its face at char row 9 + 2y, column
+' 2 + 2(6 - y) + 2x (row 0 at the top, shifted right like the C64's)
+const BoardRow = 9
+
+' the jump's sprite steps, from the original ($0D9F, $0DB7, $0DCF): up
+' (down = the same backwards, negated), and the arc of a sideways jump;
+' sideways 16 px in 24 passes (the C64's tiles were 24 px apart)
+data UpDy bytes
+  $FC,$FC,$FC,$FD,$FD,$FD,$FE,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$02,$02,$02,$03
+end data
+data UpDx bytes
+  $00,$00,$00,$00,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00
+end data
+data ArcDy bytes
+  $FD,$FD,$FE,$FE,$FE,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$02,$02,$02,$03,$03
+end data
+data SideDx bytes
+  $01,$01,$00,$01,$01,$00,$01,$01,$00,$01,$01,$00,$01,$01,$00,$01,$01,$00,$01,$01,$00,$01,$01,$00
+end data
+' hot tiles start at x = 0, 1, 6 or 7 ($0DE7)
+data StartX bytes
+  0,1,6,7
+end data
+' tile colours per level (level & 3): the C64's orange/blue/red/green
+' dark tiles ($0DF7) and yellow/light blue/light red/light green lit ($0DFB)
+data DarkCol bytes
+  10,4,6,12
+end data
+data LitCol bytes
+  11,7,9,3
+end data
+
+u8 Lit[56]
+u8 Hx[7]
+u8 Hd[7]
+u16 ScoreT = 0
+u16 HiT = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 GzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 GzOn = 0
+u8 State = 0
+' the original's variables
+u8 Px = 0
+u8 Py = 0
+u8 Jc = 0
+u8 Dir = 0
+u8 Hc = 0
+u8 Timer = 0
+u8 Nlit = 0
+u8 Level = 0
+u8 Lives = 0
+u8 C3 = 0
+' port: passes per frame, Clyde's sprite position and pose, events
+u8 Acc = 0
+u8 Sx = 0
+u8 Sy = 0
+u8 Pose = 0
+u8 Ev = 0
+u8 Blink = 0
+u8 HotPh = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 R8 = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Oi = 0
+u8 Li = 0
+u8 Ri = 0
+u8 Wi = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 X = 0
+u8 Y = 0
+u8 Q = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+' wait for the stick ("MOVE JOYSTICK TO BEGIN"), then play
+wait_loop:
+  Frame1
+  ReadPad
+  MusicTick
+  inc Blink
+  if Blink = 32 then ShowMsgBegin
+  if Blink >= 64 then
+    ClearMsg
+    Blink = 0
+  end if
+  IdlePose
+  DrawSprites
+  if Jk = 0 then goto wait_loop
+  ClearMsg
+  ' the stick that starts also makes the first pass's jump (as on the C64)
+  Acc = 5
+  State = StPlay
+
+play_loop:
+  Frame1
+  ReadPad
+  MusicTick
+  if Press = 1 then
+    PauseGame
+    goto play_loop
+  end if
+  Acc += 7
+  Ev = 0
+  if Acc >= 12 then
+    Acc -= 12
+    DoPass
+  end if
+  IdlePose
+  DrawSprites
+  if Ev = 0 then goto play_loop
+  if Ev = 2 then
+    LevelDone
+    goto wait_loop
+  end if
+  ' Ev 1: zapped or out of time
+  Die
+  if Lives > 0 then
+    Restart
+    goto wait_loop
+  end if
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (one pass of the original's main loop, $08D8)
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  W16 = Rs & 255
+  R8 = W16
+  return
+end sub
+
+sub NewGame:
+  ScoreT = 0
+  Lives = 3
+  Level = 1
+  DrawPlay
+  NewLevel
+  return
+end sub
+
+' every tile dark, then Clyde and the hot tiles placed anew
+sub NewLevel:
+  fill array Lit with 0
+  Nlit = 0
+  Restart
+  return
+end sub
+
+' $086B: Clyde at x 3 or 4, row 0, 2, 4 or 6; each hot tile (row 6 first)
+' at x 0, 1, 6 or 7 with a random direction; timer 102 - 2 x level
+sub Restart:
+  Jc = 0
+  Dir = 0
+  Hc = 0
+  Rand
+  Px = R8 & 1
+  Px += 3
+  Rand
+  Py = R8 & 6
+  for Li = 0 to 6
+    Ri = 6 - Li
+    Rand
+    T = R8 & 3
+    Hx[Ri] = StartX[T]
+    Rand
+    Hd[Ri] = R8 & 1
+  next
+  T = Level << 1
+  Timer = 102 - T
+  decompress zx0 SpritePatZ to vram.spr_pat
+  SnapClyde
+  ShowHud
+  Blink = 31
+  State = StWait
+  GameMusic
+  return
+end sub
+
+' Clyde's sprite on his tile: x = 112 - 16y + 16x, top = 62 + 16y
+sub SnapClyde:
+  T = Px << 4
+  V = Py << 4
+  Sx = 112 - V
+  Sx += T
+  Sy = 62 + V
+  return
+end sub
+
+sub DoPass:
+  ' 1. the timer: every 32nd pass
+  inc C3
+  T = C3 & 31
+  if T = 0 then
+    dec Timer
+    ShowTimer
+  end if
+  ' 2. the hot tiles: every 40 - 2 x level passes, row 6 first; one at an
+  ' end stays and picks a new random direction
+  inc Hc
+  if Hc >= 40 then
+    Hc = Level << 1
+    for Oi = 0 to 6
+      Ri = 6 - Oi
+      X = Hx[Ri]
+      if Hd[Ri] = 1 then
+        if X < 7 then
+          inc X
+          Hx[Ri] = X
+        else
+          Rand
+          Hd[Ri] = R8 & 1
+        end if
+      else
+        if X > 0 then
+          dec X
+          Hx[Ri] = X
+        else
+          Rand
+          Hd[Ri] = R8 & 1
+        end if
+      end if
+    next
+  end if
+  ' 3. Clyde
+  if Jc = 0 then
+    K = 255
+    if Jk = 1 then K = 0
+    if Jk = 2 then K = 1
+    if Jk = 4 then K = 2
+    if Jk = 8 then K = 3
+    if K = 255 then goto dp_check
+    X = Px
+    Y = Py
+    if K = 0 then
+      if Y = 0 then goto dp_check
+      dec Y
+    end if
+    if K = 1 then
+      if Y >= 6 then goto dp_check
+      inc Y
+    end if
+    if K = 2 then
+      if X = 0 then goto dp_check
+      dec X
+    end if
+    if K = 3 then
+      if X >= 7 then goto dp_check
+      inc X
+    end if
+    Dir = K
+    Px = X
+    Py = Y
+    play sound SndJump
+    Jc = 0
+    JumpStep
+    Jc = 1
+    goto dp_check
+  end if
+  JumpStep
+  inc Jc
+  if Jc >= 24 then
+    Jc = 0
+    Land
+  end if
+dp_check:
+  ' 4. on the ground with a hot tile: zapped. 5. all lit. 6. no time.
+  if Jc = 0 then
+    if Hx[Py] = Px then
+      Ev = 1
+      return
+    end if
+  end if
+  if Nlit >= 56 then
+    Ev = 2
+    return
+  end if
+  if Timer = 0 then Ev = 1
+  return
+end sub
+
+' one step of the jump's sprite path (index Jc) and the pose ($09E0:
+' crouched for the first and last 4 passes)
+sub JumpStep:
+  Pose = 0
+  if Jc < 4 then Pose = 1
+  if Jc >= 20 then Pose = 1
+  if Dir = 0 then
+    T = UpDy[Jc]
+    Sy += T
+    T = UpDx[Jc]
+    Sx += T
+  end if
+  if Dir = 1 then
+    Q = 23 - Jc
+    T = UpDy[Q]
+    Sy -= T
+    T = UpDx[Q]
+    Sx -= T
+  end if
+  if Dir = 2 then
+    T = SideDx[Jc]
+    Sx -= T
+    T = ArcDy[Jc]
+    Sy += T
+  end if
+  if Dir = 3 then
+    T = SideDx[Jc]
+    Sx += T
+    T = ArcDy[Jc]
+    Sy += T
+  end if
+  return
+end sub
+
+' the 24th pass: a hot tile there -> nothing (the check zaps him); else
+' the tile toggles
+sub Land:
+  SnapClyde
+  if Hx[Py] = Px then return
+  K = Py << 3
+  K += Px
+  if Lit[K] = 0 then
+    Lit[K] = 1
+    inc Nlit
+    NumU = Level
+    ScoreT += NumU
+    if ScoreT > HiT then HiT = ScoreT
+    play sound SndLit
+  else
+    Lit[K] = 0
+    dec Nlit
+    NumU = Level
+    ScoreT -= NumU
+    play sound SndUnlit
+  end if
+  X = Px
+  Y = Py
+  DrawTile
+  ShowScore
+  return
+end sub
+
+' zapped (or out of time): the original's zap (Clyde dissolves byte by
+' byte while the buzz sweeps, 128 frames), its jingle, then a life less
+sub Die:
+  State = StDie
+  StopGameMusic
+  play sound SndZap
+  play sound SndFry
+  for Oi = 0 to 31
+    T = Oi * 11
+    T = T & 31
+    ' the three layers of the pose on screen
+    V = Pose * 12
+    W16 = V << 3
+    W16 += T
+    vpoke vram.spr_pat + W16, 0
+    W16 += 32
+    vpoke vram.spr_pat + W16, 0
+    W16 += 32
+    vpoke vram.spr_pat + W16, 0
+    for Wi = 0 to 3
+      Frame1
+      HotColours
+      DrawHot
+      update sprites
+    next
+  next
+  play sound SndDead
+  for Oi = 0 to 140
+    Frame1
+    HotColours
+    DrawHot
+    update sprites
+  next
+  dec Lives
+  ShowHud
+  return
+end sub
+
+' all 56 lit: the original's jingle, a life more (below 100), the next
+' level (up to 15), the board wiped and drawn again row by row
+sub LevelDone:
+  State = StLevel
+  StopGameMusic
+  print at 9,5, "LEVEL COMPLETE"
+  play sound SndLevel
+  for Oi = 0 to 109
+    Frame1
+    Frame1
+    Frame1
+    IdlePose
+    DrawSprites
+  next
+  if Lives < 99 then inc Lives
+  if Level < 15 then inc Level
+  HideSprites
+  ClearMsg
+  for Oi = 0 to 13
+    Ri = Oi + BoardRow
+    fill 32 count 28 at 2,Ri
+    Frame1
+    Frame1
+    Frame1
+  next
+  SetColors
+  fill array Lit with 0
+  Nlit = 0
+  for Oi = 0 to 6
+    Y = Oi
+    DrawRow
+    Frame1
+    Frame1
+    Frame1
+  next
+  Restart
+  return
+end sub
+
+sub PauseGame:
+  State = StPause
+  StopGameMusic
+  print at 13,5, "PAUSED"
+pg_loop:
+  Frame1
+  ReadPad
+  if Press = 0 then goto pg_loop
+  ClearMsg
+  GameMusic
+  State = StPlay
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the tile colours of this level (the colour table is shared by the
+' three thirds in tile screen)
+sub SetColors:
+  T = Level & 3
+  V = DarkCol[T]
+  V = V << 4
+  V += 14
+  fill V count 16 to vram.color + 1024
+  V = LitCol[T]
+  V = V << 4
+  V += 14
+  fill V count 16 to vram.color + 1040
+  return
+end sub
+
+' tile (X, Y): face at row 9 + 2Y, column 2 + 2(6 - Y) + 2X
+sub DrawTile:
+  C = 6 - Y
+  C += X
+  C = C << 1
+  C += 2
+  T = Y << 1
+  T += BoardRow
+  K = Y << 3
+  K += X
+  if Lit[K] = 0 then
+    put char TDarkL at C,T
+    inc C
+    put char TDarkR at C,T
+  else
+    put char TLitL at C,T
+    inc C
+    put char TLitR at C,T
+  end if
+  return
+end sub
+
+' the 8 tiles of row Y with their edges
+sub DrawRow:
+  for Li = 0 to 7
+    X = Li
+    DrawTile
+    dec C
+    inc T
+    put char TEdgeL at C,T
+    inc C
+    put char TEdgeR at C,T
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  SetColors
+  ' the corner logo: HIP over HOP
+  put char TSmH00 at 2,9
+  put char TSmH01 at 3,9
+  put char TSmH10 at 2,10
+  put char TSmH11 at 3,10
+  put char TSmI00 at 4,9
+  put char TSmI01 at 5,9
+  put char TSmI10 at 4,10
+  put char TSmI11 at 5,10
+  put char TSmP00 at 6,9
+  put char TSmP01 at 7,9
+  put char TSmP10 at 6,10
+  put char TSmP11 at 7,10
+  put char TSmH00 at 2,12
+  put char TSmH01 at 3,12
+  put char TSmH10 at 2,13
+  put char TSmH11 at 3,13
+  put char TSmO00 at 4,12
+  put char TSmO01 at 5,12
+  put char TSmO10 at 4,13
+  put char TSmO11 at 5,13
+  put char TSmP00 at 6,12
+  put char TSmP01 at 7,12
+  put char TSmP10 at 6,13
+  put char TSmP11 at 7,13
+  fill array Lit with 0
+  for Oi = 0 to 6
+    Y = Oi
+    DrawRow
+  next
+  print at 2,1, "SCORE"
+  print at 19,1, "HIGH"
+  print at 2,3, "LEVEL"
+  print at 12,3, "TIME"
+  print at 22,3, "LIVES"
+  ShowScreen
+  return
+end sub
+
+sub ShowScore:
+  NumU = ScoreT
+  print at 8,1, digits$(NumU, 5)
+  print at 13,1, "0"
+  NumU = HiT
+  print at 24,1, digits$(NumU, 5)
+  print at 29,1, "0"
+  return
+end sub
+
+sub ShowTimer:
+  NumU = Timer
+  print at 17,3, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowHud:
+  ShowScore
+  ShowTimer
+  NumU = Level
+  print at 8,3, digits$(NumU, 2)
+  NumU = Lives
+  print at 28,3, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowMsgBegin:
+  print at 5,5, "MOVE JOYSTICK TO BEGIN"
+  return
+end sub
+
+sub ClearMsg:
+  fill 32 count 28 at 2,5
+  return
+end sub
+
+' Clyde's idle animation ($0AB0: the two poses swap every 16 frames)
+sub IdlePose:
+  if Jc = 0 then
+    T = Tick & 16
+    Pose = 0
+    if T > 0 then Pose = 1
+  end if
+  return
+end sub
+
+' the hot tiles swap colour (white / black) every 20 frames, odd and even
+' rows in turn (the C64 flashed them at 7.5 Hz)
+sub HotColours:
+  inc HotPh
+  if HotPh >= 40 then HotPh = 0
+  return
+end sub
+
+sub DrawHot:
+  for Li = 0 to 6
+    C = Li + 3
+    T = Li << 4
+    Y = 67 + T
+    X = Hx[Li]
+    X = X << 4
+    X += 112
+    X -= T
+    V = 15
+    K = Li & 1
+    if HotPh >= 20 then K = K ^ 1
+    if K = 1 then V = 1
+    T = SHotA
+    if K = 1 then T = SHotB
+    set sprite C to Y,X,T,V
+  next
+  return
+end sub
+
+sub DrawSprites:
+  HotColours
+  T = Sy - 1
+  if Pose = 0 then
+    set sprite 0 to T,Sx,SUpW,15
+    set sprite 1 to T,Sx,SUpC,7
+    set sprite 2 to T,Sx,SUpK,1
+  else
+    set sprite 0 to T,Sx,SCrouchW,15
+    set sprite 1 to T,Sx,SCrouchC,7
+    set sprite 2 to T,Sx,SCrouchK,1
+  end if
+  DrawHot
+  update sprites
+  return
+end sub
+
+sub GameOver:
+  ClearMsg
+  print at 5,5, "GAME OVER - PRESS FIRE"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' music: the in-game tune loops (restarted every GameFrames)
+
+sub GameMusic:
+  play sound SndGameA
+  play sound SndGameB
+  play sound SndGameC
+  play sound SndGameD
+  GzLeft = GameFrames
+  GzOn = 1
+  return
+end sub
+
+sub StopGameMusic:
+  stop sound SndGameA
+  stop sound SndGameB
+  stop sound SndGameC
+  stop sound SndGameD
+  GzOn = 0
+  return
+end sub
+
+sub MusicTick:
+  if GzOn = 1 then
+    dec GzLeft
+    if GzLeft = 0 then GameMusic
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the title tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 9
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  State = StBoot
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $1E
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop gray
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a big 3 x 3 letter: first tile T at column C, row 2
+sub BigLetter:
+  for Li = 0 to 2
+    Q = Li + 2
+    put char T at C,Q
+    inc T
+    inc C
+    put char T at C,Q
+    inc T
+    inc C
+    put char T at C,Q
+    inc T
+    C -= 2
+  next
+  return
+end sub
+
+' a short row of N board tiles: faces at row T, from column C; Lit[0..7]
+' says which are lit
+sub MiniRow:
+  for Li = 0 to 7
+    if Li < V then
+      K = TDarkL
+      if Lit[Li] = 1 then K = TLitL
+      put char K at C,T
+      inc C
+      inc K
+      put char K at C,T
+      dec C
+      inc T
+      put char TEdgeL at C,T
+      inc C
+      put char TEdgeR at C,T
+      dec T
+      inc C
+    end if
+  next
+  return
+end sub
+
+' the title: logo, name, a little board with Clyde and a hot tile, menu
+' (cursor back on START), the tune once
+sub TitlePage:
+  NewScreen
+  Level = 1
+  SetColors
+  T = TBigH00
+  C = 5
+  BigLetter
+  T = TBigI00
+  C = 8
+  BigLetter
+  T = TBigP00
+  C = 11
+  BigLetter
+  T = TBigH00
+  C = 16
+  BigLetter
+  T = TBigO00
+  C = 19
+  BigLetter
+  T = TBigP00
+  C = 22
+  BigLetter
+  print at 3,6, "AN ELECTRIFYING ARCADE GAME"
+  print at 8,8, "BY TONY BRANTNER"
+  fill array Lit with 0
+  Lit[1] = 1
+  Lit[2] = 1
+  Lit[4] = 1
+  V = 6
+  T = 10
+  C = 12
+  MiniRow
+  fill array Lit with 0
+  Lit[0] = 1
+  Lit[5] = 1
+  T = 12
+  C = 10
+  MiniRow
+  print at 11,15, "START"
+  print at 11,17, "HOW TO PLAY"
+  print at 11,19, "CREDITS"
+  print at 7,21, "RERUN JAN/FEB 1992"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+  ' Clyde on the third tile of the upper row, a hot tile below
+  Sx = 128
+  Sy = 71
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  Jc = 0
+  IdlePose
+  T = Sy - 1
+  if Pose = 0 then
+    set sprite 0 to T,Sx,SUpW,15
+    set sprite 1 to T,Sx,SUpC,7
+    set sprite 2 to T,Sx,SUpK,1
+  else
+    set sprite 0 to T,Sx,SCrouchW,15
+    set sprite 1 to T,Sx,SCrouchC,7
+    set sprite 2 to T,Sx,SCrouchK,1
+  end if
+  HotColours
+  V = 15
+  T = SHotA
+  if HotPh >= 20 then
+    V = 1
+    T = SHotB
+  end if
+  set sprite 3 to 91,128,T,V
+  update sprites
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,15
+  put char 32 at 9,17
+  put char 32 at 9,19
+  C = Menu << 1
+  C += 15
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 12,2, "HIP HOP"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' a HOW TO PLAY page: header, a little board (rows 4-7) with the game's
+' tiles, the text (rows 9-19)
+sub HowPage:
+  NewScreen
+  Level = 1
+  SetColors
+  print at 7,1, "HOW TO PLAY"
+  NumU = Page
+  print at 20,1, digits$(NumU, 1)
+  print at 21,1, "/3"
+  V = 6
+  T = 4
+  C = 13
+  MiniRow
+  fill array Lit with 0
+  T = 6
+  C = 11
+  V = 6
+  return
+end sub
+
+sub HowText:
+  TxX0 = 2
+  TxY = 9
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  update sprites
+  State = StHow
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages, each with a picture made of the game's own
+' sprites and tiles
+sub HowTo:
+  Page = 1
+  fill array Lit with 0
+  Lit[1] = 1
+  HowPage
+  MiniRow
+  ' Clyde on the third tile of the lower row (row 6 faces)
+  set sprite 0 to 38,104,SUpW,15
+  set sprite 1 to 38,104,SUpC,7
+  set sprite 2 to 38,104,SUpK,1
+  TxT = TxtHow1
+  HowText
+  if TimedOut = 1 then goto ht_end
+  Page = 2
+  fill array Lit with 0
+  Lit[0] = 1
+  Lit[1] = 1
+  Lit[2] = 1
+  HowPage
+  Lit[4] = 1
+  MiniRow
+  set sprite 0 to 38,120,SCrouchW,15
+  set sprite 1 to 38,120,SCrouchC,7
+  set sprite 2 to 38,120,SCrouchK,1
+  set sprite 3 to 27,152,SHotA,15
+  TxT = TxtHow2
+  HowText
+  if TimedOut = 1 then goto ht_end
+  Page = 3
+  fill array Lit with 0
+  Lit[0] = 1
+  Lit[2] = 1
+  Lit[3] = 1
+  Lit[5] = 1
+  HowPage
+  Lit[1] = 1
+  Lit[2] = 1
+  Lit[4] = 1
+  MiniRow
+  set sprite 0 to 38,120,SUpW,15
+  set sprite 1 to 38,120,SUpC,7
+  set sprite 2 to 38,120,SUpK,1
+  TxT = TxtHow3
+  HowText
+ht_end:
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $00,$F5,$00,$03,$07,$0F,$1F,$3F,$7F,$FF,$00,$FE,$FC,$F8,$F0,$E0,$C0,$80,$E0,$BE,$FF,$ED,$FE,$2A
+  $80,$86,$00,$92,$07,$80,$00,$A5,$07,$F7,$EA,$D7,$D0,$91,$A0,$EE,$E1,$F0,$FF,$82,$01,$8A,$00,$03
+  $0A,$80,$28,$00,$29,$01,$69,$03,$7D,$90,$FE,$D8,$98,$B9,$00,$D8,$7F,$98,$DF,$5A,$8A,$67,$C0,$E0
+  $F0,$8D,$FE,$DA,$DE,$01,$5F,$DD,$76,$67,$80,$17,$83,$68,$D3,$70,$F3,$73,$70,$CF,$FE,$D8,$FA,$D0
+  $F0,$17,$FF,$94,$D8,$9F,$40,$FE,$B9,$E0,$F0,$EB,$E0,$1C,$E8,$FE,$03,$A5,$F0,$A5,$1C,$AA,$E0,$07
+  $1A,$F0,$A1,$C0,$E7,$E4,$E7,$D5,$E4,$F9,$8A,$7E,$EE,$3F,$C3,$FE,$D7,$E7,$DD,$80,$87,$B0,$CB,$00
+  $03,$FE,$C5,$FE,$E4,$7F,$D3,$ED,$9D,$A0,$55,$56
+end data
+data TileColZ bytes
+  $95,$4E,$69,$1E,$5A,$EB,$48,$92,$0B,$0E,$25,$0B,$EB,$A2,$09,$82,$E9,$8A,$09,$0E,$0A,$E9,$5A,$E8
+  $4A,$0E,$03,$DE,$E0,$9A,$BE,$BE,$FE,$8A,$0B,$EB,$0A,$BE,$28,$0E,$29,$9E,$69,$E9,$69,$0E,$69,$8E
+  $FF,$90,$86,$BF,$08,$FF,$D8,$6F,$0E,$80,$6E,$0B,$FF,$90,$BE,$B7,$E9,$DE,$29,$9E,$7F,$58,$97,$00
+  $D6,$FE,$E5,$EB,$70,$7C,$FE,$A5,$9E,$76,$F0,$7D,$71,$FA,$D0,$F1,$08,$1D,$F8,$E0,$96,$EF,$18,$86
+  $7E,$AD,$CE,$7D,$F0,$D8,$2C,$EE,$80,$C0,$38,$6C,$D9,$4C,$F7,$C0,$FE,$03,$D0,$80,$DF,$E6,$93,$80
+  $61,$B0,$E6,$90,$F0,$EB,$C0,$DC,$EF,$DD,$2C,$55,$56
+end data
+data SpritePatZ bytes
+  $A3,$00,$20,$00,$A7,$F9,$02,$98,$F5,$04,$0C,$18,$3A,$E0,$86,$40,$27,$20,$30,$88,$FF,$03,$05,$98
+  $03,$01,$00,$18,$89,$C0,$A0,$92,$C0,$80,$00,$1A,$08,$14,$13,$04,$0A,$1E,$08,$04,$06,$05,$04,$F1
+  $52,$12,$24,$18,$10,$28,$C8,$20,$50,$50,$10,$20,$60,$A0,$20,$2F,$48,$E1,$F3,$BF,$AE,$DB,$40,$10
+  $DF,$E4,$40,$7E,$3C,$F0,$07,$3E,$EF,$3D,$E0,$3E,$78,$41,$A2,$10,$08,$03,$04,$86,$0A,$1C,$32,$19
+  $0C,$18,$A2,$08,$10,$C0,$20,$86,$50,$38,$4C,$98,$30,$1E,$DE,$EE,$81,$06,$4D,$7E,$30,$60,$FF,$56
+  $B8,$40,$FD,$FE,$00,$FE,$E2,$7C,$63,$04,$02,$E2,$FD,$C0,$21,$70,$E0,$FE,$A0,$C0,$5D,$55,$56
+end data
+
+data TxD_0 bytes
+  $03,$54,$48,$45,$04,$54,$49,$4C,$45,$02,$49,$54,$01,$41,$03,$41,$4E,$44,$03,$41,$4D,$59,$02,$42
+  $59,$05,$43,$4C,$59,$44,$45,$04,$46,$52,$4F,$4D,$02,$4F,$4E,$02,$4F,$52,$08,$4F,$52,$49,$47,$49
+  $4E,$41,$4C,$06,$50,$41,$55,$53,$45,$53,$06,$50,$4F,$49,$4E,$54,$53,$04,$57,$49,$54,$48,$0B,$28
+  $41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29
+end data
+data TxD_1 bytes
+  $06,$28,$43,$2D,$36,$34,$29,$02,$31,$30,$05,$31,$39,$39,$32,$2E,$01,$32,$05,$32,$30,$32,$36,$2E
+  $01,$33,$02,$35,$36,$06,$41,$47,$41,$49,$4E,$2E,$03,$41,$4C,$4C,$05,$41,$4C,$4F,$4E,$47,$02,$41
+  $4E,$02,$41,$54,$04,$41,$57,$41,$59,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$09,$42,$52,$41,$4E
+  $54,$4E,$45,$52,$2C,$06,$42,$55,$54,$54,$4F,$4E
+end data
+data TxD_2 bytes
+  $04,$43,$2D,$36,$34,$07,$43,$49,$52,$43,$55,$49,$54,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C
+  $45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$05,$43,$4F,$53,$54,$53,$04,$44,$41,$52,$4B,$05,$44,$4F,$57
+  $4E,$2C,$04,$45,$41,$43,$48,$05,$45,$4E,$44,$53,$2E,$05,$45,$58,$54,$52,$41,$03,$46,$4F,$52,$04
+  $47,$41,$4D,$45,$05,$47,$41,$4D,$45,$2E,$06,$47,$41,$4D,$45,$27,$53,$02,$47,$4F,$02,$48,$45
+end data
+data TxD_3 bytes
+  $03,$48,$4F,$50,$03,$48,$4F,$54,$02,$49,$4E,$02,$49,$53,$03,$49,$54,$2C,$03,$49,$54,$3A,$10,$4A
+  $41,$4E,$55,$41,$52,$59,$2F,$46,$45,$42,$52,$55,$41,$52,$59,$08,$4A,$49,$4E,$47,$4C,$45,$53,$2E
+  $04,$4A,$55,$4D,$50,$07,$4C,$41,$4E,$44,$49,$4E,$47,$05,$4C,$41,$4E,$44,$53,$04,$4C,$45,$46,$54
+  $04,$4C,$45,$53,$53,$06,$4C,$45,$56,$45,$4C,$2C,$06,$4C,$45,$56,$45,$4C,$2E,$05,$4C,$49,$46,$45
+  $2C
+end data
+data TxD_4 bytes
+  $06,$4C,$49,$47,$48,$54,$53,$03,$4C,$49,$54,$04,$4C,$49,$54,$3A,$06,$4C,$49,$56,$45,$53,$2E,$04
+  $4D,$45,$45,$54,$06,$4D,$55,$53,$49,$43,$3A,$04,$4E,$45,$58,$54,$04,$4F,$46,$46,$3A,$03,$4F,$4E
+  $45,$04,$4F,$4E,$45,$2E,$03,$4F,$55,$54,$04,$4F,$56,$45,$52,$04,$50,$4F,$52,$54,$07,$50,$52,$45
+  $43,$49,$53,$45,$05,$52,$45,$52,$55,$4E,$06,$52,$49,$47,$48,$54,$2E
+end data
+data TxD_5 bytes
+  $04,$52,$4F,$57,$2C,$04,$52,$55,$4E,$53,$01,$53,$05,$53,$48,$4F,$52,$54,$06,$53,$54,$49,$43,$4B
+  $3A,$04,$54,$49,$4D,$45,$05,$54,$49,$4D,$45,$2E,$05,$54,$49,$4D,$45,$53,$07,$54,$49,$4D,$49,$4E
+  $47,$2E,$02,$54,$4F,$06,$54,$4F,$41,$53,$54,$21,$04,$54,$4F,$4E,$59,$05,$54,$55,$4E,$45,$53,$05
+  $54,$55,$52,$4E,$53,$02,$55,$50,$03,$55,$50,$2C
+end data
+data TxD_6 bytes
+  $04,$57,$48,$45,$4E
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3, @TxD_4, @TxD_5, @TxD_6
+end data
+data TxM_How1 bytes
+  $30,$07,$08,$01,$59,$01,$FE,$0E,$00,$54,$5F,$26,$FE,$3B,$0A,$4F,$FE,$03,$25,$01,$40,$5E,$60,$FE
+  $2F,$3A,$09,$35,$11,$0D,$FE,$57,$00,$3E,$FF
+end data
+data TxM_How2 bytes
+  $03,$53,$21,$51,$48,$31,$FE,$01,$19,$27,$50,$04,$02,$FE,$0C,$1B,$00,$28,$44,$02,$FE,$04,$07,$33
+  $5A,$FE,$38,$1C,$08,$34,$0A,$4B,$FE,$02,$0E,$4D,$58,$FF
+end data
+data TxM_How3 bytes
+  $39,$09,$03,$41,$01,$5D,$FE,$02,$47,$00,$0D,$2E,$17,$FE,$18,$16,$42,$46,$3D,$1A,$FE,$29,$3F,$13
+  $52,$3C,$56,$FE,$15,$43,$55,$4A,$24,$49,$FE,$00,$1F,$0C,$00,$2C,$FF
+end data
+data TxM_Credits bytes
+  $0B,$2B,$10,$06,$FE,$5B,$1E,$4E,$FE,$36,$12,$FE,$23,$4C,$32,$05,$FE,$06,$22,$0F,$FE,$2A,$05,$1D
+  $14,$FE,$45,$0B,$5C,$04,$FE,$00,$20,$2D,$37,$FF
+end data
+data TxMsg words
+  @TxM_How1, @TxM_How2, @TxM_How3, @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScJump:
+    db $00,$00,$26,$02,$00,$00,$56,$03,$00,$00,$96,$03,$10
+ScLit:
+    db $40,$00,$11,$02,$40,$00,$21,$04,$40,$00,$51,$06,$40,$00,$91,$06,$50
+ScUnlit:
+    db $40,$BF,$11,$02,$40,$BF,$21,$04,$40,$BF,$51,$06,$40,$BF,$91,$06,$50
+ScZap:
+    db $40,$8A,$12,$02,$40,$46,$11,$02,$40,$D9,$10,$02,$40,$A3,$10,$02,$40,$82,$20,$02,$40,$A4,$23,$02
+    db $40,$27,$22,$02,$40,$2A,$21,$02,$40,$CD,$20,$02,$40,$9C,$20,$02,$40,$7E,$20,$02,$40,$A4,$23,$02
+    db $40,$DE,$31,$02,$40,$14,$31,$02,$40,$C2,$30,$02,$40,$95,$30,$02,$40,$79,$30,$02,$40,$A4,$33,$02
+    db $40,$A6,$31,$02,$40,$00,$31,$02,$40,$B8,$40,$02,$40,$8F,$40,$02,$40,$76,$40,$02,$40,$7F,$43,$02
+    db $40,$79,$41,$02,$40,$EF,$40,$02,$40,$AF,$40,$02,$40,$8A,$40,$02,$40,$72,$50,$02,$40,$CD,$52,$02
+    db $40,$55,$51,$02,$40,$E0,$50,$02,$40,$A7,$50,$02,$40,$85,$50,$02,$40,$A4,$53,$02,$40,$56,$52,$02
+    db $40,$38,$61,$02,$40,$D3,$60,$02,$40,$9F,$60,$02,$40,$80,$60,$02,$40,$A4,$63,$02,$40,$01,$62,$02
+    db $40,$1F,$61,$02,$40,$C7,$60,$02,$40,$99,$70,$02,$40,$7C,$70,$02,$40,$A4,$73,$02,$40,$BF,$71,$02
+    db $40,$0A,$71,$02,$40,$BD,$70,$02,$40,$92,$70,$02,$40,$78,$70,$02,$40,$A4,$83,$02,$40,$8E,$81,$02
+    db $40,$F7,$80,$02,$40,$B3,$80,$02,$40,$8D,$80,$02,$40,$74,$80,$02,$40,$1F,$83,$02,$40,$67,$81,$02
+    db $40,$E7,$90,$02,$40,$AB,$90,$02,$40,$87,$90,$02,$40,$A4,$93,$02,$50
+ScFry:
+    db $00,$00,$14,$04,$00,$00,$25,$06,$00,$00,$44,$08,$00,$00,$76,$0A,$10
+ScLevel:
+    db $40,$7F,$20,$02,$40,$7F,$10,$0B,$40,$7F,$40,$02,$40,$8F,$20,$02,$40,$8F,$10,$08,$40,$8F,$40,$02
+    db $40,$A0,$20,$02,$40,$A0,$10,$08,$40,$A0,$40,$02,$40,$7F,$20,$02,$40,$7F,$10,$1A,$40,$7F,$40,$02
+    db $40,$8F,$20,$02,$40,$8F,$10,$0B,$40,$8F,$40,$02,$40,$7F,$20,$02,$40,$7F,$10,$08,$40,$7F,$40,$02
+    db $40,$8F,$20,$02,$40,$8F,$10,$06,$40,$8F,$40,$02,$40,$A0,$20,$02,$40,$A0,$10,$0B,$40,$A0,$40,$02
+    db $40,$7F,$20,$02,$40,$7F,$10,$1A,$40,$7F,$40,$02,$40,$8F,$20,$02,$40,$8F,$10,$0B,$40,$8F,$40,$02
+    db $40,$7F,$20,$02,$40,$7F,$10,$06,$40,$7F,$40,$02,$40,$8F,$20,$02,$40,$8F,$10,$0B,$40,$8F,$40,$02
+    db $40,$A0,$20,$02,$40,$A0,$10,$0B,$40,$A0,$40,$02,$40,$7F,$20,$02,$40,$7F,$10,$06,$40,$7F,$40,$02
+    db $40,$8F,$20,$02,$40,$8F,$10,$0B,$40,$8F,$40,$02,$40,$A0,$20,$02,$40,$A0,$10,$0B,$40,$A0,$40,$02
+    db $40,$FE,$F0,$04,$40,$A0,$20,$02,$40,$A0,$10,$4C,$40,$A0,$40,$02,$50
+ScDead:
+    db $40,$FE,$20,$02,$40,$FE,$10,$0E,$40,$FE,$40,$02,$40,$1E,$21,$02,$40,$1E,$11,$08,$40,$1E,$41,$02
+    db $40,$FE,$20,$02,$40,$FE,$10,$14,$40,$FE,$40,$02,$40,$1E,$21,$02,$40,$1E,$11,$08,$40,$1E,$41,$02
+    db $40,$41,$21,$02,$40,$41,$11,$06,$40,$41,$41,$02,$40,$41,$21,$02,$40,$41,$11,$06,$40,$41,$41,$02
+    db $40,$1E,$21,$02,$40,$1E,$11,$08,$40,$1E,$41,$02,$40,$FE,$20,$02,$40,$FE,$10,$06,$40,$FE,$40,$02
+    db $40,$1E,$21,$02,$40,$1E,$11,$06,$40,$1E,$41,$02,$40,$41,$21,$02,$40,$41,$11,$06,$40,$41,$41,$02
+    db $40,$FE,$F0,$03,$40,$41,$21,$02,$40,$41,$11,$06,$40,$41,$41,$02,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScJump,$7053
+    dw ScLit,$705D
+    dw ScUnlit,$705D
+    dw ScZap,$705D
+    dw ScFry,$7053
+    dw ScLevel,$705D
+    dw ScDead,$705D
+    dw ScGameMel,$702B
+    dw ScGameHarm,$7035
+    dw ScGameBassVol,$703F
+    dw ScGameBassPitch,$7049
+; Clyde's Fanfare (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$28,$00,$26,$00,$24,$00,$28,$00,$00,$00,$26,$00
+    db $28,$26,$24,$00,$28,$00,$00,$00,$26,$28,$26,$00,$24,$00,$28,$26
+    db $00,$24,$00,$01,$2B,$00,$28,$00,$24,$00,$2B,$00,$00,$00,$29,$00
+    db $28,$00,$26,$00,$28,$00,$26,$00,$24,$00,$23,$00,$26,$00,$24,$00
+    db $00,$00,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$18,$00,$00,$00,$1F,$00,$00,$00,$18,$00,$00,$00
+    db $1F,$00,$00,$00,$18,$00,$00,$00,$17,$00,$00,$00,$18,$00,$00,$00
+    db $1F,$00,$00,$00,$18,$00,$00,$00,$1C,$00,$00,$00,$1D,$00,$00,$00
+    db $1F,$00,$00,$00,$1F,$00,$00,$00,$1D,$00,$00,$00,$1C,$00,$00,$00
+    db $00,$00,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$55,$F0,$44,$C0,$72,$F0,$40,$C0,$55,$F0,$21,$C0,$72,$F0,$1F,$C0,$55,$F0,$21,$C0,$72,$F0,$1F
+    db $C0,$55,$F0,$40,$C0,$80,$F0,$21,$C0,$72,$F0,$5F,$C0,$55,$F0,$1A,$FF,$E3
+    db $D0
+; Grid Groove (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScGameMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$1A,$21,$1C,$00,$01,$1F,$01,$1C,$01,$1A,$00,$01,$17,$01
+    db $1A,$01,$1C,$01,$1C,$00,$01,$1F,$01,$21,$01,$1F,$00,$01,$1C,$01
+    db $1A,$01,$17,$01,$1C,$00,$01,$1F,$01,$1C,$01,$1A,$00,$01,$17,$01
+    db $1A,$01,$1C,$01,$1F,$00,$01,$21,$01,$23,$01,$21,$00,$01,$1F,$01
+    db $1C,$00,$00,$01,$24,$00,$01,$23,$01,$21,$01,$1F,$00,$01,$21,$01
+    db $23,$00,$00,$01,$21,$00,$01,$1F,$01,$1C,$01,$1A,$00,$01,$1C,$01
+    db $1F,$00,$00,$01,$24,$00,$01,$23,$01,$21,$01,$23,$00,$01,$26,$01
+    db $23,$01,$21,$01,$1F,$00,$01,$1C,$01,$1A,$01,$17,$00,$01,$1A,$01
+    db $1C,$00,$00,$00
+    db $FF
+ScGameHarm:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$60,$1A,$21,$17,$01,$01,$17,$01,$01,$17,$01,$01,$01,$17,$01
+    db $01,$17,$01,$01,$18,$01,$01,$18,$01,$01,$18,$01,$01,$01,$18,$01
+    db $01,$18,$01,$01,$17,$01,$01,$17,$01,$01,$17,$01,$01,$01,$17,$01
+    db $01,$17,$01,$01,$1A,$01,$01,$1A,$01,$01,$1A,$01,$01,$01,$1A,$01
+    db $01,$1A,$01,$01,$1C,$01,$01,$1C,$01,$01,$1C,$01,$01,$01,$1C,$01
+    db $01,$1C,$01,$01,$18,$01,$01,$18,$01,$01,$18,$01,$01,$01,$18,$01
+    db $01,$18,$01,$01,$1C,$01,$01,$1C,$01,$01,$1C,$01,$01,$01,$1C,$01
+    db $01,$1C,$01,$01,$17,$01,$01,$17,$01,$01,$17,$01,$01,$01,$17,$01
+    db $01,$17,$01,$01
+    db $FF
+ScGameBassVol:
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$0D,$14,$66,$02,$36,$04,$13,$11
+    db $02,$53,$0C,$14,$66,$22,$02,$53,$12,$14,$66,$02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$53,$0D,$14,$66,$02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22,$02,$53,$12,$14,$66
+    db $02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$0D,$14,$66,$02,$36,$04,$13,$11
+    db $02,$53,$0C,$14,$66,$22,$02,$53,$12,$14,$66,$02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$53,$0D,$14,$66,$02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22,$02,$53,$12,$14,$66
+    db $02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$0D,$14,$66,$02,$36,$04,$13,$11
+    db $02,$53,$0C,$14,$66,$22,$02,$53,$12,$14,$66,$02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$53,$0D,$14,$66,$02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22,$02,$53,$12,$14,$66
+    db $02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$0D,$14,$66,$02,$36,$04,$13,$11
+    db $02,$53,$0C,$14,$66,$22,$02,$53,$12,$14,$66,$02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$53,$0D,$14,$66,$02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22,$02,$53,$12,$14,$66
+    db $02,$36,$04,$13,$11,$02,$53,$0C,$14,$66,$22,$02,$45,$05,$13,$11,$02,$53,$1D,$14,$66,$22
+    db $10
+ScGameBassPitch:
+    db $C0,$88,$F0,$71,$C0,$5A,$F0,$23,$C0,$AB,$F0,$44,$C0,$98,$F0,$4C,$C0,$88,$F0,$6D,$C0,$5A,$F0,$23
+    db $C0,$72,$F0,$44,$C0,$98,$F0,$4C,$C0,$AB,$F0,$90,$C0,$66,$F0,$44,$C0,$5A,$F0,$4C,$C0,$AB,$F0,$44
+    db $C0,$98,$F0,$4C,$C0,$88,$F0,$44,$C0,$5A,$F0,$29,$C0,$88,$F0,$1D,$E2
+    db $D0
+}

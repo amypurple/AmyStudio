@@ -12,6 +12,7 @@ export function createControlFlowHelpers(ctx) {
     resolveDeclaredValueType,
     isSignedDeclaredType,
     parseExpressionAst,
+    renderExpressionAst,
     emitComputeExpressionAst,
     inferLiteralDeclaredType,
     declaredTypeBitWidth,
@@ -374,6 +375,113 @@ export function createControlFlowHelpers(ctx) {
     else lines.push(`    jp nc,${asmLabel}`);
     lines.push(`${done}:`);
     return true;
+  }
+
+  function emitComputedUnsignedWordCompareGoto(leftAst, operator, rightAst, asmLabel) {
+    const left = emitComputeExpressionAst(leftAst, "u16");
+    const right = emitComputeExpressionAst(rightAst, "u16");
+    if (!left || !right || left.runtimeType !== "int16" || right.runtimeType !== "int16") return null;
+    const lines = [
+      ...left.lines,
+      "    push hl",
+      ...right.lines,
+      "    ex de,hl",
+      "    pop hl"
+    ];
+    if (!emitPreparedWordCompareBranch(lines, operator, asmLabel, false)) return null;
+    return lines;
+  }
+
+  function emitComputedSignedWordCompareGoto(leftAst, operator, rightAst, asmLabel) {
+    const left = emitComputeExpressionAst(leftAst, "i16");
+    const right = emitComputeExpressionAst(rightAst, "i16");
+    if (!left || !right || left.runtimeType !== "int16" || right.runtimeType !== "int16") return null;
+    const lines = [
+      ...left.lines,
+      "    push hl",
+      ...right.lines,
+      "    ex de,hl",
+      "    pop hl"
+    ];
+    if (!emitPreparedWordCompareBranch(lines, operator, asmLabel, true)) return null;
+    return lines;
+  }
+
+  function emitUnsignedByteAddCompareGoto(leftAst, operator, rightAst, asmLabel) {
+    const describeAdd = (ast) => {
+      if (!ast || ast.kind !== "binary" || ast.op !== "+") return null;
+      for (const [baseAst, constantAst] of [[ast.left, ast.right], [ast.right, ast.left]]) {
+        const baseToken = renderExpressionAst(baseAst);
+        const constantToken = renderExpressionAst(constantAst);
+        const constant = tryEvaluateCompileTimeNumericExpression(constantToken);
+        const declared = resolveDeclaredValueType(baseToken);
+        if (!Number.isInteger(constant) || constant < 0 || constant > 255 || !isUnsignedByteDeclaredTypeName(declared)) continue;
+        const load = emitLoadByteComparisonOperand("a", baseToken);
+        if (!load) continue;
+        return { load, constant };
+      }
+      return null;
+    };
+    const leftAdd = describeAdd(leftAst);
+    const rightAdd = describeAdd(rightAst);
+    if (!!leftAdd === !!rightAdd) return null;
+    const add = rightAdd || leftAdd;
+    const plainAst = rightAdd ? leftAst : rightAst;
+    const plainToken = renderExpressionAst(plainAst);
+    if (!isUnsignedByteDeclaredTypeName(resolveDeclaredValueType(plainToken))) return null;
+    const loadPlain = emitLoadByteComparisonOperand("a", plainToken);
+    if (!loadPlain || loadLinesClobberB(loadPlain)) return null;
+    const effective = rightAdd ? operator : reverseOperator(operator);
+    if (!effective) return null;
+    const overflowIsTrue = effective === "<" || effective === "<=" || effective === "!=";
+    const done = makeGeneratedLabel("CmpByteAddDone");
+    const lines = [...add.load, `    add a,${add.constant}`];
+    if (overflowIsTrue) lines.push(`    jp c,${asmLabel}`);
+    else lines.push(`    jr c,${done}`);
+    lines.push("    ld b,a", ...loadPlain, "    cp b");
+    if (effective === "==") lines.push(`    jp z,${asmLabel}`);
+    else if (effective === "!=") lines.push(`    jp nz,${asmLabel}`);
+    else if (!emitUnsignedCompareBranch(lines, effective, asmLabel)) return null;
+    if (!overflowIsTrue) lines.push(`${done}:`);
+    return lines;
+  }
+
+  function emitUnsignedByteSubtractCompareGoto(leftAst, operator, rightAst, asmLabel) {
+    const describeSubtract = (ast) => {
+      if (!ast || ast.kind !== "binary" || ast.op !== "-") return null;
+      const baseToken = renderExpressionAst(ast.left);
+      const constantToken = renderExpressionAst(ast.right);
+      const constant = tryEvaluateCompileTimeNumericExpression(constantToken);
+      const declared = resolveDeclaredValueType(baseToken);
+      if (!Number.isInteger(constant) || constant < 0 || constant > 255 || !isUnsignedByteDeclaredTypeName(declared)) return null;
+      const load = emitLoadByteComparisonOperand("a", baseToken);
+      return load ? { load, constant } : null;
+    };
+    const leftSubtract = describeSubtract(leftAst);
+    const rightSubtract = describeSubtract(rightAst);
+    if (!!leftSubtract === !!rightSubtract) return null;
+    const subtract = rightSubtract || leftSubtract;
+    const plainAst = rightSubtract ? leftAst : rightAst;
+    const plainToken = renderExpressionAst(plainAst);
+    if (!isUnsignedByteDeclaredTypeName(resolveDeclaredValueType(plainToken))) return null;
+    const loadPlain = emitLoadByteComparisonOperand("a", plainToken);
+    if (!loadPlain || loadLinesClobberB(loadPlain)) return null;
+    const effective = rightSubtract ? operator : reverseOperator(operator);
+    if (!effective) return null;
+
+    // A borrow means the mathematical result is negative. Any unsigned byte is
+    // then greater than it, so the branch outcome is known without widening.
+    const borrowIsTrue = effective === ">" || effective === ">=" || effective === "!=";
+    const done = makeGeneratedLabel("CmpByteSubtractDone");
+    const lines = [...subtract.load, `    sub ${subtract.constant}`];
+    if (borrowIsTrue) lines.push(`    jp c,${asmLabel}`);
+    else lines.push(`    jr c,${done}`);
+    lines.push("    ld b,a", ...loadPlain, "    cp b");
+    if (effective === "==") lines.push(`    jp z,${asmLabel}`);
+    else if (effective === "!=") lines.push(`    jp nz,${asmLabel}`);
+    else if (!emitUnsignedCompareBranch(lines, effective, asmLabel)) return null;
+    if (!borrowIsTrue) lines.push(`${done}:`);
+    return lines;
   }
 
   function emitLoadByteAsWord(token, declared) {
@@ -746,6 +854,28 @@ export function createControlFlowHelpers(ctx) {
         || leftComputed.runtimeType !== rightComputed.runtimeType
         || computedMixedSignedness)
     );
+    if (leftComputed && rightComputed
+      && byteArithmeticNeedsWideCompare
+      && !computedMixedSignedness) {
+      const byteAddCompare = emitUnsignedByteAddCompareGoto(leftAst, effectiveOperator, rightAst, asmLabel);
+      if (byteAddCompare) return byteAddCompare;
+      const byteSubtractCompare = emitUnsignedByteSubtractCompareGoto(leftAst, effectiveOperator, rightAst, asmLabel);
+      if (byteSubtractCompare) return byteSubtractCompare;
+    }
+    if (leftComputed && rightComputed
+      && byteArithmeticNeedsWideCompare
+      && !computedSigned
+      && !computedMixedSignedness) {
+      const computedWordCompare = emitComputedUnsignedWordCompareGoto(leftAst, effectiveOperator, rightAst, asmLabel);
+      if (computedWordCompare) return computedWordCompare;
+    }
+    if (leftComputed && rightComputed
+      && byteArithmeticNeedsWideCompare
+      && computedSigned
+      && !computedMixedSignedness) {
+      const computedWordCompare = emitComputedSignedWordCompareGoto(leftAst, effectiveOperator, rightAst, asmLabel);
+      if (computedWordCompare) return computedWordCompare;
+    }
     if (shouldUseComputedCompare) {
       const promotedLeft = preserveSignedMixedCompare
         ? emitComputeExpressionAst(leftAst)

@@ -1,0 +1,1022 @@
+cartridge "BULL'S-EYE/T. BRANTNER/1990"
+
+' BULL'S-EYE - a ColecoVision port of T. Brantner's C64 BASIC darts game
+' (ReRUN May/Jun/Jul 1990). Two players, 301 each, three darts a turn.
+' The dart drifts over the board, bouncing off the edges of its range;
+' the stick steers it (one pixel per step, 1.875 steps a frame as traced
+' on the C64), the button throws it. The score comes from the original's
+' table (art.py draws the board from the same table): sector value, x2 on
+' the outer ring, x3 on the inner ring, 25 and 50 for the bulls. Go below
+' zero: BROKE, the turn's darts don't count. Reach exactly zero: winner.
+'
+' Coordinates are the original's own: Dx 91-255 and Dy 97-229 are the C64
+' sprite positions kept by its machine-code mover; the board cell is
+' ((Dx-98)/4, (Dy-23-85)/4) after the throw, as in BASIC line 390.
+' Screen: board cell (0,0) at pixel (BoardX, BoardY).
+
+const TMarker = 128
+const TSingle = 129
+const TSingle2 = 130
+const TDouble = 131
+const TTreble = 132
+const TOuter = 133
+const TBull = 134
+const TBanB0 = 135
+const TBanB1 = 136
+const TBanU0 = 137
+const TBanU1 = 138
+const TBanL0 = 139
+const TBanL1 = 140
+const TBanQ0 = 141
+const TBanQ1 = 142
+const TBanS0 = 143
+const TBanS1 = 144
+const TBanD0 = 145
+const TBanD1 = 146
+const TBanE0 = 147
+const TBanE1 = 148
+const TBanY0 = 149
+const TBanY1 = 150
+const TLine = 151
+const SDart1 = 0
+const SDart2 = 4
+const SDart3 = 8
+const NTiles8 = 192
+const SprBytes = 96
+const BoardN0 = 232
+const BoardN1 = 464
+const BoardN2 = 40
+const BoardX = 52
+const BoardY = 24
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndThrow = 6
+const SndThud = 7
+const SndBroke = 8
+const SndWin = 9
+const TuneFrames = 512
+const TxtCredits = 0
+const NSpr = 3
+const HideY = 192
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+' play phases
+const PhAim = 0
+const PhThrow = 1
+const PhPause = 2
+
+u16 Sc[2]
+u16 Cs = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Pl = 0
+u8 Dn = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 DirX = 0
+u8 DirY = 0
+u8 Acc = 0
+u8 Ph = 0
+u8 Ta = 0
+u8 TAcc = 0
+u8 Pause = 0
+u8 Pv = 0
+u8 TurnEnd = 0
+u8 Winner = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 Sx[3]
+u8 Sy[3]
+u8 Sp[3]
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Li = 0
+u8 St = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 R = 0
+u8 T = 0
+u8 V = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  mode 2 screen
+  load default ascii
+  duplicate mode 2 patterns
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Winner = 0 then goto play_loop
+
+  State = StOver
+  WinWait
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub NewGame:
+  Sc[0] = 301
+  Sc[1] = 301
+  Pl = 0
+  Winner = 0
+  DrawPlay
+  State = StPlay
+  NewTurn
+  return
+end sub
+
+' a player's turn: the darts of the last turn go, three new ones
+sub NewTurn:
+  Cs = Sc[Pl]
+  Dn = 2
+  for Li = 0 to 2
+    Sy[Li] = HideY
+  next
+  DrawPanels
+  NewDart
+  return
+end sub
+
+' a new dart at (173,141), drifting in a random direction (lines 300-310)
+sub NewDart:
+  Dx = 173
+  Dy = 141
+  Rand
+  W16 = Rs & 1
+  DirX = W16
+  Rand
+  W16 = Rs & 1
+  DirY = W16
+  Acc = 0
+  Ph = PhAim
+  Sp[Dn] = SDart1
+  PlaceDart
+  return
+end sub
+
+' one pass of the game
+sub PlayStep:
+  if Ph = PhAim then
+    if Press = 1 then
+      Ph = PhThrow
+      Ta = 0
+      TAcc = 0
+      play sound SndThrow
+    else
+      ' the machine-code mover: 15/8 steps a frame
+      Acc += 15
+      St = Acc >> 3
+      Acc = Acc & 7
+      while St > 0
+        MoveStep
+        dec St
+      end while
+      PlaceDart
+    end if
+  else
+    if Ph = PhThrow then
+      ThrowStep
+    else
+      dec Pause
+      if Pause = 0 then AfterDart
+    end if
+  end if
+  DrawSprites
+  return
+end sub
+
+' one step of the original's mover ($C000): the stick (left/right, up/down)
+' sets the direction, else the dart keeps drifting; a step out of range
+' turns it back (x 91-255, y 97-229)
+sub MoveStep:
+  V = Jk & 12
+  if V = 4 then DirX = 1
+  if V = 8 then DirX = 0
+  if DirX = 0 then
+    T = Dx + 1
+  else
+    T = Dx - 1
+  end if
+  if T < 91 then
+    DirX = DirX ^ 1
+  else
+    Dx = T
+  end if
+  V = Jk & 3
+  if V = 1 then DirY = 1
+  if V = 2 then DirY = 0
+  if DirY = 0 then
+    T = Dy + 1
+  else
+    T = Dy - 1
+  end if
+  if T < 97 then
+    DirY = DirY ^ 1
+  else
+    if T >= 230 then
+      DirY = DirY ^ 1
+    else
+      Dy = T
+    end if
+  end if
+  return
+end sub
+
+' the flight: 24 steps up, 2.2 frames each (lines 350-370)
+sub ThrowStep:
+  TAcc += 5
+  if TAcc >= 11 then
+    TAcc -= 11
+    inc Ta
+    if Ta = 24 then
+      Land
+      return
+    end if
+  end if
+  if Ta < 11 then
+    Sp[Dn] = SDart1
+  else
+    if Ta < 22 then
+      Sp[Dn] = SDart2
+    else
+      Sp[Dn] = SDart3
+    end if
+  end if
+  T = Dy - Ta
+  PlaceAt
+  return
+end sub
+
+sub PlaceDart:
+  T = Dy
+  PlaceAt
+  return
+end sub
+
+' sprite Dn for a dart whose original y is T
+sub PlaceAt:
+  V = Dx - 98
+  V += BoardX
+  Sx[Dn] = V - 7
+  V = T - 85
+  V += BoardY
+  Sy[Dn] = V - 8
+  return
+end sub
+
+' the dart lands 23 pixels above where it was aimed; score it (lines 390-430)
+sub Land:
+  Dy -= 23
+  Sp[Dn] = SDart3
+  T = Dy
+  PlaceAt
+  play sound SndThud
+  Pv = 0
+  if Dx >= 98 then
+    if Dy >= 85 then
+      C = Dx - 98
+      C = C >> 2
+      R = Dy - 85
+      R = R >> 2
+      if C <= 37 then
+        if R <= 27 then
+          K = 0
+          if C > 18 then
+            K = 15
+            C = 37 - C
+          end if
+          if R > 13 then
+            K += 30
+            R = 27 - R
+          end if
+          W16 = R * 19
+          W16 += C
+          W16 += @SeData
+          V = peek(W16)
+          K += V
+          W16 = K
+          W16 += @QtData
+          Pv = peek(W16)
+        end if
+      end if
+    end if
+  end if
+  ' the dart's value, then what is left (or BROKE)
+  C = 2 - Dn
+  C = C << 2
+  C += 1
+  C += PanelX()
+  NumU = Pv
+  R = 21
+  PrNum
+  TurnEnd = 0
+  NumU = Pv
+  if NumU > Cs then
+    C = PanelX()
+    C += 7
+    print at C,19, "BROKE"
+    play sound SndBroke
+    TurnEnd = 1
+  else
+    Cs -= NumU
+    C = PanelX()
+    C += 9
+    NumU = Cs
+    R = 19
+    PrNum
+    if Cs = 0 then
+      ' the dart's value and the 0 stay a second, then the winner
+      TurnEnd = 2
+      Ph = PhPause
+      Pause = 60
+      return
+    end if
+    if Dn = 0 then
+      Sc[Pl] = Cs
+      TurnEnd = 1
+    end if
+  end if
+  Ph = PhPause
+  Pause = 19
+  if TurnEnd = 1 then Pause = 94
+  return
+end sub
+
+sub AfterDart:
+  if TurnEnd = 2 then
+    Winner = Pl + 1
+    ShowWinner
+    play sound SndWin
+    return
+  end if
+  if TurnEnd = 1 then
+    Pl = Pl ^ 1
+    NewTurn
+  else
+    dec Dn
+    NewDart
+  end if
+  return
+end sub
+
+function PanelX() as u8
+  u8 Px = 2
+  if Pl = 1 then Px = 18
+  return Px
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' NumU (0-999) right-aligned in 3 cells at C,R, spaces for leading zeros
+sub PrNum:
+  W16 = NumU / 100
+  T = W16
+  W16 = NumU % 100
+  W16 = W16 / 10
+  K = W16
+  W16 = NumU % 10
+  V = W16
+  J = 32
+  if T > 0 then J = T + 48
+  put char J at C,R
+  inc C
+  J = 32
+  if T > 0 then J = 48
+  if K > 0 then J = K + 48
+  put char J at C,R
+  inc C
+  J = V + 48
+  put char J at C,R
+  return
+end sub
+
+' both panels: name and score (marker on the player to throw), the dart
+' row and the LEFT row of the player to throw cleared
+sub DrawPanels:
+  print at 2,19, " ONE"
+  print at 18,19, " TWO"
+  NumU = Sc[0]
+  C = 11
+  R = 19
+  PrNum
+  NumU = Sc[1]
+  C = 27
+  R = 19
+  PrNum
+  C = PanelX()
+  put char TMarker at C,19
+  print at C,21, "            "
+  return
+end sub
+
+sub DrawSprites:
+  for Li = 0 to 2
+    T = Sy[Li]
+    V = Sx[Li]
+    K = Sp[Li]
+    if T = HideY then
+      set sprite Li to HideY,0,SDart1,0
+    else
+      if Pl = 0 then
+        set sprite Li to T,V,K,5
+      else
+        set sprite Li to T,V,K,9
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub LoadBoard:
+  decompress zx0 BoardP0 to vram.pattern + 1280
+  decompress zx0 BoardC0 to vram.color + 1280
+  decompress zx0 BoardP1 to vram.pattern + 3328
+  decompress zx0 BoardC1 to vram.color + 3328
+  decompress zx0 BoardP2 to vram.pattern + 5376
+  decompress zx0 BoardC2 to vram.color + 5376
+  decompress zx0 BoardNames to vram.name
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  LoadBoard
+  ShowScreen
+  return
+end sub
+
+sub ShowWinner:
+  print at 2,19, "                            "
+  print at 2,21, "                            "
+  if Winner = 1 then
+    print at 7,19, "WINNER: PLAYER ONE"
+  else
+    print at 7,19, "WINNER: PLAYER TWO"
+  end if
+  print at 8,21, "PRESS THE BUTTON"
+  return
+end sub
+
+' game over: the winner and the board stay; one press (or 30 s) returns to
+' the title; the message alternates with the prompt every 2 seconds
+sub WinWait:
+  DrawSprites
+  WasBtn = 16
+  Waited = 0
+ww_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then Press = 1
+  if Press = 0 then goto ww_loop
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 2
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TileColZ to vram.color + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  decompress zx0 TileColZ to vram.color + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+
+' the title: the board with three darts in it, name, menu (cursor back on
+' START), the tune once
+sub TitlePage:
+  NewScreen
+  State = StTitle
+  put char TBanB0 at 11,3
+  put char TBanB1 at 11,4
+  put char TBanU0 at 12,3
+  put char TBanU1 at 12,4
+  put char TBanL0 at 13,3
+  put char TBanL1 at 13,4
+  put char TBanL0 at 14,3
+  put char TBanL1 at 14,4
+  put char TBanQ0 at 15,3
+  put char TBanQ1 at 15,4
+  put char TBanS0 at 16,3
+  put char TBanS1 at 16,4
+  put char TBanD0 at 17,3
+  put char TBanD1 at 17,4
+  put char TBanE0 at 18,3
+  put char TBanE1 at 18,4
+  put char TBanY0 at 19,3
+  put char TBanY1 at 19,4
+  put char TBanE0 at 20,3
+  put char TBanE1 at 20,4
+  print at 3,6, "A DARTS GAME BY T.BRANTNER"
+  print at 11,13, "START"
+  print at 11,15, "HOW TO PLAY"
+  print at 11,17, "CREDITS"
+  print at 4,20, "RERUN, MAY/JUN/JUL 1990"
+  set sprite 0 to 67,72,SDart1,5
+  set sprite 1 to 71,120,SDart2,9
+  set sprite 2 to 75,168,SDart3,5
+  update sprites
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,13
+  put char 32 at 9,15
+  put char 32 at 9,17
+  C = Menu << 1
+  C += 13
+  put char TMarker at 9,C
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  State = StCredits
+  print at 11,2, "BULL'S-EYE"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: page 1 with the three dart pictures, page 2 on the board
+sub HowTo:
+  Page = 1
+  NewScreen
+  State = StHow
+  print at 8,1, "HOW TO PLAY  1/2"
+  print at 2,3, "TWO PLAYERS, ONE STICK."
+  print at 2,5, "EACH STARTS AT 301 AND"
+  print at 2,7, "THROWS 3 DARTS A TURN."
+  print at 2,9, "THE DART DRIFTS: STEER IT"
+  print at 2,11, "WITH THE STICK, PRESS THE"
+  print at 2,13, "BUTTON TO THROW IT."
+  set sprite 0 to 117,72,SDart1,5
+  set sprite 1 to 117,120,SDart2,5
+  set sprite 2 to 117,168,SDart3,9
+  update sprites
+  print at 2,18, "HIT ZERO EXACTLY TO WIN."
+  print at 2,20, "BELOW ZERO: BROKE, NO SCORE."
+  print at 8,22, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    LoadBoard
+    set sprite 0 to 33,117,SDart3,5
+    set sprite 1 to 79,117,SDart3,9
+    update sprites
+    print at 2,19, "RINGS: OUTER X2, INNER X3."
+    print at 2,21, "BULLS: GREEN 25, RED 50."
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $06,$00,$40,$60,$70,$87,$70,$60,$40,$00,$15,$6A,$83,$9F,$99,$F4,$7B,$E1,$99,$92,$FE,$AA,$C3,$00
+  $85,$60,$AA,$81,$00,$A6,$18,$A8,$30,$00,$1A,$C1,$A6,$60,$A9,$C3,$06,$FD,$81,$D4,$F8,$AD,$EC,$7F
+  $C0,$F7,$CD,$80,$9B,$50,$18,$CE,$FE,$70,$1D,$55,$56
+end data
+data TileColZ bytes
+  $22,$01,$F1,$22,$1F,$F1,$96,$0B,$96,$04,$96,$08,$96,$0C,$96,$02,$96,$08,$AA,$16,$18,$A9,$19,$1A
+  $A6,$1B,$B9,$01,$E0,$7A,$FF,$01,$AA,$61,$81,$AA,$91,$A1,$6B,$B1,$87,$E0,$F7,$F1,$FE,$FF,$A1,$E0
+  $A5,$CF,$C0,$FE,$3E,$E1,$C0,$47,$DE,$40,$60,$7E,$FF,$A6,$22,$0E,$0E,$75,$55,$58
+end data
+data SpritePatZ bytes
+  $56,$00,$60,$70,$38,$1C,$0E,$06,$03,$06,$0E,$1C,$38,$70,$60,$00,$2E,$0C,$F0,$87,$E0,$C0,$80,$C0
+  $E0,$AE,$D0,$0C,$E0,$EA,$DB,$10,$5F,$06,$02,$01,$02,$06,$0C,$10,$EB,$9B,$E0,$60,$BB,$C3,$00,$BF
+  $60,$F2,$E1,$FE,$A0,$01,$A8,$02,$1E,$02,$01,$00,$49,$F3,$80,$F0,$80,$EC,$55,$55,$80
+end data
+data BoardP0 bytes
+  $58,$00,$4C,$3D,$44,$48,$11,$00,$9A,$10,$30,$10,$20,$38,$00,$48,$F8,$38,$28,$FD,$D0,$4B,$0F,$D3
+  $FE,$83,$B1,$20,$30,$08,$30,$87,$C8,$C0,$F0,$B8,$28,$65,$E1,$08,$08,$B0,$F1,$58,$7D,$80,$7C,$D0
+  $7D,$28,$1F,$98,$5D,$55,$56
+end data
+data BoardC0 bytes
+  $0A,$11,$F1,$1F,$F1,$22,$1F,$11,$82,$F1,$86,$11,$9A,$33,$BB,$7E,$ED,$D0,$1F,$DD,$A1,$FF,$FF,$69
+  $1F,$69,$F1,$79,$80,$6E,$B1,$FE,$A6,$BB,$9F,$1B,$F0,$FF,$E0,$D0,$FF,$E0,$B0,$7F,$78,$FE,$EC,$F5
+  $FF,$96,$33,$9A,$F3,$B3,$69,$1F,$A6,$3B,$9A,$F1,$33,$69,$3F,$F7,$18,$FF,$68,$70,$FF,$60,$48,$FF
+  $98,$E8,$F9,$C8,$58,$7F,$98,$DF,$18,$98,$D5,$55,$60
+end data
+data BoardP1 bytes
+  $9A,$00,$0F,$5A,$00,$56,$95,$0F,$F7,$D8,$97,$C0,$D7,$F0,$95,$D8,$F7,$E0,$D5,$D8,$F7,$E8,$C5,$40
+  $F0,$80,$86,$38,$28,$38,$08,$30,$E6,$FF,$44,$33,$44,$B9,$11,$68,$F1,$78,$77,$70,$57,$91,$C0,$79
+  $B8,$77,$18,$17,$D5,$B8,$F0,$68,$86,$30,$08,$10,$20,$38,$17,$DA,$D0,$38,$3F,$FF,$F3,$5D,$B8,$5D
+  $55,$56
+end data
+data BoardC1 bytes
+  $9A,$11,$31,$69,$1B,$A7,$FF,$FD,$E0,$F0,$BA,$1F,$FE,$96,$B1,$9A,$1B,$11,$69,$F1,$F7,$B8,$DF,$E8
+  $F0,$FA,$E5,$FF,$1F,$5A,$11,$69,$B1,$A6,$11,$97,$1B,$FD,$E0,$50,$BA,$13,$FE,$96,$31,$96,$FF,$96
+  $F3,$9A,$11,$CF,$69,$CC,$A6,$6C,$9A,$CC,$C6,$69,$11,$A6,$FC,$96,$3F,$97,$13,$D9,$07,$F4,$E8,$F1
+  $1F,$EF,$0C,$68,$F7,$78,$F9,$F0,$78,$7F,$F0,$F7,$78,$18,$77,$70,$77,$48,$7F,$F0,$65,$68,$F7,$68
+  $77,$88,$FF,$F0,$18,$DF,$A8,$E5,$A6,$FF,$BB,$97,$11,$77,$80,$7C,$C0,$97,$98,$E9,$BD,$FF,$33,$DD
+  $30,$FF,$E8,$45,$A6,$FF,$B3,$9A,$F1,$3B,$7F,$98,$F7,$D0,$60,$7F,$88,$FD,$90,$38,$F7,$D0,$F7,$B8
+  $90,$7D,$70,$FA,$FE,$F1,$5D,$55,$56
+end data
+data BoardP2 bytes
+  $58,$00,$18,$20,$38,$28,$38,$00,$12,$48,$30,$08,$10,$08,$30,$00,$9A,$4E,$35,$4A,$F5,$11,$F3,$55
+  $58
+end data
+data BoardC2 bytes
+  $20,$11,$F1,$AA,$11,$33,$69,$11,$69,$BB,$F7,$D0,$A2,$F1,$1F,$8D,$1F,$55,$56
+end data
+data BoardNames bytes
+  $81,$20,$52,$24,$A0,$20,$18,$21,$A1,$20,$A2,$A3,$9E,$A2,$20,$A4,$C2,$13,$9F,$C5,$A5,$A6,$A7,$EE
+  $8B,$A8,$A6,$F5,$BD,$FE,$82,$A9,$AA,$AB,$A6,$7F,$EA,$E7,$F0,$AC,$AD,$AE,$C6,$3E,$22,$AA,$A3,$08
+  $AF,$B0,$B1,$B2,$83,$B3,$B4,$B0,$B5,$62,$93,$A3,$AD,$52,$98,$B6,$22,$B7,$B8,$A6,$B9,$09,$BA,$A6
+  $BB,$B7,$A5,$BC,$2D,$A1,$8E,$C9,$A4,$A5,$4B,$78,$A7,$A3,$A8,$2D,$7C,$20,$AB,$AC,$A8,$A2,$3E,$7E
+  $4B,$FF,$6B,$B1,$B0,$A2,$B2,$B8,$45,$B5,$F5,$EF,$B0,$B6,$E2,$65,$86,$C0,$92,$B9,$02,$BA,$BA,$BB
+  $BC,$BD,$BE,$BA,$BA,$4E,$40,$58,$2A,$BF,$C0,$BA,$AA,$C1,$92,$A8,$C2,$AA,$A6,$C3,$A3,$A8,$C4,$33
+  $A6,$BA,$C5,$C6,$46,$0A,$C7,$60,$88,$C8,$C9,$B0,$A9,$26,$A7,$B0,$CA,$C8,$94,$CB,$88,$AB,$CC,$84
+  $88,$C2,$CD,$CE,$CF,$CC,$CC,$D0,$D1,$CD,$C3,$94,$CC,$A5,$9E,$D2,$AB,$D3,$18,$A0,$B0,$F9,$F0,$D6
+  $D4,$A5,$D5,$8A,$02,$08,$D6,$D7,$B0,$D8,$20,$85,$D9,$B0,$D7,$D6,$33,$F7,$8D,$FE,$77,$AF,$BB,$95
+  $FE,$89,$A4,$20,$05,$5D,$55,$56
+end data
+
+data SeData bytes
+  14,14,14,14,14,14,14,14,14,14,14,14,14,4,4,4,4,4,4
+  14,14,14,14,14,14,14,14,14,14,14,5,5,0,0,0,0,0,0
+  14,14,14,14,14,14,14,14,14,5,5,1,1,1,0,0,0,0,0
+  14,14,14,14,14,14,14,5,5,1,1,1,1,1,0,0,0,0,0
+  14,14,14,14,14,6,6,1,1,1,1,1,1,1,1,0,0,0,0
+  14,14,14,14,6,6,2,1,1,1,1,1,1,1,1,0,0,0,0
+  14,14,14,6,6,2,2,2,2,1,1,1,1,9,9,9,8,8,8
+  14,14,6,2,2,2,2,2,2,2,1,9,9,9,1,1,0,0,0
+  14,14,6,2,2,2,2,2,2,2,2,9,1,1,1,1,0,0,0
+  14,6,2,2,2,2,2,2,2,10,10,2,2,1,1,1,1,0,0
+  14,6,2,2,2,2,2,2,10,10,2,2,2,2,1,1,1,0,0
+  7,3,3,3,3,3,2,2,10,2,2,2,2,2,2,2,1,1,0
+  7,3,3,3,3,3,3,11,3,3,3,2,2,2,2,2,2,12,12
+  7,3,3,3,3,3,3,11,3,3,3,3,3,3,3,3,12,12,13
+end data
+data QtData bytes
+  12,1,5,11,24,2,10,22,36,3,15,33,25,50,0,12,8,4,9
+  24,16,8,18,36,24,12,27,25,50,0,10,6,2,11,20,12,4,22
+  30,18,6,33,25,50,0,10,3,7,9,20,6,14,18,30,9,21,27
+  25,50,0
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$09,$28,$4F,$52
+  $49,$47,$49,$4E,$41,$4C,$05,$31,$39,$39,$30,$2E,$05,$32,$30,$32,$36,$2E,$03,$41,$4E,$44,$05,$41
+  $52,$52,$4F,$57,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$09,$42,$52,$41,$4E,$54,$4E,$45,$52,$2C
+  $03,$43,$36,$34,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E
+  $04,$47,$41,$4D,$45,$02,$49,$4E,$06,$4D,$55,$53,$49,$43,$3A
+end data
+data TxD_1 bytes
+  $03,$4F,$41,$4B,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$04,$50,$4F,$52,$54,$05,$52,$45,$52,$55,$4E
+  $02,$54,$2E,$05,$54,$49,$54,$4C,$45,$05,$54,$55,$4E,$45,$29
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $11,$0A,$0D,$01,$FE,$14,$09,$13,$04,$FE,$0C,$12,$0E,$00,$FE,$01,$0B,$02,$FE,$00,$01,$00,$08,$05
+  $FE,$0F,$10,$06,$07,$FE,$03,$15,$16,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScThrow:
+    db $40,$34,$20,$02,$40,$35,$20,$02,$40,$35,$20,$02,$40,$36,$20,$02,$40,$36,$20,$02,$40,$36,$20,$02
+    db $40,$37,$20,$02,$40,$37,$20,$02,$40,$38,$30,$02,$40,$38,$30,$02,$40,$38,$30,$02,$40,$39,$30,$02
+    db $40,$39,$30,$02,$40,$3A,$30,$02,$40,$3A,$30,$02,$40,$3B,$30,$02,$40,$3B,$40,$02,$40,$3C,$40,$02
+    db $40,$3C,$40,$02,$40,$3D,$40,$02,$40,$3D,$40,$02,$40,$3E,$40,$02,$40,$3E,$40,$02,$40,$3F,$40,$03
+    db $50
+ScThud:
+    db $40,$DB,$12,$02,$40,$EA,$22,$03,$40,$F9,$52,$04,$50
+ScBroke:
+    db $40,$1D,$21,$06,$40,$2E,$21,$06,$40,$41,$31,$06,$40,$53,$31,$10,$50
+ScWin:
+    db $40,$8F,$20,$06,$40,$71,$20,$06,$40,$5F,$20,$06,$40,$47,$20,$06,$40,$5F,$20,$06,$40,$47,$20,$18
+    db $50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScThrow,$705D
+    dw ScThud,$705D
+    dw ScBroke,$705D
+    dw ScWin,$705D
+; Oak and Arrow (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$21,$01,$26,$01,$2A,$01,$28,$01,$26,$01,$23,$01
+    db $21,$01,$01,$01,$23,$01,$26,$01,$28,$01,$2A,$01,$28,$01,$26,$01
+    db $28,$01,$01,$01,$2A,$01,$2D,$01,$2A,$01,$26,$01,$28,$01,$25,$01
+    db $23,$01,$21,$01,$23,$01,$25,$01,$28,$01,$25,$01,$26,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$1E,$01,$01,$01,$21,$01,$01,$01,$1E,$01,$01,$01
+    db $1A,$01,$01,$01,$1F,$01,$01,$01,$23,$01,$01,$01,$21,$01,$01,$01
+    db $19,$01,$01,$01,$1A,$01,$01,$01,$21,$01,$01,$01,$1F,$01,$01,$01
+    db $1C,$01,$01,$01,$1F,$01,$01,$01,$21,$01,$01,$01,$1E,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$98,$F0,$25,$C0,$66,$F0,$1F,$C0,$98,$F0,$21,$C0,$66,$F0,$1F,$C0,$72,$F0,$21,$C0,$98,$F0,$1F
+    db $C0,$66,$F0,$21,$C0,$88,$F0,$1F,$C0,$98,$F0,$21,$C0,$66,$F0,$1F,$C0,$72,$F0,$21,$C0,$88,$F0,$1F
+    db $C0,$72,$F0,$21,$C0,$66,$F0,$1F,$C0,$98,$F0,$1A,$FF,$E3
+    db $D0
+}

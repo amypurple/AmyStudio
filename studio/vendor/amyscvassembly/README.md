@@ -1,6 +1,8 @@
 # AmysCVAssembly Extraction Notes
 
-Source: [Amy's CV Assembly](https://github.com/amypurple/AmysCVAssembly)
+Source:
+
+`C:/Users/Amy/Documents/git/AmysCVAssembly/AmysCVAssemblerPro-v2.html`
 
 ## Candidate Core Blocks
 

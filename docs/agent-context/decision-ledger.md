@@ -1493,3 +1493,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   r9 silent-miscompile fixes remain covered by GearColeco execution.
 - Evidence: `tools/test-main-sub-layout-runtime.mjs`, `Codex-r9-validation.zip`,
   and `node tools/amy-qa.mjs quick`.
+
+# 2026-11-11 - Forty-ROM handoff corpus adopted
+
+- Claude supplied 40 complete generated Amy sources and their accepted balanced
+  ROMs, covering the 38-game validation set plus Out of Order and the 32 KB
+  Deepwarden teaser. Five focused main/sub regressions accompany the corpus.
+- The checker was made Windows-safe and now exits nonzero on a failed build or
+  byte difference. It remains a deliberate handoff/promotion gate rather than
+  part of quick QA because the 40 compilations take roughly two minutes.
+- Current experimental compiler result: 40 identical, 0 different, 0 failed.
+- Evidence: `tools/regression-corpus/claude-2026-11-11/README.md` and
+  `tools/regression-corpus/claude-2026-11-11/check.mjs`.

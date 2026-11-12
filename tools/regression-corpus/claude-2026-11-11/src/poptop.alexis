@@ -1,0 +1,1294 @@
+cartridge "POP-TOP!/RERUN 1990 (NO AUTHOR NAMED)/1990"
+' POP-TOP! - ColecoVision port of the C64 machine-code game on ReRUN's
+' Aug/Sep/Oct 1990 disk (the disk names no author). Rules from the
+' original's code (orig/poptop.dis), checked pass by pass against jsc64
+' traces (c64/check.mjs) through model.mjs.
+'
+' The game: a clown walks along the ground. The button pops his top hat
+' up into the air; it slows as it rises, falls back to his head, and
+' steers left and right with him. A balloon drifts across the top: hit it
+' with the hat for 10 x level points. Spinners cross the rows between: a
+' hat that hits one costs one of the three hats. 20 balloons clear the
+' level: 100 points for each hat left, then the next level brings more
+' spinners (1, 2, 3, 4, then 5) moving more often (up to level 15).
+'
+' The port keeps the original's units: C64 sprite coordinates, and the
+' original's main loop run 7 times every 2 frames (the C64 makes ~3.5
+' passes per NTSC frame: 4396 cycles per pass measured in jsc64). Screen
+' positions come from lookup tables (art.py): x = 16 + (X - 24) * 0.7,
+' y = 10 + (Y - 50) * 16/21.
+
+const TGround = 128
+const TLife = 129
+const TNolife = 130
+const TBicon = 131
+const TLp00 = 132
+const TLp01 = 133
+const TLp10 = 134
+const TLp11 = 135
+const TLo00 = 136
+const TLo01 = 137
+const TLo10 = 138
+const TLo11 = 139
+const TLd00 = 140
+const TLd01 = 141
+const TLd10 = 142
+const TLd11 = 143
+const TLt00 = 144
+const TLt01 = 145
+const TLt10 = 146
+const TLt11 = 147
+const TTentr = 148
+const TTentv = 149
+const TTentw = 150
+const SHat = 0
+const SClownw0 = 4
+const SClownc0 = 8
+const SClownr0 = 12
+const SClownw1 = 16
+const SClownc1 = 20
+const SClownr1 = 24
+const SClownw2 = 28
+const SClownc2 = 32
+const SClownr2 = 36
+const SSpin0 = 40
+const SSpin1 = 44
+const SBalloonw = 48
+const SBalloon = 52
+const NTiles8 = 184
+const SprBytes = 448
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndThrow = 6
+const SndPop = 7
+const SndFall = 8
+const SndStart = 9
+const SndOver = 10
+const SndBonus = 11
+const TuneFrames = 448
+const TxtCredits = 0
+const TxtHow1 = 1
+const TxtHow2 = 2
+const TxtHow3 = 3
+const NSpr = 11
+const HideY = 192
+' the original's numbers
+const HatRest = 175
+const HatTop = 33
+const ClownY = 195
+const BalloonY = 51
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StReady = 5
+const StFall = 6
+const StOver = 9
+' pass events
+const EvNone = 0
+const EvDeath = 1
+const EvLevel = 2
+
+' --- the game, in the original's units
+u16 Sx[5]
+u16 Sdx[5]
+u8 Scol[5]
+u16 ClX = 172
+u16 Bx = 0
+u16 Bdir = 1
+u16 W = 0
+u16 Score10 = 0
+u16 Hi10 = 0
+u8 By = 0
+u8 Bcol = 0
+u8 HatY = 175
+u8 St = 0
+u8 Lv = 1
+u8 Fc = 0
+u8 C3 = 0
+u8 Left = 20
+u8 Lives = 2
+u8 En = 0
+u8 Cf = 0
+u8 Ev = 0
+u8 Hit = 0
+u8 Touch = 0
+u8 Acc = 0
+u8 NP = 0
+u8 Pi = 0
+u8 Kk = 0
+u8 Dy = 0
+u8 Dxb = 0
+u8 Hb = 0
+u8 Lb = 0
+
+' --- the frame
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 R8 = 0
+' loop counters (never used by helper subs)
+u8 Li = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 X8 = 0
+u8 Y8 = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  ' 7 passes of the original every 2 frames (3, 4, 3, 4 ...)
+  Acc += 7
+  NP = Acc >> 1
+  Acc = Acc & 1
+  Ev = EvNone
+  for Pi = 1 to 4
+    if Pi <= NP then
+      if Ev = EvNone then OnePass
+    end if
+  next
+  DrawSprites
+  if Ev = EvNone then goto play_loop
+  if Ev = EvLevel then
+    LevelEnd
+    goto play_loop
+  end if
+  ' a spinner hit the hat
+  Death
+  if Ev = EvLevel then
+    LevelEnd
+    goto play_loop
+  end if
+  if Lives <> 255 then
+    NewRound
+    goto play_loop
+  end if
+
+  GameOver
+  State = StOver
+  Rearm
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (the original's main loop at $08F3, one pass)
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+' (the C64 reads the SID's noise voice, $D41B)
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  W16 = Rs >> 8
+  R8 = W16
+  return
+end sub
+
+sub NewGame:
+  Score10 = 0
+  Lv = 1
+  ClX = 172
+  Left = 20
+  Lives = 2
+  DrawPlay
+  NewLevel
+  return
+end sub
+
+sub NewLevel:
+  Left = 20
+  Lives = 2
+  NewRound
+  return
+end sub
+
+' a round ($08A2): hat on the head, a new balloon, five spinners from the
+' edges, the HUD, then a second of silence and the start jingle
+sub NewRound:
+  St = 0
+  HatY = HatRest
+  Cf = 0
+  NewBalloon
+  for Li = 0 to 4
+    K = 4 - Li
+    Respawn
+  next
+  T = Lv - 1
+  if T > 4 then T = 4
+  En = EnTab[T]
+  State = StReady
+  DrawHud
+  DrawSprites
+  WaitFrames60
+  play sound SndStart
+  Waited = 152
+  WaitN
+  State = StPlay
+  return
+end sub
+
+sub WaitFrames60:
+  Waited = 60
+  WaitN
+  return
+end sub
+
+sub WaitN:
+wn_loop:
+  Frame1
+  dec Waited
+  if Waited > 0 then goto wn_loop
+  return
+end sub
+
+' a new direction for spinner K ($0ABA): -4 (twice as likely), -3 .. +3, never 0
+sub NewDir:
+  Rand
+  T = R8 & 7
+  if T = 0 then T = 4
+  if T >= 4 then
+    W = T | 252
+    W = W | $FF00
+  else
+    W = T
+  end if
+  Sdx[K] = W
+  return
+end sub
+
+' spinner K from a random edge, a random colour ($0A8D)
+sub Respawn:
+  Rand
+  T = R8 & 1
+  if T = 0 then
+    Sx[K] = 0
+  else
+    Sx[K] = 344
+  end if
+  Rand
+  T = R8 & 7
+  Scol[K] = T + 2
+  NewDir
+  return
+end sub
+
+' the balloon from a random edge ($0B09); none once the 20 are popped
+sub NewBalloon:
+  ShowLeft
+  if Left = 0 then
+    By = 0
+    return
+  end if
+  Rand
+  T = R8 & 1
+  if T = 0 then
+    Bx = 0
+    Bdir = 1
+  else
+    Bx = 344
+    Bdir = $FFFF
+  end if
+  Rand
+  T = R8 & 7
+  Bcol = T + 2
+  By = BalloonY
+  return
+end sub
+
+sub OnePass:
+  inc C3
+  T = C3 & 1
+  if T = 1 then
+    MoveClown
+    MoveHat
+  end if
+  MoveSpinners
+  T = C3 & 3
+  if T = 0 then
+    if By <> 0 then MoveBalloon
+  end if
+  if St = 0 then
+    if Left = 0 then Ev = EvLevel
+    return
+  end if
+  HitTest
+  return
+end sub
+
+' the clown ($09B3): 1 px a pass on odd passes, X 24 .. 320
+sub MoveClown:
+  V = Jk & 12
+  Cf = 0
+  if V = 8 then
+    if ClX < 320 then inc ClX
+  end if
+  if V = 4 then
+    if ClX > 24 then dec ClX
+  end if
+  if V = 8 or V = 4 then
+    T = ClX
+    T = T >> 2
+    T = T & 3
+    Cf = CfTab[T]
+  end if
+  return
+end sub
+
+' the hat ($09F4): popped by the button, rises by Y/32 a pass (slowing
+' down) up to Y=33, falls back by Y/32 (speeding up) to the head
+sub MoveHat:
+  if St = 0 then
+    if Btn = 0 then return
+    St = 1
+    play sound SndThrow
+  end if
+  T = HatY >> 5
+  if St = 1 then
+    V = HatY - T
+    if V >= HatTop then
+      HatY = V
+    else
+      St = 2
+    end if
+  else
+    V = HatY + T
+    if V >= HatRest then
+      St = 0
+      HatY = HatRest
+    else
+      HatY = V
+    end if
+  end if
+  return
+end sub
+
+' the spinners ($0A40): all five move once every 17 - level passes; one
+' in 64 changes direction; off an edge: back from a random edge
+sub MoveSpinners:
+  inc Fc
+  if Fc < 17 then return
+  Fc = Lv
+  for Li = 0 to 4
+    K = 4 - Li
+    Rand
+    T = R8 & 63
+    if T = 0 then NewDir
+    W = Sx[K] + Sdx[K]
+    Hb = W >> 8
+    Lb = W & 255
+    if Hb <> 0 and Lb >= $59 then
+      Respawn
+    else
+      Sx[K] = W
+    end if
+  next
+  return
+end sub
+
+' the balloon ($0AD2): 1 px every 4 passes
+sub MoveBalloon:
+  W = Bx + Bdir
+  Hb = W >> 8
+  Lb = W & 255
+  if Hb <> 0 and Lb >= $59 then
+    NewBalloon
+  else
+    Bx = W
+  end if
+  return
+end sub
+
+' the hit ($0930): the C64 first needs its hardware collision bit (the
+' hat's pixels over a shown sprite), here the hat's pixel masks against
+' the shown balloon and spinners (art.py, from the original's sprites);
+' then its own box test picks the object: the balloon first, then
+' spinners 4 .. 0, shown or not ($0B33)
+sub HitTest:
+  ' only the shown objects can set the collision bit
+  Touch = 0
+  for Li = 0 to 5
+    K = 5 - Li
+    V = ShownBit[K]
+    V = V & En
+    if K = 5 then V = By
+    if V <> 0 then
+      BoxTest
+      if Hit = 1 then
+        PixTest
+        if Hit = 1 then Touch = 1
+      end if
+    end if
+  next
+  if Touch = 0 then return
+  for Li = 0 to 5
+    K = 5 - Li
+    BoxTest
+    if Hit = 1 then
+      if K = 5 then
+        Popped
+      else
+        Ev = EvDeath
+      end if
+      return
+    end if
+  next
+  return
+end sub
+
+' object K (5 = balloon) in the original's box: 0 <= objY - hatY < 19,
+' 0 <= hatX + 14 - objX < 27 (16-bit)
+sub BoxTest:
+  Hit = 0
+  if K = 5 then
+    T = By
+    W = Bx
+  else
+    T = RowY[K]
+    W = Sx[K]
+  end if
+  Dy = T - HatY
+  if Dy >= 19 then return
+  W16 = ClX + 14
+  W16 = W16 - W
+  if W16 >= 27 then return
+  Dxb = W16
+  Hit = 1
+  return
+end sub
+
+' shown object K: does a hat pixel touch it? (needs BoxTest's Dy, Dxb;
+' HitTest only calls it for shown objects)
+sub PixTest:
+  Hit = 0
+  T = Dy << 2
+  V = Dxb >> 3
+  T += V
+  if K = 5 then
+    V = HitBalloon[T]
+  else
+    J = C3 >> 1
+    J = J & 1
+    if J = 0 then
+      V = HitSpin0[T]
+    else
+      V = HitSpin1[T]
+    end if
+  end if
+  J = Dxb & 7
+  V = V >> J
+  Hit = V & 1
+  return
+end sub
+
+' the balloon popped ($093F): the hat falls back, 10 x level points, the
+' next balloon
+sub Popped:
+  St = 2
+  W = Lv
+  Score10 += W
+  if Score10 > Hi10 then Hi10 = Score10
+  play sound SndPop
+  dec Left
+  NewBalloon
+  ShowScore
+  return
+end sub
+
+' a spinner hit the hat ($0953): the fall sound (1.8 s), one hat less
+sub Death:
+  State = StFall
+  play sound SndFall
+  Waited = 110
+  WaitN
+  ' the hat lost leaves the HUD
+  T = Lives + 27
+  put char TNolife at T,19
+  dec Lives
+  if Lives <> 255 then
+    if Left = 0 then Ev = EvLevel
+    return
+  end if
+  if Left = 0 then Ev = EvLevel
+  return
+end sub
+
+' 20 balloons popped and the hat back on the head ($091B): 100 points for
+' each hat left, the next level (at most 15), three hats again
+sub LevelEnd:
+  State = StReady
+  if Lives <> 255 then
+    T = Lives + 1
+    W = T * 10
+    Score10 += W
+    if Score10 > Hi10 then Hi10 = Score10
+  end if
+  ShowScore
+  if Lv < 15 then inc Lv
+  NewLevel
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub ScreenX:
+  ' W = C64 X -> X8 (0 = hidden)
+  if W < 256 then
+    T = W
+    X8 = XMapLo[T]
+  else
+    W16 = W - 256
+    T = W16
+    X8 = XMapHi[T]
+  end if
+  return
+end sub
+
+sub DrawSprites:
+  ' the hat and the clown (3 layers)
+  W = ClX
+  ScreenX
+  Y8 = YMap[HatY]
+  set sprite 0 to Y8,X8,SHat,13
+  Y8 = YMap[ClownY]
+  T = Cf * 12
+  V = SClownw0 + T
+  set sprite 1 to Y8,X8,V,15
+  V += 4
+  set sprite 2 to Y8,X8,V,7
+  V += 4
+  set sprite 3 to Y8,X8,V,8
+  ' the balloon (white highlight and string over its colour)
+  Y8 = HideY
+  X8 = 0
+  if By <> 0 then
+    W = Bx
+    ScreenX
+    if X8 <> 0 then Y8 = YMap[By]
+  end if
+  T = ColMap[Bcol]
+  set sprite 4 to Y8,X8,SBalloonw,15
+  set sprite 5 to Y8,X8,SBalloon,T
+  ' the spinners, on their rows; the hidden ones move too
+  J = C3 >> 1
+  J = J & 1
+  J = J << 2
+  J += SSpin0
+  for Li = 0 to 4
+    C = Li + 6
+    K = Li + 2
+    V = En >> K
+    V = V & 1
+    W = Sx[Li]
+    ScreenX
+    Y8 = HideY
+    if V = 1 then
+      if X8 <> 0 then
+        T = Li * 20
+        T += 85
+        Y8 = YMap[T]
+      end if
+    end if
+    T = Scol[Li]
+    T = ColMap[T]
+    set sprite C to Y8,X8,J,T
+  next
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  NumU = Score10
+  print at 8,21, digits$(NumU, 5)
+  print at 13,21, "0"
+  NumU = Hi10
+  print at 24,21, digits$(NumU, 5)
+  print at 29,21, "0"
+  return
+end sub
+
+sub ShowLeft:
+  NumU = Left
+  print at 17,21, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowLevel:
+  NumU = Lv
+  print at 23,19, digits$(NumU, 2)
+  return
+end sub
+
+' the playfield and the HUD: ground line, logo, level, hats, score line
+sub DrawPlay:
+  NewScreen
+  fill TGround count 28 at 2,17
+  Logo2
+  print at 17,19, "LEVEL"
+  print at 2,21, "SCORE"
+  put char TBicon at 15,21
+  print at 21,21, "HI"
+  DrawHud
+  ShowScreen
+  return
+end sub
+
+' the HUD's numbers and hats (a new round or level reprints them, as the
+' original does, without clearing the screen)
+sub DrawHud:
+  ShowLevel
+  for Li = 0 to 2
+    C = Li + 27
+    T = TNolife
+    if Li <= Lives then T = TLife
+    put char T at C,19
+  next
+  ShowScore
+  ShowLeft
+  return
+end sub
+
+' the POP-TOP logo in big letters at columns 2-15, rows 18-19
+sub Logo2:
+  X8 = 2
+  Y8 = 18
+  Logo
+  return
+end sub
+
+' the logo at X8, Y8 (2 rows)
+sub Logo:
+  for Li = 0 to 6
+    T = LogoTab[Li]
+    C = Li << 1
+    C += X8
+    put char T at C,Y8
+    V = T + 1
+    J = C + 1
+    put char V at J,Y8
+    T += 2
+    K = Y8 + 1
+    put char T at C,K
+    V = T + 1
+    put char V at J,K
+  next
+  return
+end sub
+
+sub GameOver:
+  stop sound SndThrow
+  State = StOver
+  Waited = 60
+  WaitN
+  play sound SndOver
+  Waited = 174
+  WaitN
+  HideSprites
+  print at 4,9, "GAME OVER...PRESS BUTTON"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Btn = button held, Press = newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker off
+  for J = 0 to 10
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the big-top stripes across the top of the title
+sub Tent:
+  for Li = 2 to 29
+    put char TTentr at Li,1
+    T = Li & 1
+    if T = 0 then
+      put char TTentv at Li,2
+    else
+      put char TTentw at Li,2
+    end if
+  next
+  return
+end sub
+
+' the title: big top, logo, menu (cursor back on START), the tune once
+sub TitlePage:
+  NewScreen
+  Tent
+  X8 = 9
+  Y8 = 4
+  Logo
+  print at 5,7, "A CLOWN, A HAT, BALLOONS"
+  print at 12,12, "START"
+  print at 12,14, "HOW TO PLAY"
+  print at 12,16, "CREDITS"
+  print at 6,21, "RERUN 1990 * PORT 2026"
+  fill TGround count 28 at 2,19
+  ' the clown, his hat and two balloons
+  set sprite 0 to 128,40,SHat,13
+  set sprite 1 to 140,40,SClownw0,15
+  set sprite 2 to 140,40,SClownc0,7
+  set sprite 3 to 140,40,SClownr0,8
+  set sprite 4 to 78,40,SBalloonw,15
+  set sprite 5 to 78,40,SBalloon,8
+  set sprite 6 to 92,196,SBalloonw,15
+  set sprite 7 to 92,196,SBalloon,11
+  set sprite 8 to 132,200,SSpin0,3
+  update sprites
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  ' the spinner turns (every 16 frames)
+  T = Tick & 16
+  if T = 0 then
+    set sprite 8 pattern to SSpin0
+  else
+    set sprite 8 pattern to SSpin1
+  end if
+  update sprites
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,12
+  put char 32 at 10,14
+  put char 32 at 10,16
+  C = Menu << 1
+  C += 12
+  put char 62 at 10,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 12,2, "CREDITS"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 5
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages, each with a picture made of the game's own
+' sprites and tiles (rows 3-9), the text from row 11
+sub HowPage:
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  T = Page + 48
+  put char T at 21,1
+  TxX0 = 2
+  TxY = 11
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  return
+end sub
+
+sub HowTo:
+  Page = 1
+  TxT = TxtHow1
+  HowPage
+  ' the clown under a balloon, his hat on the way up
+  fill TGround count 12 at 10,9
+  set sprite 0 to 30,120,SHat,13
+  set sprite 1 to 56,120,SClownw1,15
+  set sprite 2 to 56,120,SClownc1,7
+  set sprite 3 to 56,120,SClownr1,8
+  set sprite 4 to 14,116,SBalloonw,15
+  set sprite 5 to 14,116,SBalloon,3
+  update sprites
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    TxT = TxtHow2
+    HowPage
+    ' three spinners across their rows, the hat among them
+    set sprite 0 to 34,128,SHat,13
+    set sprite 6 to 20,64,SSpin0,8
+    set sprite 7 to 36,170,SSpin1,11
+    set sprite 8 to 52,96,SSpin0,7
+    update sprites
+    put char TLife at 13,9
+    put char TLife at 15,9
+    put char TNolife at 17,9
+    State = StHow
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    TxT = TxtHow3
+    HowPage
+    set sprite 4 to 22,80,SBalloonw,15
+    set sprite 5 to 22,80,SBalloon,8
+    set sprite 6 to 40,120,SBalloonw,15
+    set sprite 7 to 40,120,SBalloon,11
+    set sprite 8 to 22,160,SBalloonw,15
+    set sprite 9 to 22,160,SBalloon,13
+    update sprites
+    put char TBicon at 12,8
+    print at 14,8, "20"
+    State = StHow
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+' the spinners' rows (C64 Y) and their bits in the sprite-enable mask
+data RowY bytes = 85,105,125,145,165
+data ShownBit bytes = 4,8,16,32,64,0
+' spinners shown per level (the original's sprite-enable masks)
+data EnTab bytes = $93,$AB,$D7,$EF,$FF
+' the clown's walking frame from (X / 4) & 3 (the original's $0CAA)
+data CfTab bytes = 0,1,2,0
+' the logo's letters P O P - T O P (top-left tile of each 2 x 2 letter)
+data LogoTab bytes = TLp00,TLo00,TLp00,TLd00,TLt00,TLo00,TLp00
+
+data XMapLo bytes = 0,0,0,0,1,2,2,3,4,5,5,6,7,7,8,9,9,10,11,12,12,13,14,14,16,17,17,18,19,20,20,21,22,22,23,24,24,25,26,27,27,28,29,29,30,31,31,32,33,34,34,35,36,36,37,38,38,39,40,41,41,42,43,43,44,45,45,46,47,48,48,49,50,50,51,52,52,53,54,55,55,56,57,57,58,59,59,60,61,62,62,63,64,64,65,66,66,67,68,69,69,70,71,71,72,73,73,74,75,76,76,77,78,78,79,80,80,81,82,83,83,84,85,85,86,87,87,88,89,90,90,91,92,92,93,94,94,95,96,97,97,98,99,99,100,101,101,102,103,104,104,105,106,106,107,108,108,109,110,111,111,112,113,113,114,115,115,116,117,118,118,119,120,120,121,122,122,123,124,125,125,126,127,127,128,129,129,130,131,132,132,133,134,134,135,136,136,137,138,139,139,140,141,141,142,143,143,144,145,146,146,147,148,148,149,150,150,151,152,153,153,154,155,155,156,157,157,158,159,160,160,161,162,162,163,164,164,165,166,167,167,168,169,169,170,171,171,172,173,174,174,175,176,176,177,178
+data XMapHi bytes = 178,179,180,181,181,182,183,183,184,185,185,186,187,188,188,189,190,190,191,192,192,193,194,195,195,196,197,197,198,199,199,200,201,202,202,203,204,204,205,206,206,207,208,209,209,210,211,211,212,213,213,214,215,216,216,217,218,218,219,220,220,221,222,223,223,224,225,225,226,227,227,228,229,230,230,231,232,232,233,234,234,235,236,237,237,238,239,239,0,0,0,0,0,0,0,0
+data YMap bytes = 227,228,228,229,230,231,231,232,233,234,235,235,236,237,238,238,239,240,241,241,242,243,244,244,245,246,247,247,248,249,250,251,251,252,253,254,254,255,0,1,1,2,3,4,4,5,6,7,7,8,9,10,11,11,12,13,14,14,15,16,17,17,18,19,20,20,21,22,23,23,24,25,26,27,27,28,29,30,30,31,32,33,33,34,35,36,36,37,38,39,39,40,41,42,43,43,44,45,46,46,47,48,49,49,50,51,52,52,53,54,55,55,56,57,58,59,59,60,61,62,62,63,64,65,65,66,67,68,68,69,70,71,71,72,73,74,75,75,76,77,78,78,79,80,81,81,82,83,84,84,85,86,87,87,88,89,90,91,91,92,93,94,94,95,96,97,97,98,99,100,100,101,102,103,103,104,105,106,107,107,108,109,110,110,111,112,113,113,114,115,116,116,117,118,119,119,120,121,122,123,123,124,125,126,126,127,128,129,129,130,131,132,132,133,134,135,135,136,137,138,139,139,140,141,142,142,143,144,145,145,146,147,148,148,149,150,151,151,152,153,154,155,155,156,157,158,158,159,160,161,161,162,163,164,164,165
+data HitBalloon bytes = 0,254,3,0,128,255,15,0,224,255,63,0,248,255,255,0,248,255,255,0,254,255,255,3,254,255,255,3,254,255,255,3,255,255,255,7,255,255,255,7,255,255,255,7,255,255,255,7,255,255,255,7,255,255,255,7,255,255,255,7,254,255,255,3,254,255,255,3,248,255,255,0,224,255,63,0
+data HitSpin0 bytes = 0,0,62,0,224,15,254,0,248,63,254,0,254,191,255,0,254,191,255,3,254,255,255,3,255,255,255,3,248,255,255,3,224,255,255,3,248,255,255,0,248,255,63,0,248,255,255,3,254,255,255,3,254,255,255,3,254,255,255,7,254,255,255,3,254,239,255,0,248,15,0,0,0,0,0,0
+data HitSpin1 bytes = 0,254,15,0,0,254,15,0,128,255,15,0,0,254,63,0,0,254,255,3,248,255,255,3,254,255,255,3,254,255,255,7,254,255,255,7,255,255,255,7,255,255,255,7,255,255,255,7,255,255,255,3,255,255,3,0,224,255,3,0,224,255,3,0,224,255,3,0,224,255,3,0,128,255,15,0
+data ColMap bytes = 8,8,8,7,13,3,5,11,9,10
+
+data TilePatZ bytes
+  $80,$00,$88,$18,$C3,$BD,$81,$E6,$E3,$EF,$38,$83,$86,$FF,$38,$10,$08,$10,$00,$A3,$E0,$A7,$F6,$07
+  $03,$0E,$82,$FF,$03,$07,$00,$E0,$4E,$92,$08,$E7,$C0,$80,$DE,$FF,$C0,$FE,$89,$E6,$9F,$80,$C0,$00
+  $A0,$F7,$B4,$E2,$DF,$FE,$BF,$F0,$EF,$EC,$2F,$00,$FE,$68,$03,$6A,$01,$86,$80,$92,$03,$24,$00,$80
+  $FC,$B1,$FE,$E2,$A4,$2F,$81,$C3,$F0,$75,$55,$58
+end data
+data TileColZ bytes
+  $86,$01,$28,$0E,$01,$A6,$D1,$1D,$1F,$1D,$01,$58,$22,$1E,$01,$81,$18,$22,$81,$F1,$A8,$07,$71,$A8
+  $07,$A8,$71,$17,$71,$A8,$17,$92,$01,$51,$80,$01,$FF,$D0,$FE,$F7,$F0,$88,$C4,$BD,$15,$15,$F0,$F7
+  $B4,$9F,$F0,$C1,$DF,$DC,$7C,$7F,$4B,$80,$1F,$40,$7D,$F0,$BC,$8F,$FE,$E2,$96,$61,$81,$81,$08,$DB
+  $D3,$0F,$55,$55,$80
+end data
+data SpritePatZ bytes
+  $85,$00,$AB,$01,$03,$93,$E4,$9A,$D3,$C0,$C0,$E0,$1A,$03,$0D,$0E,$0E,$0D,$98,$01,$8A,$E0,$E3,$1C
+  $86,$E0,$D0,$30,$30,$D0,$BA,$C0,$E0,$87,$03,$D8,$88,$86,$31,$23,$80,$FC,$8B,$CE,$E2,$EA,$76,$1F
+  $48,$32,$F1,$31,$12,$00,$0C,$BB,$0C,$E7,$1E,$E0,$A2,$AE,$2E,$CF,$CE,$2C,$10,$77,$E8,$10,$E1,$3C
+  $E1,$40,$FF,$DD,$7F,$B9,$92,$40,$22,$0E,$EE,$80,$30,$99,$10,$21,$03,$99,$02,$12,$00,$5A,$3E,$16
+  $65,$1C,$1C,$00,$3E,$F7,$40,$4E,$E5,$EE,$33,$58,$40,$1F,$D3,$F7,$7F,$B9,$80,$5A,$3E,$59,$99,$0C
+  $C2,$E0,$90,$20,$2C,$00,$F9,$F7,$40,$7C,$20,$E0,$EB,$33,$3C,$3C,$1E,$01,$02,$1E,$FE,$3E,$E6,$27
+  $FC,$FE,$F0,$BE,$43,$F0,$D7,$C2,$63,$03,$0F,$9A,$FF,$C3,$F1,$FF,$9F,$01,$3C,$BE,$C0,$40,$67,$FE
+  $FE,$1E,$6F,$F4,$FE,$6A,$20,$F5,$10,$41,$FA,$FE,$BE,$FF,$10,$EB,$E8,$C8,$A8,$3A,$0F,$1F,$3F,$FF
+  $FF,$DF,$86,$2F,$33,$1F,$0F,$00,$61,$AA,$E0,$30,$EC,$EE,$F2,$FE,$AC,$FC,$F0,$8D,$FE,$55,$56
+end data
+
+data TxD_0 bytes
+  $03,$54,$48,$45,$01,$41,$03,$41,$4D,$59,$02,$42,$59,$03,$48,$41,$54,$03,$41,$4E,$44,$04,$46,$52
+  $4F,$4D,$05,$48,$41,$54,$53,$2E,$02,$49,$54,$06,$4C,$45,$56,$45,$4C,$2E,$02,$4E,$4F,$03,$50,$4F
+  $50,$03,$54,$4F,$50,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$06,$28,$43,$36,$34,$29
+  $2E,$06,$28,$4E,$45,$57,$29,$2E
+end data
+data TxD_1 bytes
+  $02,$31,$30,$03,$31,$30,$30,$04,$31,$39,$39,$30,$02,$32,$30,$05,$32,$30,$32,$36,$2E,$01,$33,$02
+  $41,$53,$0B,$41,$55,$47,$2F,$53,$45,$50,$2F,$4F,$43,$54,$07,$41,$55,$54,$48,$4F,$52,$2E,$04,$41
+  $57,$41,$59,$08,$42,$41,$4C,$4C,$4F,$4F,$4E,$3A,$08,$42,$41,$4C,$4C,$4F,$4F,$4E,$53,$09,$42,$41
+  $4C,$4C,$4F,$4F,$4E,$53,$2E,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$03,$42,$49,$47,$07,$42,$55
+  $54,$54,$4F,$4E,$3A
+end data
+data TxD_2 bytes
+  $06,$43,$4C,$41,$55,$44,$45,$05,$43,$4C,$45,$41,$52,$05,$43,$4C,$4F,$57,$4E,$0C,$43,$4F,$4C,$45
+  $43,$4F,$56,$49,$53,$49,$4F,$4E,$05,$43,$4F,$4D,$45,$2C,$05,$43,$4F,$53,$54,$53,$04,$44,$49,$53
+  $4B,$04,$45,$41,$43,$48,$07,$46,$41,$53,$54,$45,$52,$2C,$06,$46,$4C,$49,$45,$53,$2E,$03,$46,$4F
+  $52,$04,$47,$41,$4D,$45,$04,$48,$41,$54,$2E,$04,$48,$41,$54,$53,$03,$48,$49,$53,$03,$48,$49,$54
+end data
+data TxD_3 bytes
+  $02,$49,$4E,$04,$49,$4E,$54,$4F,$04,$4B,$45,$45,$50,$04,$4C,$45,$46,$54,$05,$4C,$45,$46,$54,$3A
+  $05,$4C,$45,$46,$54,$2E,$05,$4C,$45,$56,$45,$4C,$06,$4C,$45,$56,$45,$4C,$2C,$06,$4C,$45,$56,$45
+  $4C,$3A,$04,$4D,$4F,$52,$45,$06,$4D,$55,$53,$49,$43,$3A,$05,$4E,$41,$4D,$45,$53,$03,$4E,$45,$57
+  $02,$4F,$46,$03,$4F,$4E,$45,$05,$4F,$56,$45,$52,$2E
+end data
+data TxD_4 bytes
+  $08,$50,$4F,$50,$2D,$54,$4F,$50,$21,$04,$50,$4F,$50,$53,$04,$50,$4F,$52,$54,$06,$52,$45,$52,$55
+  $4E,$2C,$06,$52,$49,$47,$48,$54,$2E,$08,$53,$50,$49,$4E,$4E,$45,$52,$53,$09,$53,$50,$49,$4E,$4E
+  $45,$52,$53,$3A,$06,$53,$54,$45,$45,$52,$53,$06,$53,$54,$49,$43,$4B,$3A,$05,$54,$48,$52,$45,$45
+  $05,$54,$49,$54,$4C,$45,$02,$54,$4F,$02,$55,$50,$04,$57,$41,$4C,$4B,$04,$57,$49,$54,$48,$01,$58
+end data
+data TxD_5 bytes
+  $03,$59,$4F,$55,$04,$59,$4F,$55,$52
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3, @TxD_4, @TxD_5
+end data
+data TxM_Credits bytes
+  $40,$06,$43,$FE,$17,$12,$0E,$FE,$00,$26,$3B,$0A,$18,$FE,$23,$42,$30,$02,$FE,$03,$20,$0D,$FE,$02
+  $03,$02,$1D,$14,$FE,$4A,$3A,$1E,$0C,$0F,$FF
+end data
+data TxM_How1 bytes
+  $00,$22,$41,$2E,$0C,$04,$FE,$4C,$31,$00,$1C,$FE,$48,$4D,$33,$05,$44,$FE,$1F,$0B,$00,$2C,$08,$FE
+  $47,$4E,$50,$16,$08,$29,$FF
+end data
+data TxM_How2 bytes
+  $32,$00,$04,$19,$06,$00,$FE,$46,$01,$2F,$25,$3E,$FE,$3D,$51,$49,$07,$FE,$39,$45,$24,$05,$FE,$28
+  $36,$03,$09,$FF
+end data
+data TxM_How3 bytes
+  $01,$1A,$10,$4F,$00,$09,$FE,$0B,$13,$1B,$4B,$21,$01,$FE,$38,$11,$2A,$27,$04,$FE,$35,$3C,$37,$15
+  $07,$FE,$0A,$2D,$34,$2B,$3F,$FF
+end data
+data TxMsg words
+  @TxM_Credits, @TxM_How1, @TxM_How2, @TxM_How3
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScThrow:
+    db $40,$BF,$11,$02,$40,$55,$21,$02,$40,$14,$21,$02,$40,$E7,$30,$02,$40,$67,$31,$02,$40,$1F,$41,$02
+    db $40,$EF,$40,$02,$40,$79,$51,$02,$40,$2A,$51,$02,$40,$F7,$60,$02,$40,$8E,$61,$02,$40,$38,$71,$02
+    db $40,$00,$71,$02,$40,$A6,$81,$02,$40,$46,$81,$02,$40,$0A,$91,$02,$40,$BF,$91,$02,$40,$55,$A1,$02
+    db $40,$14,$A1,$02,$40,$E7,$B0,$02,$40,$67,$B1,$02,$40,$1F,$C1,$02,$40,$EF,$C0,$02,$40,$79,$D1,$02
+    db $50
+ScPop:
+    db $00,$00,$04,$02,$00,$00,$25,$03,$00,$00,$55,$05,$00,$00,$96,$08,$10
+ScFall:
+    db $40,$5A,$10,$02,$40,$64,$10,$02,$40,$70,$10,$02,$40,$80,$10,$02,$40,$95,$10,$02,$40,$B3,$10,$02
+    db $40,$E0,$10,$02,$40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02,$40,$64,$20,$02,$40,$70,$20,$02
+    db $40,$80,$20,$02,$40,$95,$20,$02,$40,$B3,$20,$02,$40,$E0,$20,$02,$40,$2A,$21,$02,$40,$BF,$21,$02
+    db $40,$7F,$23,$02,$40,$70,$20,$02,$40,$80,$20,$02,$40,$95,$20,$02,$40,$B3,$20,$02,$40,$E0,$20,$02
+    db $40,$2A,$21,$02,$40,$BF,$21,$02,$40,$7F,$23,$02,$40,$80,$30,$02,$40,$95,$30,$02,$40,$B3,$30,$02
+    db $40,$E0,$30,$02,$40,$2A,$31,$02,$40,$BF,$31,$02,$40,$7F,$33,$02,$40,$95,$30,$02,$40,$B3,$30,$02
+    db $40,$E0,$30,$02,$40,$2A,$31,$02,$40,$BF,$31,$02,$40,$7F,$33,$02,$40,$B3,$40,$02,$40,$E0,$40,$02
+    db $40,$2A,$41,$02,$40,$BF,$41,$02,$40,$7F,$43,$02,$40,$E0,$40,$02,$40,$2A,$41,$02,$40,$BF,$41,$02
+    db $40,$7F,$43,$02,$40,$2A,$51,$02,$40,$BF,$51,$02,$40,$7F,$53,$02,$40,$BF,$51,$02,$40,$7F,$53,$02
+    db $40,$7F,$63,$02,$50
+ScStart:
+    db $40,$60,$11,$02,$40,$60,$31,$03,$40,$60,$51,$12,$40,$60,$F1,$01,$40,$60,$11,$02,$40,$60,$31,$03
+    db $40,$60,$51,$12,$40,$60,$F1,$01,$40,$39,$11,$02,$40,$39,$31,$03,$40,$39,$51,$04,$40,$39,$F1,$01
+    db $40,$60,$11,$02,$40,$60,$31,$03,$40,$60,$51,$04,$40,$60,$F1,$01,$40,$8A,$11,$02,$40,$8A,$31,$03
+    db $40,$8A,$51,$04,$40,$8A,$F1,$01,$40,$60,$11,$02,$40,$60,$31,$03,$40,$60,$51,$04,$40,$60,$F1,$01
+    db $40,$39,$11,$02,$40,$39,$31,$03,$40,$39,$51,$04,$40,$39,$F1,$01,$40,$60,$11,$02,$40,$60,$31,$03
+    db $40,$60,$51,$04,$40,$60,$F1,$01,$40,$8A,$11,$02,$40,$8A,$31,$03,$40,$8A,$51,$04,$40,$8A,$F1,$01
+    db $40,$60,$11,$02,$40,$60,$31,$03,$40,$60,$51,$04,$40,$60,$F1,$01,$40,$A3,$11,$02,$40,$A3,$31,$03
+    db $40,$A3,$51,$12,$40,$A3,$F1,$01,$50
+ScOver:
+    db $40,$50,$11,$02,$40,$50,$31,$03,$40,$50,$51,$12,$40,$50,$F1,$01,$40,$A6,$21,$05,$40,$A6,$F1,$01
+    db $40,$A6,$21,$05,$40,$A6,$F1,$01,$40,$A6,$11,$02,$40,$A6,$31,$03,$40,$A6,$51,$06,$40,$A6,$F1,$01
+    db $40,$7A,$11,$02,$40,$7A,$31,$03,$40,$7A,$51,$0A,$40,$7A,$F1,$01,$40,$FE,$F0,$04,$40,$A6,$11,$02
+    db $40,$A6,$31,$03,$40,$A6,$51,$12,$40,$A6,$F1,$01,$40,$FE,$F0,$1E,$40,$53,$11,$02,$40,$53,$31,$03
+    db $40,$53,$51,$12,$40,$53,$F1,$01,$40,$FE,$F0,$04,$40,$53,$11,$02,$40,$53,$31,$03,$40,$53,$51,$12
+    db $40,$53,$F1,$01,$50
+ScBonus:
+    db $40,$6B,$10,$03,$40,$55,$10,$03,$40,$47,$20,$06,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScThrow,$705D
+    dw ScPop,$7053
+    dw ScFall,$705D
+    dw ScStart,$705D
+    dw ScOver,$705D
+    dw ScBonus,$705D
+; Big Top (new circus march) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$1F,$01,$23,$01,$26,$01,$23,$01,$24,$01,$28,$01
+    db $26,$01,$01,$01,$23,$24,$26,$01,$2B,$01,$26,$01,$28,$26,$24,$23
+    db $21,$01,$01,$01,$1E,$01,$21,$01,$24,$01,$21,$01,$23,$01,$26,$01
+    db $24,$01,$01,$01,$23,$22,$23,$24,$26,$01,$28,$2A,$2B,$01,$26,$01
+    db $1F,$01,$00,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1A,$01,$01,$01,$1C,$01,$01,$01
+    db $1E,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01,$18,$01,$01,$01
+    db $12,$01,$01,$01,$15,$01,$01,$01,$1A,$01,$01,$01,$13,$01,$01,$01
+    db $12,$01,$01,$01,$13,$01,$01,$01,$17,$01,$01,$01,$17,$01,$01,$01
+    db $13,$01,$00,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$3E
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$21,$C0,$98,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$72,$F0,$38,$C0,$98,$F0,$38,$C0,$66,$F0,$1B
+    db $C0,$98,$F0,$1D,$C0,$66,$F0,$1B,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B
+    db $C0,$72,$F0,$16,$FE
+    db $D0
+}

@@ -1,0 +1,1538 @@
+cartridge "TRAVERSE/TONY BRANTNER/1992"
+' TRAVERSE - ColecoVision port of Tony Brantner's C64 game (ReRUN, May/June
+' 1992). Pac-Man meets pinball: the ball rolls by itself along the paths of
+' a 7 x 7 maze; the stick turns every yellow flipper at once, and the ball
+' bounces off the flippers at the crossings. Eat every dot before the timer
+' runs out. Rules taken from the original's 6502 code (README.md):
+'
+' - the maze: a full 7 x 7 grid of crossings, 4 dots on each horizontal
+'   path, 2 on each vertical one; in each of 6 x 4 blocks one random path
+'   is removed; 4 spinners at fixed crossings; every other crossing becomes
+'   a corner (2 paths at a bend), a flipper (3-4 paths), a purple square
+'   (dead end) or, on a straight crossing, a magnet, magnet, bumper or
+'   teleporter (random)
+' - the ball moves one pixel per "tick"; a tick every 90 - 5 x LEVEL passes
+'   of the original's main loop; the original makes 83 passes per NTSC
+'   frame (measured: 180 cycles a pass, see README), so the port runs 83
+'   passes' worth of counters every frame, in the original's units
+' - at each character cell the ball decides: dot = eat it (LEVEL points);
+'   corner/flipper = the original's turn tables; spinner = random way;
+'   hazards (on half the time, 256 counted IRQs each phase): magnet holds,
+'   bumper reverses, teleporter jumps to a random spinner, purple square
+'   ends the turn; a blocked way turns clockwise until a path is found
+' - timer 104 - 4 x LEVEL, minus one every 8192 passes; 0 ends the turn
+' - all dots: 1000 bonus (50 x 20), next level (speed and timer up to
+'   level 10), a new maze; 3 turns; every 10000 points one more turn
+'
+' Controls: stick (either controller) sets the flippers; the button starts
+' a turn; keypad * pauses. Menus by stick + button.
+
+const TLane = 128
+const THa = 129
+const THb1 = 130
+const THb2 = 131
+const THb3 = 132
+const THc = 133
+const TVa = 134
+const TVb = 135
+const TVab = 136
+const TC1 = 137
+const TC2 = 138
+const TC3 = 139
+const TC4 = 140
+const TFlip = 141
+const TSpin = 142
+const TDead = 143
+const TMag = 144
+const TBump = 145
+const TTele = 146
+const TQ0 = 147
+const TQ1 = 148
+const TQ2 = 149
+const TQ3 = 150
+const TQ4 = 151
+const TQ5 = 152
+const TQ6 = 153
+const TQ7 = 154
+const TQ8 = 155
+const TQ9 = 156
+const TQ10 = 157
+const TQ11 = 158
+const TQ12 = 159
+const TQ13 = 160
+const TQ14 = 161
+const TQ15 = 162
+const SBall = 0
+const NTiles8 = 280
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndDing = 6
+const SndLose = 7
+const SndGameA = 8
+const SndGameB = 9
+const SndGameC = 10
+const SndGameD = 11
+const TuneFrames = 512
+const GameFrames = 1152
+const TxtCredits = 0
+const PFlip = 1128
+const PSpin = 1136
+const PHaz = 1144
+data TitleMap bytes = 158,148,154,151,153,151,152,152,154,148,154,151,153,148,154,148,157,147,154,151,154,152,152,152,154,147,154,151,149,151,154,147,149,147,148,148,148,148,149,147,150,148,148,148,150,147,150,148
+const HideY = 192
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StReady = 5
+const StClear = 6
+const StLost = 7
+const StOver = 9
+' node kinds (Nd[])
+const NIso = 0
+const NFlip = 5
+const NSpin = 6
+const NDead = 7
+const NMag = 8
+const NBump = 9
+const NTele = 10
+' passes of the original's main loop per NTSC frame (README: 17045 cycles
+' a frame - 1087 IRQ - ~1000 bad lines = ~14950 / 180 cycles a pass)
+const PassF = 83
+
+' ball directions 0 up, 1 right, 2 down, 3 left (the original's order)
+data DX bytes = 0,1,0,255
+data DY bytes = 255,0,1,0
+' the original's tables ($0E2D flippers, $0E3D corners: [kind * 4 + dir])
+data FlipTab bytes = 1,0,3,2, 3,2,1,0, 0,3,2,1, 2,1,0,3
+data CornTab bytes = 2,3,1,0, 1,3,0,2, 3,2,0,1, 2,0,3,1
+' stick (1 up 2 down 4 left 8 right) -> flipper setting ($0E1D), 255 = keep
+data JoyMap bytes = 255,2,2,255, 3,1,0,255, 3,0,1,255, 255,255,255,255
+' crossing paths (1 up 2 right 4 down 8 left) -> node kind ($0DF5);
+' 255 = a straight crossing: a random hazard
+data NodeMap bytes = 0,7,7,1, 7,255,2,5, 7,4,255,5, 3,5,5,5
+data HazPick bytes = 8,8,9,10
+data NodeTile bytes = 128,137,138,139,140,141,142,143,144,145,146
+data BitTab bytes = 0,1,2,4,8
+data HTileB bytes = 128,130,131,132
+data VTile bytes = 128,134,135,136
+' the original's animated characters ($0FBB flippers, $0FDB spinner,
+' $0FEB hazards on, $100B hazards off)
+data FlipPats bytes = $01,$03,$06,$0C,$18,$30,$60,$C0, $80,$C0,$60,$30,$18,$0C,$06,$03, $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3, $00,$FF,$00,$00,$00,$00,$FF,$00
+data SpinPats bytes = $C3,$66,$3C,$24,$3C,$66,$C3,$00, $18,$18,$3C,$E7,$3C,$18,$18,$00
+data HzOnPats bytes = $00,$7E,$7E,$7E,$7E,$7E,$7E,$00, $00,$66,$66,$66,$66,$66,$3C,$00, $00,$00,$3C,$66,$66,$3C,$00,$00, $00,$18,$3C,$7E,$7E,$3C,$18,$00
+data HzOffPats bytes = $00,$00,$00,$7E,$00,$00,$00,$00, $00,$00,$00,$7E,$00,$00,$00,$00, $00,$00,$00,$7E,$00,$00,$00,$00, $00,$00,$00,$7E,$00,$00,$00,$00
+' the title's demo strip: node tiles at columns 3, 7 .. 27
+data StripNodes bytes = 142,141,144,145,146,143,142
+
+' the maze: Hs[row * 6 + col] horizontal paths, Vs[row * 7 + col] vertical
+' paths (0 = no path, else 32 + the dots still there, one bit each),
+' Nd[row * 7 + col] the crossings' kinds
+u8 Hs[42]
+u8 Vs[42]
+u8 Nd[49]
+u16 Su = 0
+u16 Sk = 0
+u16 Hu = 0
+u16 Hk = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 GzLeft = 0
+u16 Waited = 0
+u16 TmAcc = 0
+u8 TzOn = 0
+u8 GzOn = 0
+u8 State = 0
+u8 Level = 0
+u8 Turns = 0
+u8 Timer = 0
+u8 Dots = 0
+u8 Per = 0
+u8 MvAcc = 0
+u8 Bx = 0
+u8 By = 0
+u8 D = 0
+u8 Mv8 = 0
+u8 Fset = 0
+u8 Ended = 0
+u8 Ic = 0
+u8 Ic2 = 0
+u8 HzAcc = 0
+u8 HzOn = 1
+u8 SpinF = 0
+u8 Paused = 0
+u8 Kp = 0
+u8 WasKp = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 Sx = 0
+u8 Sy = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Oi = 0
+u8 Li = 0
+u8 Mi = 0
+u8 Si = 0
+' the ball's cell, a neighbour, the cell lookup (GetCell) and its result
+u8 Cc = 0
+u8 Cr = 0
+u8 Gc = 0
+u8 Gr = 0
+u8 Gq = 0
+u8 Gm = 0
+u8 Gq2 = 0
+u8 Gm2 = 0
+u8 Gk = 0
+u8 Gi = 0
+u8 Gb = 0
+u8 Cell = 0
+u8 Sd = 0
+u8 Ix = 0
+u8 Add = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 R = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  if Ended = 0 then goto play_loop
+  StopGame
+  if Ended = 1 then
+    LevelClear
+    goto play_loop
+  end if
+  TurnLost
+  if Turns > 0 then
+    NewTurn
+    WaitFire
+    goto play_loop
+  end if
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' a random number from 0 to M - 1
+function RandBelow(u8 M) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs % M
+  Rv = W16
+  return Rv
+
+sub NewGame:
+  Su = 0
+  Sk = 0
+  Level = 1
+  Turns = 3
+  NewMaze
+  DrawPlay
+  NewTurn
+  ' the first turn starts at once: the title's press was the start
+  Ready
+  return
+end sub
+
+' the original's $0C36: a full grid, one random path out of each of the 6 x
+' 4 blocks (rows 0-5, columns 0, 2, 4, 6), spinners, then every crossing's
+' kind from its paths
+sub NewMaze:
+  for Mi = 0 to 41
+    Hs[Mi] = 47
+    Vs[Mi] = 35
+  next
+  for Mi = 0 to 23
+    J = Mi >> 2
+    K = Mi & 3
+    K = K << 1
+    R = RandBelow(4)
+    if R = 0 then
+      if K < 6 then
+        T = J + 1
+        T = T * 6
+        T += K
+        Hs[T] = 0
+      end if
+    end if
+    if R = 1 then
+      if K < 6 then
+        T = J * 6
+        T += K
+        Hs[T] = 0
+      end if
+    end if
+    if R = 2 then
+      if K < 6 then
+        T = J * 7
+        T += K
+        T += 1
+        Vs[T] = 0
+      end if
+    end if
+    if R = 3 then
+      T = J * 7
+      T += K
+      Vs[T] = 0
+    end if
+  next
+  for Mi = 0 to 48
+    Nd[Mi] = 255
+  next
+  Nd[16] = NSpin
+  Nd[19] = NSpin
+  Nd[30] = NSpin
+  Nd[33] = NSpin
+  for Mi = 0 to 48
+    if Nd[Mi] = 255 then NodeKind
+  next
+  ' the dots: 4 on every horizontal path, 2 on every vertical one
+  Dots = 0
+  for Mi = 0 to 41
+    if Hs[Mi] > 0 then Dots += 4
+    if Vs[Mi] > 0 then Dots += 2
+  next
+  return
+end sub
+
+' the kind of crossing Mi from its paths (1 up 2 right 4 down 8 left)
+sub NodeKind:
+  J = Mi / 7
+  K = Mi % 7
+  V = 0
+  if J > 0 then
+    T = Mi - 7
+    if Vs[T] > 0 then V = V | 1
+  end if
+  if K < 6 then
+    T = J * 6
+    T += K
+    if Hs[T] > 0 then V = V | 2
+  end if
+  if J < 6 then
+    if Vs[Mi] > 0 then V = V | 4
+  end if
+  if K > 0 then
+    T = J * 6
+    T += K
+    T -= 1
+    if Hs[T] > 0 then V = V | 8
+  end if
+  T = NodeMap[V]
+  if T = 255 then
+    R = RandBelow(4)
+    T = HazPick[R]
+  end if
+  Nd[Mi] = T
+  return
+end sub
+
+' a new turn ($089B): counters cleared, the timer, the flippers back to /,
+' the ball on a random spinner
+sub NewTurn:
+  MvAcc = 0
+  TmAcc = 0
+  Mv8 = 0
+  Fset = 0
+  SetFlip
+  T = Level << 2
+  Timer = 104 - T
+  T = Level * 5
+  Per = 90 - T
+  Ended = 0
+  State = StReady
+  Teleport
+  ShowHud
+  DrawBall
+  return
+end sub
+
+' the original's $0AA6: one of the four spinners, at random
+sub Teleport:
+  Bx = 80
+  R = RandBelow(2)
+  if R = 1 then Bx = 200
+  By = 48
+  R = RandBelow(2)
+  if R = 1 then By = 96
+  Mv8 = 0
+  return
+end sub
+
+' the turn starts: from the second turn on, PRESS FIRE TO PLAY (as the
+' original), or by itself after 10 s
+sub WaitFire:
+  State = StReady
+  WasBtn = 16
+  Waited = 0
+wf_loop:
+  Frame1
+  ReadPad
+  IrqTick
+  T = Tick & 32
+  if T = 0 then
+    print at 7,19, "PRESS FIRE TO PLAY"
+  else
+    print at 7,19, "                  "
+  end if
+  inc Waited
+  if Waited >= 600 then Press = 1
+  if Press = 0 then goto wf_loop
+  print at 7,19, "                  "
+  Ready
+  return
+end sub
+
+sub Ready:
+  State = StPlay
+  StartGameTune
+  return
+end sub
+
+' one frame of play: the stick, the clocks, PassF passes of ball ticks
+sub PlayFrame:
+  CheckPause
+  K = JoyMap[Jk]
+  if K < 4 then
+    if K <> Fset then
+      Fset = K
+      SetFlip
+    end if
+  end if
+  IrqTick
+  GameTune
+  MvAcc += PassF
+pf_tick:
+  if MvAcc < Per then goto pf_done
+  MvAcc -= Per
+  BallTick
+  if Ended > 0 then goto pf_done
+  if Dots = 0 then
+    Ended = 1
+    goto pf_done
+  end if
+  goto pf_tick
+pf_done:
+  if Ended = 0 then
+    TmAcc += PassF
+    if TmAcc >= 8192 then
+      TmAcc -= 8192
+      if Timer > 0 then dec Timer
+      ShowTimer
+    end if
+    if Timer = 0 then Ended = 2
+  end if
+  DrawBall
+  return
+end sub
+
+' keypad * pauses and resumes (the original: SHIFT LOCK)
+sub CheckPause:
+  Kp = keypad(1)
+  if Kp = 10 then
+    if WasKp <> 10 then
+      WasKp = Kp
+      mute all
+      print at 11,19, "PAUSED"
+pz_loop:
+      Frame1
+      Kp = keypad(1)
+      if Kp <> 10 then WasKp = 0
+      if Kp = 10 then
+        if WasKp = 0 then goto pz_out
+      end if
+      goto pz_loop
+pz_out:
+      WasKp = 10
+      print at 11,19, "      "
+      StartGameTune
+      return
+    end if
+  end if
+  WasKp = Kp
+  return
+end sub
+
+' the hazards' and spinner's clocks: the original counts its IRQs (60 a
+' second) except those that land in the ball routine (about 18%), so 82 of
+' 100 frames count; spinner frame = bit 3, hazards off when bit 8 is set
+sub IrqTick:
+  HzAcc += 82
+  if HzAcc >= 100 then
+    HzAcc -= 100
+    inc Ic
+    if Ic = 0 then inc Ic2
+    T = Ic & 8
+    T = T >> 3
+    if T <> SpinF then
+      SpinF = T
+      C = T << 3
+      copy SpinPats + C count 8 to vram.pattern + PSpin
+      copy SpinPats + C count 8 to vram.pattern + PSpin + 2048
+      copy SpinPats + C count 8 to vram.pattern + PSpin + 4096
+    end if
+    T = Ic2 & 1
+    T = T ^ 1
+    if T <> HzOn then
+      HzOn = T
+      DrawHaz
+    end if
+  end if
+  return
+end sub
+
+sub DrawHaz:
+  if HzOn = 1 then
+    copy HzOnPats count 32 to vram.pattern + PHaz
+    copy HzOnPats count 32 to vram.pattern + PHaz + 2048
+    copy HzOnPats count 32 to vram.pattern + PHaz + 4096
+  else
+    copy HzOffPats count 32 to vram.pattern + PHaz
+    copy HzOffPats count 32 to vram.pattern + PHaz + 2048
+    copy HzOffPats count 32 to vram.pattern + PHaz + 4096
+  end if
+  return
+end sub
+
+sub SetFlip:
+  C = Fset << 3
+  copy FlipPats + C count 8 to vram.pattern + PFlip
+  copy FlipPats + C count 8 to vram.pattern + PFlip + 2048
+  copy FlipPats + C count 8 to vram.pattern + PFlip + 4096
+  return
+end sub
+
+' one tick ($0985): a pixel along the way, or at a cell, the decision
+sub BallTick:
+  if Mv8 > 0 then
+    dec Mv8
+    Bx += DX[D]
+    By += DY[D]
+    return
+  end if
+  Cc = Bx >> 3
+  Cr = By >> 3
+  Gc = Cc
+  Gr = Cr
+  GetCell
+  Sd = D
+  if Cell = 2 then
+    EatDot
+    Search
+    return
+  end if
+  if Cell < 16 then
+    Search
+    return
+  end if
+  T = Cell - 16
+  if T >= 1 then
+    if T <= 4 then
+      T -= 1
+      T = T << 2
+      T += D
+      Sd = CornTab[T]
+      Search
+      return
+    end if
+  end if
+  if T = NFlip then
+    T = Fset << 2
+    T += D
+    Sd = FlipTab[T]
+    Gc = Cc + DX[Sd]
+    Gr = Cr + DY[Sd]
+    GetCell
+    if Cell > 0 then
+      D = Sd
+      Mv8 = 8
+      return
+    end if
+    Sd = D + 2
+    Sd = Sd & 3
+    Search
+    return
+  end if
+  if T = NSpin then
+    Sd = RandBelow(4)
+    Search
+    return
+  end if
+  if HzOn = 1 then
+    if T = NDead then
+      Ended = 2
+      State = StLost
+      set sprite 0 to HideY,0,SBall,0
+      update sprites
+      return
+    end if
+    if T = NMag then return
+    if T = NBump then
+      Sd = D + 2
+      Sd = Sd & 3
+      Search
+      return
+    end if
+    if T = NTele then
+      Teleport
+      return
+    end if
+  end if
+  Search
+  return
+end sub
+
+' the first way from Sd, turning clockwise, that is not a wall ($0A58)
+sub Search:
+  for Si = 0 to 3
+    Gc = Cc + DX[Sd]
+    Gr = Cr + DY[Sd]
+    GetCell
+    if Cell > 0 then
+      D = Sd
+      Mv8 = 8
+      return
+    end if
+    inc Sd
+    Sd = Sd & 3
+  next
+  return
+end sub
+
+' the cell (Gc, Gr) of the original's 31 x 19 maze: Cell = 0 wall, 1 path,
+' 2 path with a dot, 16 + kind for a crossing; Gk = 1 horizontal path,
+' 2 vertical, Gi = its index, Gb = the dot's bit
+sub GetCell:
+  Cell = 0
+  Gk = 0
+  if Gc > 30 then return
+  if Gr > 18 then return
+  Gq = Gc / 5
+  Gm = Gc % 5
+  Gq2 = Gr / 3
+  Gm2 = Gr % 3
+  if Gm2 = 0 then
+    if Gm = 0 then
+      Gi = Gq2 * 7
+      Gi += Gq
+      Cell = Nd[Gi]
+      Cell += 16
+      return
+    end if
+    Gi = Gq2 * 6
+    Gi += Gq
+    T = Hs[Gi]
+    if T = 0 then return
+    Gk = 1
+    Gb = BitTab[Gm]
+    Cell = 1
+    T = T & Gb
+    if T > 0 then Cell = 2
+    return
+  end if
+  if Gm > 0 then return
+  Gi = Gq2 * 7
+  Gi += Gq
+  T = Vs[Gi]
+  if T = 0 then return
+  Gk = 2
+  Gb = BitTab[Gm2]
+  Cell = 1
+  T = T & Gb
+  if T > 0 then Cell = 2
+  return
+end sub
+
+' the dot at the ball's cell (GetCell's Gk, Gi, Gb): LEVEL points
+sub EatDot:
+  V = Gb ^ 255
+  if Gk = 1 then
+    T = Hs[Gi]
+    T = T & V
+    Hs[Gi] = T
+    Ix = Gi
+    DrawH
+  else
+    T = Vs[Gi]
+    T = T & V
+    Vs[Gi] = T
+    Ix = Gi
+    DrawV
+  end if
+  dec Dots
+  Add = Level
+  AddScore
+  ShowScore
+  return
+end sub
+
+' Add points; each time the 10000s digit changes, one more turn (up to 99)
+sub AddScore:
+  Su += Add
+  if Su >= 1000 then
+    Su -= 1000
+    inc Sk
+    if Sk >= 1000 then Sk = 0
+    W16 = Sk % 10
+    if W16 = 0 then
+      if Turns < 99 then
+        inc Turns
+        ShowTurns
+      end if
+    end if
+  end if
+  ' the high score follows the score
+  if Sk > Hk then
+    Hk = Sk
+    Hu = Su
+  else
+    if Sk = Hk then
+      if Su > Hu then Hu = Su
+    end if
+  end if
+  return
+end sub
+
+' all dots: 1000 points counted in 50 x 20 with a ding, the next level
+' (up to 10), a wipe, a new maze
+sub LevelClear:
+  State = StClear
+  for Li = 0 to 49
+    Add = 20
+    AddScore
+    ShowScore
+    play sound SndDing
+    Frame1
+    Frame1
+    Frame1
+  next
+  ' the score stays on screen a moment
+  for Li = 0 to 29
+    Frame1
+  next
+  if Level < 10 then inc Level
+  WipeOut
+  NewMaze
+  DrawPlay
+  NewTurn
+  WaitFire
+  return
+end sub
+
+' the turn ends (timer at 0 or the purple square): the falling tune
+sub TurnLost:
+  State = StLost
+  play sound SndLose
+  for Li = 0 to 223
+    Frame1
+    IrqTick
+  next
+  dec Turns
+  ShowTurns
+  return
+end sub
+
+sub StopGame:
+  stop sound SndGameA
+  stop sound SndGameB
+  stop sound SndGameC
+  stop sound SndGameD
+  GzOn = 0
+  mute all
+  return
+end sub
+
+sub StartGameTune:
+  play sound SndGameA
+  play sound SndGameB
+  play sound SndGameC
+  play sound SndGameD
+  GzLeft = GameFrames
+  GzOn = 1
+  return
+end sub
+
+' the in-game tune loops: started again in step at its end
+sub GameTune:
+  if GzOn = 1 then
+    dec GzLeft
+    if GzLeft = 0 then
+      StopGame
+      StartGameTune
+    end if
+  end if
+  return
+end sub
+
+' rows 4-18 cleared from the top and the bottom towards the middle ($0C11)
+sub WipeOut:
+  HideSprites
+  for Li = 0 to 7
+    R = Li + 4
+    fill 32 count 28 at 2,R
+    R = 18 - Li
+    fill 32 count 28 at 2,R
+    for Oi = 0 to 5
+      Frame1
+    next
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: crossing (i, j) at column 3 + 4i, row 5 + 2j; a horizontal path
+' is the 3 tiles to its right, a vertical one the tile below
+
+sub DrawH:
+  J = Ix / 6
+  K = Ix % 6
+  R = J << 1
+  R += 5
+  C = K << 2
+  C += 4
+  T = Hs[Ix]
+  if T = 0 then
+    fill 32 count 3 at C,R
+    return
+  end if
+  V = T & 1
+  if V > 0 then
+    put char THa at C,R
+  else
+    put char TLane at C,R
+  end if
+  inc C
+  V = T >> 1
+  V = V & 3
+  V = HTileB[V]
+  put char V at C,R
+  inc C
+  V = T & 8
+  if V > 0 then
+    put char THc at C,R
+  else
+    put char TLane at C,R
+  end if
+  return
+end sub
+
+sub DrawV:
+  J = Ix / 7
+  K = Ix % 7
+  R = J << 1
+  R += 6
+  C = K << 2
+  C += 3
+  T = Vs[Ix]
+  if T = 0 then
+    put char 32 at C,R
+    return
+  end if
+  V = T & 3
+  V = VTile[V]
+  put char V at C,R
+  return
+end sub
+
+sub DrawNode:
+  J = Ix / 7
+  K = Ix % 7
+  R = J << 1
+  R += 5
+  C = K << 2
+  C += 3
+  V = Nd[Ix]
+  V = NodeTile[V]
+  put char V at C,R
+  return
+end sub
+
+sub DrawMaze:
+  for Mi = 0 to 48
+    Ix = Mi
+    DrawNode
+  next
+  for Mi = 0 to 41
+    Ix = Mi
+    DrawH
+    Ix = Mi
+    DrawV
+  next
+  return
+end sub
+
+' the ball sprite: original pixels (0-240, 0-144) to the screen: 5 cells
+' (40 px) between crossings become 32 px, 3 cells (24 px) become 16 px
+sub DrawBall:
+  NumU = Bx
+  NumU = NumU << 2
+  NumU = NumU / 5
+  Sx = NumU
+  Sx += 24
+  NumU = By
+  NumU = NumU << 1
+  NumU = NumU / 3
+  Sy = NumU
+  Sy += 39
+  if State = StLost then return
+  set sprite 0 to Sy,Sx,SBall,15
+  update sprites
+  return
+end sub
+
+sub ShowScore:
+  print at 2,1, "SCORE"
+  NumU = Sk
+  print at 8,1, digits$(NumU, 3)
+  NumU = Su
+  print at 11,1, digits$(NumU, 3)
+  print at 16,1, "HIGH"
+  NumU = Hk
+  print at 21,1, digits$(NumU, 3)
+  NumU = Hu
+  print at 24,1, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowTimer:
+  print at 11,3, "TIMER"
+  NumU = Timer
+  print at 17,3, digits$(NumU, 3)
+  return
+end sub
+
+sub ShowTurns:
+  print at 21,3, "TURNS"
+  NumU = Turns
+  print at 27,3, digits$(NumU, 2)
+  return
+end sub
+
+sub ShowHud:
+  ShowScore
+  print at 2,3, "LEVEL"
+  NumU = Level
+  print at 8,3, digits$(NumU, 2)
+  ShowTimer
+  ShowTurns
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  DrawMaze
+  ShowHud
+  SetFlip
+  DrawHaz
+  ShowScreen
+  return
+end sub
+
+sub GameOver:
+  HideSprites
+  print at 10,19, "GAME OVER"
+  print at 9,21, "PRESS FIRE"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Press = button newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park the ball at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count 1
+  set sprite 0 to HideY,0,SBall,0
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear (black text on the grey
+' board, as the original's light grey screen)
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $1E
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop 14
+  cls
+  SpinF = 0
+  HzOn = 1
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: big letters, a strip of the maze with the ball rolling along,
+' the menu (cursor back on START), the tune once
+sub TitlePage:
+  NewScreen
+  for Li = 0 to 2
+    for Oi = 0 to 15
+      T = Li << 4
+      T += Oi
+      C = TitleMap[T]
+      R = Li + 2
+      T = Oi + 8
+      put char C at T,R
+    next
+  next
+  print at 8,6, "BY TONY BRANTNER"
+  for Li = 0 to 6
+    C = Li << 2
+    C += 3
+    T = StripNodes[Li]
+    put char T at C,9
+    if Li < 6 then
+      inc C
+      put char THa at C,9
+      inc C
+      put char THb3 at C,9
+      inc C
+      put char THc at C,9
+    end if
+  next
+  print at 11,12, "START"
+  print at 11,14, "HOW TO PLAY"
+  print at 11,16, "CREDITS"
+  print at 8,19, "HIGH"
+  NumU = Hk
+  print at 13,19, digits$(NumU, 3)
+  NumU = Hu
+  print at 16,19, digits$(NumU, 3)
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+  Bx = 0
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  IrqTick
+  ' the ball rolls along the strip, one pixel a frame
+  inc Bx
+  if Bx >= 192 then Bx = 0
+  T = Bx + 24
+  set sprite 0 to 71,T,SBall,15
+  update sprites
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,12
+  put char 32 at 9,14
+  put char 32 at 9,16
+  C = Menu << 1
+  C += 12
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it; on
+' page 1 the flipper follows the stick
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  if Page = 1 then
+    K = JoyMap[Jk]
+    if K < 4 then
+      if K <> Fset then
+        Fset = K
+        SetFlip
+      end if
+    end if
+  end if
+  if Page = 2 then IrqTick
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 12,2, "TRAVERSE"
+  ' packed text (text.mjs -> kit/textpack.mjs), airy: lines 2 rows apart,
+  ' inside the text area [2,4,29,20] of areas.json
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages with pictures made of the game's own tiles
+sub HowTo:
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  print at 2,3, "ROLL THE BALL OVER EVERY"
+  print at 2,5, "DOT OF THE MAZE TO CLEAR IT."
+  ' the picture: a loop of paths with a flipper, the ball on a path
+  put char TC2 at 10,7
+  put char THa at 11,7
+  put char THb3 at 12,7
+  put char THc at 13,7
+  put char TFlip at 14,7
+  put char THa at 15,7
+  put char THb3 at 16,7
+  put char THc at 17,7
+  put char TC3 at 18,7
+  put char TVab at 10,8
+  put char TVab at 14,8
+  put char TVab at 18,8
+  put char TC1 at 10,9
+  put char THa at 11,9
+  put char TLane at 12,9
+  put char TLane at 13,9
+  put char TFlip at 14,9
+  put char THa at 15,9
+  put char THb3 at 16,9
+  put char THc at 17,9
+  put char TC4 at 18,9
+  set sprite 0 to 71,96,SBall,15
+  update sprites
+  print at 2,11, "THE STICK TURNS EVERY"
+  print at 2,13, "YELLOW FLIPPER AT ONCE: UP,"
+  print at 2,15, "DOWN, LEFT, RIGHT OR A"
+  print at 2,17, "DIAGONAL. TRY IT NOW:"
+  put char TFlip at 25,17
+  print at 8,21, "PRESS THE BUTTON"
+  Fset = 0
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    print at 2,3, "ON THE CROSSINGS:"
+    put char TSpin at 3,5
+    print at 5,5, "SPINNER: ANY WAY OUT"
+    put char TMag at 3,7
+    print at 5,7, "MAGNET: HOLDS THE BALL"
+    put char TBump at 3,9
+    print at 5,9, "BUMPER: SENDS IT BACK"
+    put char TTele at 3,11
+    print at 5,11, "DIAMOND: OFF TO A SPINNER"
+    put char TDead at 3,13
+    print at 5,13, "SQUARE: ENDS YOUR TURN"
+    print at 2,15, "ALL BUT THE SPINNERS TURN"
+    print at 2,17, "OFF AND ON EVERY FEW SECONDS"
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    print at 2,3, "A DOT SCORES THE LEVEL:"
+    print at 2,5, "1 AT LEVEL 1, 2 AT LEVEL 2."
+    print at 2,7, "A CLEARED MAZE: 1000 MORE,"
+    print at 2,9, "THEN A FASTER LEVEL."
+    print at 2,11, "EVERY 10000 POINTS: A TURN."
+    print at 2,13, "YOU HAVE 3 TURNS. ONE ENDS"
+    print at 2,15, "WHEN THE TIMER RUNS OUT."
+    print at 2,17, "KEYPAD * PAUSES."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $84,$00,$AA,$30,$00,$1A,$C0,$A1,$00,$AA,$03,$00,$1A,$C3,$A1,$00,$AF,$06,$E4,$89,$18,$18,$3C,$E8
+  $F7,$F8,$86,$91,$40,$60,$70,$78,$7C,$21,$98,$7C,$78,$70,$60,$40,$60,$3E,$1E,$0E,$06,$02,$A9,$02
+  $A5,$0E,$1E,$3E,$62,$01,$03,$06,$0C,$18,$30,$60,$C0,$C3,$66,$3C,$24,$3C,$66,$C3,$E2,$7E,$FE,$A9
+  $00,$66,$FB,$D9,$B0,$FE,$D5,$F2,$69,$EF,$3C,$D5,$3C,$61,$DA,$FE,$F0,$78,$F0,$3D,$FE,$28,$F0,$17
+  $DF,$D0,$C0,$57,$D5,$40,$D5,$55,$60
+end data
+data TileColZ bytes
+  $96,$11,$85,$F1,$56,$96,$B1,$96,$31,$96,$D1,$96,$91,$96,$71,$96,$51,$96,$0E,$9A,$1E,$0E,$69,$E1
+  $A6,$0E,$9E,$01,$C8,$5F,$FE,$7F,$C0,$FF,$F0,$C0,$97,$98,$DF,$C8,$FE,$7F,$C0,$97,$68,$DF,$98,$C8
+  $7D,$FE,$D5,$55,$60
+end data
+data SpritePatZ bytes
+  $66,$00,$3C,$7E,$24,$3C,$00,$0D,$55,$56
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$02,$49,$4E,$0B,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$05,$31
+  $39,$39,$32,$2E,$05,$32,$30,$32,$36,$2E,$04,$42,$41,$53,$53,$09,$42,$49,$45,$4E,$56,$45,$4E,$55
+  $2C,$09,$42,$52,$41,$4E,$54,$4E,$45,$52,$2C,$03,$43,$36,$34,$06,$43,$4C,$41,$55,$44,$45,$0C,$43
+  $4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$03,$46,$4F,$52,$04,$47,$41,$4D,$45,$08,$4D,$41,$59
+  $2F,$4A,$55,$4E,$45,$06,$4D,$55,$53,$49,$43,$3A
+end data
+data TxD_1 bytes
+  $03,$4E,$45,$57,$02,$4F,$4E,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C,$0A,$4F,$52,$49,$47,$49,$4E,$41
+  $4C,$27,$53,$04,$50,$4F,$52,$54,$09,$50,$55,$42,$4C,$49,$53,$48,$45,$44,$06,$52,$45,$52,$55,$4E
+  $2C,$05,$52,$49,$46,$46,$2E,$03,$54,$48,$45,$04,$54,$4F,$4E,$59,$05,$54,$55,$4E,$45,$53
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $12,$09,$0D,$01,$FE,$19,$08,$15,$02,$FE,$16,$0E,$04,$FE,$0B,$14,$02,$00,$FE,$01,$0A,$03,$FE,$0C
+  $00,$07,$05,$FE,$0F,$10,$1A,$11,$18,$FE,$13,$06,$17,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScDing:
+    db $40,$B3,$10,$01,$40,$B3,$40,$02,$50
+ScLose:
+    db $40,$67,$41,$08,$40,$67,$11,$0C,$40,$67,$31,$1E,$40,$BF,$41,$08,$40,$BF,$11,$0C,$40,$BF,$31,$22
+    db $40,$53,$42,$08,$40,$53,$12,$0C,$40,$53,$32,$26,$40,$7F,$43,$08,$40,$7F,$13,$0C,$40,$7F,$33,$2A
+    db $50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScDing,$705D
+    dw ScLose,$705D
+    dw ScGameMel,$702B
+    dw ScGameHarm,$7035
+    dw ScGameBassVol,$703F
+    dw ScGameBassPitch,$7049
+; Traverse title (original, on the C64 bass riff) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$30,$1A,$21,$21,$01,$24,$01,$28,$01,$01,$01,$26,$01,$24,$01
+    db $23,$01,$21,$01,$24,$01,$28,$01,$2D,$01,$01,$01,$2B,$01,$28,$01
+    db $26,$01,$01,$01,$28,$01,$26,$01,$24,$01,$28,$01,$26,$01,$24,$01
+    db $23,$01,$1F,$01,$21,$01,$24,$01,$23,$01,$20,$01,$21,$01,$01,$01
+    db $00,$00,$00,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$1C,$01,$01,$01,$1F,$01,$01,$01,$1D,$01,$01,$01
+    db $1C,$01,$01,$01,$1C,$01,$01,$01,$24,$01,$01,$01,$23,$01,$01,$01
+    db $1F,$01,$01,$01,$1F,$01,$01,$01,$1C,$01,$01,$01,$1D,$01,$01,$01
+    db $1A,$01,$01,$01,$1C,$01,$01,$01,$17,$01,$01,$01,$18,$01,$01,$01
+    db $00,$00,$00,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$66,$F0,$44,$C0,$AB,$F0,$21,$C0,$98,$F0,$1F,$C0,$AB,$F0,$21,$C0,$88,$F0,$40,$C0,$98,$F0,$1F
+    db $C0,$AB,$F0,$21,$C0,$88,$F0,$40,$C0,$98,$F0,$1F,$C0,$AB,$F0,$21,$C0,$88,$F0,$1F,$C0,$66,$F0,$1A
+    db $FF,$E3
+    db $D0
+; Traverse in-game (original, on the C64 bass riff) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScGameMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$60,$1A,$21,$21,$01,$01,$01,$1C,$01,$21,$01,$24,$01,$23,$01
+    db $21,$01,$01,$01,$1F,$01,$01,$01,$1C,$01,$1F,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$1D,$01,$21,$01,$24,$01,$01,$01,$28,$01,$26,$01
+    db $24,$01,$23,$01,$24,$01,$21,$01,$23,$01,$20,$01,$21,$01,$01,$01
+    db $01,$01,$01,$01,$24,$01,$01,$01,$23,$01,$24,$01,$26,$01,$24,$01
+    db $23,$01,$01,$01,$21,$01,$01,$01,$1F,$01,$21,$01,$23,$01,$21,$01
+    db $1F,$01,$01,$01,$1D,$01,$1F,$01,$21,$01,$24,$01,$23,$01,$21,$01
+    db $20,$01,$1C,$01,$21,$01,$23,$01,$24,$01,$26,$01,$28,$01,$01,$01
+    db $01,$01,$01,$01
+    db $FF
+ScGameHarm:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$70,$F1,$22,$18,$01,$01,$01,$1C,$01,$01,$01,$1C,$01,$01,$01
+    db $18,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01,$1A,$01,$01,$01
+    db $17,$01,$01,$01,$15,$01,$01,$01,$18,$01,$01,$01,$14,$01,$01,$01
+    db $17,$01,$01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01,$18,$01,$01,$01
+    db $1C,$01,$01,$01,$1C,$01,$01,$01,$1F,$01,$01,$01,$17,$01,$01,$01
+    db $1A,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$01,$01,$17,$01,$01,$01
+    db $1F,$01,$01,$01,$15,$01,$01,$01,$18,$01,$01,$01,$17,$01,$01,$01
+    db $1A,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$01,$01,$20,$01,$01,$01
+    db $17,$01,$01,$01
+    db $FF
+ScGameBassVol:
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66
+    db $22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22
+    db $02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66
+    db $22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22
+    db $02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66
+    db $22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$53,$1E,$14,$66,$22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66
+    db $22,$02,$53,$22,$14,$66,$22,$02,$36,$04,$13,$11,$02,$53,$1E,$14,$66,$22
+    db $02,$53,$22,$14,$66,$22
+    db $10
+ScGameBassPitch:
+    db $C0,$66,$F0,$4C,$C0,$AB,$F0,$20,$C0,$98,$F0,$28,$C0,$72,$F0,$48,$C0,$88,$F0,$20,$C0,$98,$F0,$28
+    db $C0,$80,$F0,$48,$C0,$88,$F0,$48,$C0,$98,$F0,$20,$C0,$88,$F0,$28,$C0,$66,$F0,$48,$C0,$AB,$F0,$48
+    db $C0,$72,$F0,$48,$C0,$66,$F0,$48,$C0,$88,$F0,$48,$C0,$80,$F0,$48,$C0,$88,$F0,$48,$C0,$98,$F0,$20
+    db $C0,$88,$F0,$6A,$E2
+    db $D0
+}

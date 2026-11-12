@@ -1,0 +1,1387 @@
+cartridge "BRICKOUT!/JOHN FEDOR/1987"
+
+' BRICKOUT! - a ColecoVision port of "Brickout!" by John Fedor (RUN, Dec
+' 1987, p. 68; on ReRUN Nov/Dec 1987 as BRICKOUT2 = the article's Listing 2,
+' BRICKOUT.ML made by Listing 1 BRICK.SET-UP; Commodore 64).
+'
+' The original is a character-cell game on the C64's 40 x 25 text screen,
+' and this port keeps its grid: the same 40 x 25 cells (walls in column 0
+' and 39 and row 0, an invisible pit in row 24), shown as 5 x 7-pixel cells.
+' Every rule below follows BRICKOUT.ML ($C000-$C488), see README.md:
+' - six brick rows (1-2 green 20 points, 3-4 blue 10, 5-6 red 5), 38 bricks
+'   each; the ball moves one cell diagonally every second main-loop pass;
+'   it looks only at the diagonal cell ahead: walls/corners/paddle turn it,
+'   a brick is broken and the ball moves into it and turns back vertically;
+' - the paddle (row 23) moves one cell per pass; it is 6 cells wide, and
+'   each 1000 points take one cell off (down to 2 during a ball; a ball
+'   started at 4000+ / 5000+ gets 2 / 1 cells, as the BASIC part does);
+' - while the ball is low (screen offset >= 512) the brick rows turn round:
+'   rows 1-2 right every 5 passes, 3-4 left every 10, 5-6 right every 15,
+'   twice per pass when the offset is 512-767 (the ML calls it twice); and
+'   a pair of rows with no brick left is filled again (with the ML's quirk
+'   in the scan of rows 3-4);
+' - 1-4 players, 3 balls each in turn, each player keeps his own wall;
+'   speed 1-3 sets the delay of every pass (1 fast, 3 slow).
+' Speeds are the original's: emulated CPU cycles per pass measured on the
+' C64 (c64/cyc.mjs): 16218 / 29174 / 41925 at speeds 1 / 2 / 3, serve
+' sweep 33240 per step; 16795 usable cycles per NTSC frame. The play loop
+' runs Rate/256 passes per frame (Acc).
+'
+' Screen: third 0 (tile rows 0-7, the walls' top and the six brick rows) is
+' a bitmap whose name table runs column by column, so one tile column is 64
+' consecutive pattern bytes and a brick row's 6 pixel rows are one 6-byte
+' fill. Thirds 1-2 are text tiles (font, walls). Ball and paddle are
+' sprites. Outside the field the backdrop shows (the C64's light-blue
+' border).
+
+const TOut = 128
+const TWl = 129
+const TWr = 130
+const TBg = 131
+const TBb = 132
+const TBr = 133
+const TBy = 134
+const THg11 = 135
+const THg10 = 136
+const THg01 = 137
+const THb11 = 138
+const THb10 = 139
+const THb01 = 140
+const THr11 = 141
+const THr10 = 142
+const THr01 = 143
+const THy11 = 144
+const THy10 = 145
+const THy01 = 146
+const TPad = 147
+const TBall = 148
+const SBall = 0
+const SPa4 = 4
+const SPa9 = 8
+const SPa14 = 12
+const SPa16 = 16
+const SPb3 = 20
+const SPb8 = 24
+const SPb13 = 28
+const NTiles8 = 168
+const SprBytes = 256
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndGreen = 6
+const SndBlue = 7
+const SndRed = 8
+const SndWall = 9
+const SndOver = 10
+const TuneFrames = 176
+const TxtCredits = 0
+const TxtHow1 = 1
+const TxtHow2 = 2
+const HideY = 192
+const PadY = 172
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StScores = 5
+const StServe = 6
+const StLost = 7
+const StNext = 8
+const StOver = 9
+' what the ball finds in the cell ahead (the C64 screen codes)
+const KSpace = 0
+const KBrick = 1
+const KTop = 2
+const KLeft = 3
+const KRight = 4
+const KCornL = 5
+const KCornR = 6
+const KPad = 7
+const KPit = 8
+
+u8 Fld[240]
+u8 Row32[32]
+u8 Cnt[7]
+u16 Sc[4]
+u16 Score = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Va = 0
+u16 Off = 0
+u16 Acc = 0
+u16 Rate = 0
+u16 SaveA = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 NPl = 1
+u8 PlLast = 0
+u8 Spd = 1
+u8 Pl = 0
+u8 Ba = 1
+' the field
+u8 Px = 16
+u8 Lw = 5
+u8 Lim = 34
+u8 Br = 8
+u8 Bc = 0
+u8 Dx = 2
+u8 Dy = 2
+u8 Ctr = 2
+u8 C1 = 1
+u8 C2 = 1
+u8 C3 = 1
+u8 Kh = 0
+u8 Tr = 0
+u8 Tcol = 0
+u8 Pts = 0
+u8 SwC = 1
+u8 SwDir = 2
+u8 Launch = 0
+u8 Hits = 0
+u8 Dirty = 0
+u8 FRow = 0
+u8 FRb = 0
+u8 FRy = 0
+u8 FTi = 0
+u8 Budget = 0
+u8 NPass = 0
+u16 FVa = 0
+i8 Spn = 0
+i8 SpA = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Oi = 0
+u8 Li = 0
+' row drawing (DrawRow / DrawTile)
+u8 Rr = 0
+u8 Rb = 0
+u8 Ry = 0
+u8 Ti = 0
+u8 Ri = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 W = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  mode 2 screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 3 then
+    HowTo
+    goto title
+  end if
+  if Menu = 4 then
+    CreditsPage
+    goto title
+  end if
+  ' BASIC lines 210-440: FOR BA = 1 TO 3: FOR P = 1 TO PL
+  for Oi = 0 to 3
+    Sc[Oi] = 0
+  next
+  ' no `for ... to <runtime value>` inside subs: it keeps the limit in a
+  ' hidden IX-frame local, and `decompress zx0` (NewScreen) clobbers IX
+  ' (README, compiler notes); here at the top level only
+  PlLast = NPl - 1
+  for Ba = 1 to 3
+    for Pl = 0 to PlLast
+      PlayBall
+    next
+  next
+  GameOver
+  State = StOver
+  play sound SndOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' one ball of one player (BASIC 220-430)
+
+sub PlayBall:
+  State = StNext
+  Score = Sc[Pl]
+  ' BASIC 320: L = 5 - INT(SC / 1000), below 1 -> 0
+  NumU = Score / 1000
+  Lw = 0
+  if NumU < 5 then
+    T = NumU
+    Lw = 5 - T
+    if Lw < 1 then Lw = 0
+  end if
+  Lim = 39 - Lw
+  Px = 16
+  Br = 8
+  Bc = 0
+  Dx = 2
+  Dy = 2
+  Ctr = 2
+  C1 = 1
+  C2 = 1
+  C3 = 1
+  SpA = 0
+  ' first ball of the round: a new wall; later balls: the player's own
+  SaveA = Pl
+  SaveA = SaveA * 240
+  SaveA += 128
+  if Ba = 1 then
+    fill array Fld with 255
+    for Oi = 0 to 5
+      K = Oi * 40
+      Fld[K] = 0
+      K += 39
+      Fld[K] = 0
+    next
+  else
+    copy vram.spr_attr + SaveA count 240 to Fld
+  end if
+  CountRows
+  Dirty = 0
+  FRow = 0
+  DrawField
+  ShowScores
+  ' BASIC 290: the wall turns (one tick a frame) until the button
+  State = StScores
+  WasBtn = 16
+  Acc = 0
+sc_loop:
+  Frame1
+  ReadPad
+  Acc += 222
+  if Acc >= 256 then
+    Acc -= 256
+    RotTick
+  end if
+  Budget = 24
+  Flush
+  if Press = 0 then goto sc_loop
+  ClearScores
+  ' $C382: wait for the button to be let go, then the serve sweep
+  State = StServe
+  SwC = 1
+  SwDir = 2
+  Launch = 0
+  Acc = 0
+sv_loop:
+  Frame1
+  ReadPad
+  Acc += 129
+  if Acc >= 256 then
+    Acc -= 256
+    if Btn = 0 then Launch = 1
+    if Launch = 1 then ServeStep
+  end if
+  Budget = 24
+  Flush
+  if Launch < 2 then goto sv_loop
+  ' $C41C: the play loop, Rate/256 passes a frame
+  State = StPlay
+  Rate = 265
+  if Spd = 2 then Rate = 147
+  if Spd = 3 then Rate = 103
+  Acc = 0
+pl_loop:
+  Frame1
+  ReadPad
+  Spn = spinner(1)
+  SpA += Spn
+  Spn = spinner(2)
+  SpA += Spn
+  if SpA > 40 then SpA = 40
+  if SpA < -40 then SpA = -40
+  Acc += Rate
+  NPass = 0
+  while Acc >= 256
+    Acc -= 256
+    if Dx > 0 then OnePass
+    inc NPass
+  end while
+  DrawSprites
+  ' tile columns redrawn this frame: more while the ball is high (no rows
+  ' turn then, the passes are short)
+  Budget = 10
+  if Off < 512 then Budget = 30
+  if NPass > 1 then Budget = 2
+  Flush
+  if Dx > 0 then goto pl_loop
+  ' the ball is in the pit: the score stays a second, then the next turn
+  State = StLost
+  Sc[Pl] = Score
+  copy Fld count 240 to vram.spr_attr + SaveA
+  for Li = 1 to 60
+    Frame1
+    Budget = 24
+    Flush
+  next
+  return
+end sub
+
+' one step of the serve sweep ($C393-$C3F1): the ball runs along row 8
+sub ServeStep:
+  if SwDir = 2 then
+    inc SwC
+  else
+    dec SwC
+  end if
+  Bc = SwC
+  PadStep
+  RotTick
+  DrawSprites
+  if Btn > 0 then
+    ' launched here, down, in the sweep's direction
+    Dx = SwDir
+    Dy = 2
+    Ctr = 2
+    Launch = 2
+    return
+  end if
+  if SwDir = 2 then
+    if SwC = 38 then SwDir = 1
+  else
+    if SwC = 1 then SwDir = 2
+  end if
+  return
+end sub
+
+' one pass of the play loop ($C41C)
+sub OnePass:
+  PadStep
+  dec Ctr
+  if Ctr = 0 then
+    Ctr = 2
+    BallMove
+  end if
+  ' the ball's screen offset: hi byte 6 -> $C314 (refill + tick) and
+  ' $C2CD (tick) both; hi byte 7 -> $C2CD only
+  Off = Br * 40
+  Off += Bc
+  if Off >= 512 then
+    if Off < 768 then Refill
+    RotTick
+  end if
+  return
+end sub
+
+' $C443 (every pass in the ML; the score only changes on a brick, so here
+' after each brick): the paddle narrows with the thousands digit
+sub WidthCheck:
+  if Lw <> 1 then
+    NumU = Score / 1000
+    NumU = NumU % 10
+    if NumU <= 5 then
+      T = NumU
+      V = 5 - T
+      if V <> Lw then
+        Lw = V
+        Lim = 39 - Lw
+      end if
+    end if
+  end if
+  return
+end sub
+
+' $C06F: left -1, right +1, kept from column 1 to 38 - L (one step back at
+' the right). The roller (spinner) moves it up to 2 cells a pass.
+sub PadStep:
+  V = Jk & 4
+  if V > 0 then dec Px
+  V = Jk & 8
+  if V > 0 then inc Px
+  if SpA >= 2 then
+    inc Px
+    SpA -= 2
+    if SpA >= 2 then
+      if Px < 37 then inc Px
+      SpA -= 2
+    end if
+  end if
+  if SpA <= -2 then
+    if Px > 0 then dec Px
+    SpA += 2
+    if SpA <= -2 then
+      if Px > 0 then dec Px
+      SpA += 2
+    end if
+  end if
+  if Px < 1 then Px = 1
+  if Px >= Lim then dec Px
+  if Px >= Lim then dec Px
+  return
+end sub
+
+' $C17B: what lies in the diagonal cell ahead
+sub BallMove:
+  Tr = Br + 1
+  if Dy = 1 then Tr = Br - 1
+  Tcol = Bc + 1
+  if Dx = 1 then Tcol = Bc - 1
+  Kh = KSpace
+  if Tr = 0 then
+    Kh = KTop
+    if Tcol = 0 then Kh = KCornL
+    if Tcol = 39 then Kh = KCornR
+  else
+    if Tcol = 0 then
+      Kh = KLeft
+    else
+      if Tcol = 39 then
+        Kh = KRight
+      else
+        if Tr <= 6 then
+          K = Tr - 1
+          K = K * 40
+          K += Tcol
+          if Fld[K] > 0 then Kh = KBrick
+        end if
+        if Tr = 23 then
+          T = Px + Lw
+          if Tcol >= Px then
+            if Tcol <= T then Kh = KPad
+          end if
+        end if
+        if Tr = 24 then Kh = KPit
+      end if
+    end if
+  end if
+  select case Kh
+    case KSpace
+      Br = Tr
+      Bc = Tcol
+    case KBrick
+      ' points by the brick's colour: rows 1-2 green 20, 3-4 blue 10, red 5
+      Fld[K] = 0
+      Br = Tr
+      Bc = Tcol
+      Rr = Tr
+      DrawCell
+      if Tr <= 2 then
+        Score += 20
+        play sound SndGreen
+      else
+        if Tr <= 4 then
+          Score += 10
+          play sound SndBlue
+        else
+          Score += 5
+          play sound SndRed
+        end if
+      end if
+      inc Hits
+      Dy = Dy ^ 3
+      T = Tr
+      dec Cnt[T]
+      WidthCheck
+    case KTop
+      Dy = 2
+      play sound SndWall
+    case KLeft
+      Dx = 2
+      play sound SndWall
+    case KRight
+      Dx = 1
+      play sound SndWall
+    case KCornL
+      Dx = 2
+      Dy = 2
+      play sound SndWall
+    case KCornR
+      Dx = 1
+      Dy = 2
+      play sound SndWall
+    case KPad
+      Dy = 1
+      play sound SndWall
+    case KPit
+      Dx = 0
+      Dy = 0
+      play sound SndWall
+  end select
+  return
+end sub
+
+' $C314: a pair of rows with no brick is filled again. The ML scans
+' columns 1-38 of both rows of a pair; its scan of rows 3-4 starts at the
+' column where the scan of rows 1-2 stopped on a brick in row 1 (a quirk:
+' rows 3-4 can come back while they still hold bricks left of it). Cnt[]
+' (bricks per row) skips the scans that cannot find anything.
+sub Refill:
+  Ri = 1
+  T = Cnt[1] + Cnt[2]
+  if T = 0 then
+    Rr = 1
+    FillRow
+    Rr = 2
+    FillRow
+  else
+rf_a:
+    if Fld[Ri] > 0 then goto rf_b
+    K = Ri + 40
+    if Fld[K] > 0 then
+      Ri = 1
+      goto rf_b
+    end if
+    inc Ri
+    goto rf_a
+  end if
+rf_b:
+  T = Cnt[3] + Cnt[4]
+  if T = 0 then goto rf_fill2
+  if Ri = 1 then goto rf_c
+rf_s2:
+  K = Ri + 80
+  if Fld[K] > 0 then goto rf_c
+  K += 40
+  if Fld[K] > 0 then goto rf_c
+  inc Ri
+  if Ri < 39 then goto rf_s2
+rf_fill2:
+  Rr = 3
+  FillRow
+  Rr = 4
+  FillRow
+rf_c:
+  T = Cnt[5] + Cnt[6]
+  if T = 0 then
+    Rr = 5
+    FillRow
+    Rr = 6
+    FillRow
+  end if
+  RotTick
+  return
+end sub
+
+sub FillRow:
+  K = Rr - 1
+  K = K * 40
+  for J = 1 to 38
+    T = K + J
+    Fld[T] = 255
+  next
+  Cnt[Rr] = 38
+  MarkRow
+  return
+end sub
+
+' $C0BC: rows 1-2 turn right every 5 ticks, 3-4 left every 10, 5-6 right
+' every 15 ($C126 / $C2EF: columns 1-38, the end cell wraps round). A turn
+' by one is two reversals of the row.
+sub RotTick:
+  dec C1
+  if C1 = 0 then
+    C1 = 5
+    reverse array Fld from 1 count 38
+    reverse array Fld from 2 count 37
+    reverse array Fld from 41 count 38
+    reverse array Fld from 42 count 37
+    Dirty = Dirty | 6
+  end if
+  dec C2
+  if C2 = 0 then
+    C2 = 10
+    reverse array Fld from 81 count 38
+    reverse array Fld from 81 count 37
+    reverse array Fld from 121 count 38
+    reverse array Fld from 121 count 37
+    Dirty = Dirty | 24
+  end if
+  dec C3
+  if C3 = 0 then
+    C3 = 15
+    reverse array Fld from 161 count 38
+    reverse array Fld from 162 count 37
+    reverse array Fld from 201 count 38
+    reverse array Fld from 202 count 37
+    Dirty = Dirty | 96
+  end if
+  return
+end sub
+
+' bricks per row, after a wall is restored
+sub CountRows:
+  for Oi = 1 to 6
+    K = Oi - 1
+    K = K * 40
+    W = 0
+    for J = 1 to 38
+      T = K + J
+      if Fld[T] > 0 then inc W
+    next
+    Cnt[Oi] = W
+  next
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: the bitmap third
+
+' a turned or refilled row is redrawn at the end of the frame, at most two
+' rows a frame (Flush), so no frame overruns; the rules use Fld at once
+sub MarkRow:
+  T = 1 << Rr
+  Dirty = Dirty | T
+  return
+end sub
+
+sub Flush:
+  if FRow = 0 then
+    ' the next dirty row, the lowest first (the ball comes up from below)
+    for Oi = 6 downto 1
+      if FRow = 0 then
+        T = 1 << Oi
+        V = Dirty & T
+        if V > 0 then
+          FRow = Oi
+          T = T ^ 255
+          Dirty = Dirty & T
+        end if
+      end if
+    next
+    if FRow = 0 then return
+    FRb = FRow - 1
+    FRb = FRb * 40
+    FRy = FRow * 7
+    FRy += 12
+    FVa = 256
+    FVa += FRy
+    FTi = 0
+  end if
+  Rb = FRb
+  Ry = FRy
+  Va = FVa
+  Ti = FTi
+fl_tile:
+  DrawTile
+  Va += 64
+  inc Ti
+  if Ti = 24 then
+    FRow = 0
+    if Budget > 12 then
+      Budget -= 12
+      goto Flush
+    end if
+    return
+  end if
+  dec Budget
+  if Budget > 0 then goto fl_tile
+  FVa = Va
+  FTi = Ti
+  return
+end sub
+
+' brick row Rr (1-6): 24 tile columns (4-27), 6 pixel rows each
+sub DrawRow:
+  Rb = Rr - 1
+  Rb = Rb * 40
+  Ry = Rr * 7
+  Ry += 12
+  Va = 256
+  Va += Ry
+  for Ti = 0 to 23
+    DrawTile
+    Va += 64
+  next
+  return
+end sub
+
+' the brick just broken (row Rr, column Bc): its one or two tile columns
+sub DrawCell:
+  Rb = Rr - 1
+  Rb = Rb * 40
+  Ry = Rr * 7
+  Ry += 12
+  ' x = 27 + 5c .. 30 + 5c -> tile columns (x >> 3) - 4
+  T = Bc * 5
+  T += 27
+  Ti = T >> 3
+  W = T + 3
+  W = W >> 3
+  Va = Ti << 6
+  Va += Ry
+  Ti -= 4
+  DrawTile
+  if W <> Ti + 4 then
+    Va += 64
+    inc Ti
+    DrawTile
+  end if
+  return
+end sub
+
+' tile column Ti + 4 of brick row Rb/Ry: up to three bricks' pixels
+sub DrawTile:
+  K = TB0[Ti]
+  K += Rb
+  V = Fld[K] & TM0[Ti]
+  K = TB1[Ti]
+  K += Rb
+  T = Fld[K] & TM1[Ti]
+  V = V | T
+  K = TB2[Ti]
+  if K > 0 then
+    K += Rb
+    T = Fld[K] & TM2[Ti]
+    V = V | T
+  end if
+  fill V count 6 to vram.pattern + Va
+  return
+end sub
+
+' the play screen: third 0 as a column-ordered bitmap, thirds 1-2 tiles
+sub DrawField:
+  NewScreen
+  ' third 0 names: tile (row r, column c) = c * 8 + r
+  for Oi = 0 to 7
+    for Li = 0 to 31
+      T = Li << 3
+      Row32[Li] = T + Oi
+    next
+    Va = Oi << 5
+    copy Row32 count 32 to vram.name + Va
+  next
+  fill 0 count 2048 to vram.pattern
+  fill 0 count 2048 to vram.color
+  ' colours, by pixel row: tile columns 3 and 28 white walls, 4-27 bricks
+  Va = 3 << 6
+  Va += 12
+  fill $F1 count 52 to vram.color + Va
+  Va = 28 << 6
+  Va += 12
+  fill $F1 count 52 to vram.color + Va
+  for Ti = 4 to 27
+    Va = Ti << 6
+    copy ColBrick count 64 to vram.color + Va
+    ' the top wall (row 0, lower half: y 15-17)
+    Va += 15
+    fill $FF count 3 to vram.pattern + Va
+  next
+  Va = 3 << 6
+  Va += 15
+  fill $0F count 3 to vram.pattern + Va
+  Va += 3
+  fill $0E count 46 to vram.pattern + Va
+  Va = 28 << 6
+  Va += 15
+  fill $E0 count 49 to vram.pattern + Va
+  ' thirds 1-2: the outside, the walls, row 23 outside
+  for Oi = 8 to 22
+    fill TOut count 3 at 0,Oi
+    put char TWl at 3,Oi
+    put char TWr at 28,Oi
+    fill TOut count 3 at 29,Oi
+  next
+  fill TOut count 32 at 0,23
+  for Oi = 1 to 6
+    Rr = Oi
+    DrawRow
+  next
+  ShowScreen
+  DrawSprites
+  return
+end sub
+
+' ball and paddle sprites: cell (r, c) is at x = 27 + 5c, y = 12 + 7r
+sub DrawSprites:
+  if Bc > 0 then
+    T = Br * 7
+    T += 12
+    V = Bc * 5
+    V += 27
+    set sprite 0 to T,V,SBall,15
+  else
+    set sprite 0 to HideY,0,SBall,0
+  end if
+  V = Px * 5
+  V += 27
+  W = V + 16
+  select case Lw
+    case 0
+      set sprite 1 to PadY,V,SPa4,15
+      set sprite 2 to HideY,0,SPb3,0
+    case 1
+      set sprite 1 to PadY,V,SPa9,15
+      set sprite 2 to HideY,0,SPb3,0
+    case 2
+      set sprite 1 to PadY,V,SPa14,15
+      set sprite 2 to HideY,0,SPb3,0
+    case 3
+      set sprite 1 to PadY,V,SPa16,15
+      set sprite 2 to PadY,W,SPb3,15
+    case 4
+      set sprite 1 to PadY,V,SPa16,15
+      set sprite 2 to PadY,W,SPb8,15
+    case else
+      set sprite 1 to PadY,V,SPa16,15
+      set sprite 2 to PadY,W,SPb13,15
+  end select
+  update sprites
+  return
+end sub
+
+' BASIC 270-280: balls left, then every player's name and score; the one
+' to play is marked
+sub ShowScores:
+  print at 5,9, "BALLS LEFT"
+  T = 4 - Ba
+  put char 48 + T at 16,9
+  for Li = 0 to 3
+    if Li >= NPl then goto ss_next
+    C = Li << 1
+    C += 11
+    if Li = Pl then put char 62 at 5,C
+    print at 6,C, "PLAYER"
+    put char 49 + Li at 13,C
+    NumU = Sc[Li]
+    print at 19,C, digits$(NumU, 5)
+ss_next:
+  next
+  return
+end sub
+
+sub ClearScores:
+  for Li = 9 to 17
+    fill 32 count 24 at 4,Li
+  next
+  return
+end sub
+
+sub GameOver:
+  NewScreen
+  print at 11,3, "GAME OVER"
+  if NPl > 1 then
+    print at 9,6, "FINAL SCORES:"
+  else
+    print at 9,6, "FINAL SCORE:"
+  end if
+  for Li = 0 to 3
+    if Li >= NPl then goto go_next
+    C = Li << 1
+    C += 9
+    print at 7,C, "PLAYER"
+    put char 49 + Li at 14,C
+    NumU = Sc[Li]
+    print at 19,C, digits$(NumU, 5)
+go_next:
+  next
+  print at 8,19, "PRESS THE BUTTON"
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Btn = button held, Press = newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count 4
+  sprites stable 0 to 3
+  for J = 0 to 3
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, the
+' font and tiles into the three thirds (mode 2: each third its own colours)
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  load default ascii
+  duplicate mode 2 patterns
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TileColZ to vram.color + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  decompress zx0 TileColZ to vram.color + 5120
+  backdrop sky blue
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: brick letters, author, menu (cursor back on START), the tune
+sub TitlePage:
+  NewScreen
+  for Li = 0 to 2
+    Va = Li * TitleW0
+    NumU = Li + 1
+    NumU = NumU << 5
+    NumU += 7
+    copy TitleMap0 + Va count TitleW0 to vram.name + NumU
+    Va = Li * TitleW1
+    NumU += 130
+    copy TitleMap1 + Va count TitleW1 to vram.name + NumU
+  next
+  print at 10,9, "BY JOHN FEDOR"
+  print at 11,12, "START"
+  print at 11,14, "PLAYERS"
+  print at 11,16, "SPEED"
+  print at 11,18, "HOW TO PLAY"
+  print at 11,20, "CREDITS"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 4
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 4 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  ' players 1-4 and speed 1-3: left/right, or the button, change them
+  K = Edge & 12
+  if Press = 1 then
+    if Menu = 1 then K = 8
+    if Menu = 2 then K = 8
+  end if
+  if K > 0 then
+    if Menu = 1 then
+      if K = 8 then
+        inc NPl
+        if NPl > 4 then NPl = 1
+      else
+        dec NPl
+        if NPl = 0 then NPl = 4
+      end if
+      play sound SndClick
+      ShowMenu
+    end if
+    if Menu = 2 then
+      if K = 8 then
+        inc Spd
+        if Spd > 3 then Spd = 1
+      else
+        dec Spd
+        if Spd = 0 then Spd = 3
+      end if
+      play sound SndClick
+      ShowMenu
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  if Menu = 1 then goto tp_loop
+  if Menu = 2 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 4
+    C = J << 1
+    C += 12
+    put char 32 at 9,C
+  next
+  C = Menu << 1
+  C += 12
+  put char 62 at 9,C
+  put char 48 + NPl at 19,14
+  put char 48 + Spd at 19,16
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 11,2, "BRICKOUT!"
+  TxT = TxtCredits
+  TxX0 = 3
+  TxY = 5
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: two pages, the first with a picture of the game's bricks,
+' ball and paddle
+sub HowTo:
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/2"
+  fill TBg count 14 at 9,3
+  fill TBb count 14 at 9,4
+  fill TBr count 14 at 9,5
+  put char 32 at 13,5
+  put char 32 at 14,5
+  put char 32 at 14,4
+  set sprite 0 to 55,118,SBall,15
+  set sprite 1 to 68,110,SPa16,15
+  set sprite 2 to 68,126,SPb13,15
+  update sprites
+  TxT = TxtHow1
+  TxX0 = 3
+  TxY = 10
+  TxGap = 2
+  TextShow
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/2"
+    TxT = TxtHow2
+    TxX0 = 3
+    TxY = 4
+    TxGap = 2
+    TextShow
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TB0 bytes = 1,2,4,6,7,9,10,12,14,15,17,18,20,22,23,25,26,28,30,31,33,34,36,38
+data TM0 bytes = 240,128,224,120,192,240,128,224,120,192,240,128,224,120,192,240,128,224,120,192,240,128,224,120
+data TB1 bytes = 2,3,5,7,8,10,11,13,15,16,18,19,21,23,24,26,27,29,31,32,34,35,37,0
+data TM1 bytes = 7,60,15,3,30,7,60,15,3,30,7,60,15,3,30,7,60,15,3,30,7,60,15,0
+data TB2 bytes = 0,4,0,0,0,0,12,0,0,0,0,20,0,0,0,0,28,0,0,0,0,36,0,0
+data TM2 bytes = 0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0
+data ColBrick bytes = 0,0,0,0,0,0,0,0,0,0,0,0,241,241,241,241,241,241,241,49,33,33,33,33,33,241,49,33,33,33,33,33,241,81,65,65,65,65,65,241,81,65,65,65,65,65,241,145,129,129,129,129,129,241,145,129,129,129,129,129,241,241,241,241
+const TitleW0 = 19
+data TitleMap0 bytes = 135,136,137,32,135,136,137,32,136,135,136,32,137,136,136,32,135,32,135,138,139,140,32,138,139,140,32,32,138,32,32,138,32,32,32,138,139,140,142,142,32,32,142,32,142,32,142,142,142,32,32,142,142,32,142,32,142
+const TitleW1 = 15
+data TitleMap1 bytes = 135,136,135,32,135,32,135,32,136,135,136,32,32,144,32,138,32,138,32,138,32,138,32,32,138,32,32,32,145,32,142,142,142,32,142,142,142,32,32,142,32,32,32,145,32
+
+data TilePatZ bytes
+  $96,$00,$96,$0E,$96,$E0,$92,$01,$E5,$00,$F0,$79,$F8,$7D,$FE,$E1,$D0,$17,$82,$FE,$22,$18,$C3,$F5
+  $18,$F3,$55,$58
+end data
+data TileColZ bytes
+  $96,$00,$95,$F1,$88,$13,$12,$66,$01,$15,$14,$19,$86,$01,$19,$18,$61,$01,$1B,$1A,$9A,$01,$C3,$C2
+  $F6,$0C,$F8,$F3,$01,$FE,$E0,$E8,$F7,$47,$45,$45,$04,$F8,$DF,$D0,$E8,$83,$69,$68,$68,$06,$DF,$F8
+  $D0,$7E,$E8,$0F,$AF,$AB,$AB,$0A,$F8,$7D,$D0,$F3,$E8,$A8,$FF,$0F,$22,$0E,$01,$F1,$1F,$F5,$F1,$EB
+  $55,$58
+end data
+data SpritePatZ bytes
+  $22,$60,$F0,$24,$60,$00,$4A,$F0,$29,$00,$42,$8A,$FF,$00,$42,$8F,$80,$C0,$42,$FD,$FC,$FF,$C0,$7D
+  $E0,$0B,$E0,$F5,$FF,$00,$79,$C0,$42,$FC,$F8,$FF,$E0,$35,$55,$58
+end data
+
+data TxD_0 bytes
+  $03,$54,$48,$45,$01,$41,$03,$41,$4D,$59,$02,$42,$59,$01,$33,$04,$45,$41,$43,$48,$05,$50,$52,$45
+  $53,$53,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2E,$06,$28,$43,$36,$34,$29,$2E,$01,$31
+  $03,$31,$30,$2C,$04,$31,$30,$30,$30,$04,$31,$39,$38,$37,$03,$32,$30,$2C,$05,$32,$30,$32,$36,$2E
+  $01,$35
+end data
+data TxD_1 bytes
+  $05,$41,$47,$41,$49,$4E,$05,$41,$4C,$4F,$4E,$47,$03,$41,$4E,$44,$05,$42,$41,$43,$4B,$2E,$04,$42
+  $41,$4C,$4C,$05,$42,$41,$4C,$4C,$53,$09,$42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$04,$42,$4C,$55,$45
+  $05,$42,$52,$45,$41,$4B,$09,$42,$52,$49,$43,$4B,$4F,$55,$54,$21,$07,$42,$52,$49,$43,$4B,$53,$3A
+  $07,$42,$55,$54,$54,$4F,$4E,$2C,$06,$43,$4C,$41,$55,$44,$45,$07,$43,$4C,$45,$41,$52,$45,$44,$0C
+  $43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$05,$43,$4F,$4D,$45,$53
+end data
+data TxD_2 bytes
+  $08,$44,$45,$43,$45,$4D,$42,$45,$52,$04,$44,$52,$4F,$50,$05,$45,$41,$43,$48,$2E,$05,$46,$41,$53
+  $54,$2C,$06,$46,$45,$44,$4F,$52,$2C,$05,$47,$52,$45,$45,$4E,$02,$49,$4E,$05,$49,$4E,$54,$52,$4F
+  $02,$49,$53,$03,$49,$54,$2E,$04,$4A,$4F,$48,$4E,$04,$4C,$45,$46,$54,$04,$4D,$41,$4B,$45,$04,$4D
+  $4F,$56,$45,$06,$4D,$55,$53,$49,$43,$3A,$02,$4F,$46
+end data
+data TxD_3 bytes
+  $02,$4F,$52,$0A,$4F,$52,$49,$47,$49,$4E,$41,$4C,$27,$53,$06,$50,$41,$44,$44,$4C,$45,$07,$50,$41
+  $44,$44,$4C,$45,$2E,$04,$50,$41,$49,$52,$07,$50,$4C,$41,$59,$45,$52,$53,$06,$50,$4F,$49,$4E,$54
+  $53,$07,$50,$4F,$49,$4E,$54,$53,$2E,$04,$50,$4F,$52,$54,$03,$52,$45,$44,$06,$52,$49,$47,$48,$54
+  $2C,$07,$52,$4F,$4C,$4C,$45,$52,$2C,$04,$52,$4F,$57,$3B,$04,$52,$4F,$57,$53,$04,$52,$55,$4E,$2C
+  $04,$52,$55,$4E,$53
+end data
+data TxD_4 bytes
+  $06,$53,$45,$52,$56,$45,$3A,$08,$53,$48,$4F,$52,$54,$45,$52,$2E,$05,$53,$4C,$4F,$57,$2E,$05,$53
+  $50,$45,$45,$44,$05,$53,$54,$49,$43,$4B,$04,$54,$41,$4B,$45,$02,$54,$4F,$05,$54,$55,$4E,$45,$2E
+  $06,$54,$55,$52,$4E,$53,$2C,$05,$57,$41,$4C,$4C,$2E,$04,$57,$49,$54,$48
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1, @TxD_2, @TxD_3, @TxD_4
+end data
+data TxM_Credits bytes
+  $19,$03,$2A,$24,$FE,$3E,$20,$0C,$08,$FE,$1E,$38,$26,$02,$FE,$03,$1C,$07,$FE,$02,$03,$02,$16,$0E
+  $FE,$2E,$00,$31,$FE,$27,$47,$FF
+end data
+data TxM_How1 bytes
+  $18,$00,$1A,$25,$FE,$0D,$17,$0A,$39,$0F,$37,$FE,$44,$2B,$12,$3A,$30,$FE,$00,$3B,$2D,$00,$FE,$33
+  $01,$1D,$34,$2F,$FE,$3D,$1F,$13,$FF
+end data
+data TxM_How2 bytes
+  $40,$06,$00,$1B,$FE,$00,$14,$3F,$11,$01,$3C,$FE,$06,$10,$46,$21,$29,$FE,$05,$0B,$36,$2C,$00,$FE
+  $32,$41,$FE,$04,$15,$22,$35,$45,$FE,$48,$05,$4A,$01,$49,$FE,$43,$09,$28,$23,$04,$42,$FF
+end data
+data TxMsg words
+  @TxM_Credits, @TxM_How1, @TxM_How2
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScGreen:
+    db $40,$DF,$10,$02,$40,$DF,$20,$03,$40,$DF,$40,$04,$40,$DF,$50,$05,$40,$DF,$70,$06,$50
+ScBlue:
+    db $40,$13,$11,$02,$40,$13,$21,$03,$40,$13,$41,$04,$40,$13,$51,$05,$40,$13,$71,$06,$50
+ScRed:
+    db $40,$54,$11,$02,$40,$54,$21,$03,$40,$54,$41,$04,$40,$54,$51,$05,$40,$54,$71,$06,$50
+ScWall:
+    db $40,$BF,$11,$02,$40,$BF,$21,$03,$40,$BF,$41,$04,$40,$BF,$51,$05,$40,$BF,$71,$06,$50
+ScOver:
+    db $40,$68,$21,$0A,$40,$94,$21,$0A,$40,$E0,$31,$0A,$40,$CD,$32,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScGreen,$705D
+    dw ScBlue,$705D
+    dw ScRed,$705D
+    dw ScWall,$705D
+    dw ScOver,$705D
+; Brickout 2 intro (John Fedor, 1987) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 2
+    db $02,$40,$1A,$21,$16,$01,$01,$01,$16,$01,$01,$01,$14,$01,$01,$01
+    db $16,$01,$01,$01,$14,$01,$01,$11,$01,$01,$01,$01,$14,$01,$01,$14
+    db $01,$01,$14,$01,$01,$16,$01,$01,$01,$14,$01,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01,$16,$01,$01,$01,$16,$01,$01,$01,$14,$01,$01,$01
+    db $16,$01,$01,$01,$14,$01,$01,$91,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 2
+    db $02,$60,$1A,$21,$1D,$01,$01,$01,$1D,$01,$01,$01,$1B,$01,$01,$01
+    db $1D,$01,$01,$01,$1B,$01,$01,$18,$01,$01,$01,$01,$1B,$01,$01,$1B
+    db $01,$01,$1B,$01,$01,$1D,$01,$01,$01,$1B,$01,$01,$01,$01,$01,$01
+    db $00,$01,$01,$01,$1D,$01,$01,$01,$1D,$01,$01,$01,$1B,$01,$01,$01
+    db $1D,$01,$01,$01,$1B,$01,$01,$18,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$01,$01,$01,$01,$01,$00,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$02,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$02,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$02,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$02,$14,$66,$22
+    db $02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$02,$36,$04,$13,$11,$02,$33,$04,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$01,$14,$66,$02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$02,$36,$04,$13,$11
+    db $22,$02,$33,$02,$14,$66,$02,$36,$04,$13,$11,$22,$02,$33,$06,$14,$66,$22
+    db $02,$33,$06,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$02,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$02,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$02,$14,$66,$22,$02,$36,$04,$13,$11
+    db $02,$33,$02,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$01,$14,$66,$02,$36,$04,$13,$11,$02,$33,$04,$14,$66
+    db $22,$02,$33,$06,$14,$66,$22,$02,$33,$06,$14,$66,$22,$02,$33,$06,$14,$66
+    db $2A
+    db $10
+ScTuneBassPitch:
+    db $C0,$60,$F0,$14,$C0,$6C,$F0,$08,$C0,$60,$F0,$19,$C0,$6C,$F0,$03,$C0,$60,$F0,$18,$C0,$6C,$F0,$08
+    db $C0,$60,$F0,$1C,$C0,$6C,$F0,$08,$C0,$60,$F0,$0C,$C0,$80,$F0,$1E,$EA
+    db $D0
+}

@@ -3578,29 +3578,10 @@ export class Z80Optimizer {
                     }
                     const instructionWritesHl = (inst) => {
                         if (!(inst instanceof Instruction)) return true;
-                        const m = inst.mnemonic.toLowerCase();
-                        const ops = inst.operands || [];
                         if (isLocalAnalysisBarrier(inst)) return true;
-                        if (m === 'ld' || m === 'lea') {
-                            const dst = ops[0];
-                            return !!(dst && ((dst.type === 'register_pair' && String(dst.value).toLowerCase() === 'hl') ||
-                                (dst.type === 'register' && ['h', 'l'].includes(String(dst.value).toLowerCase()))));
-                        }
-                        if ((m === 'pop' || m === 'inc' || m === 'dec') && ops.length === 1) {
-                            const op = ops[0];
-                            return !!((op.type === 'register_pair' && String(op.value).toLowerCase() === 'hl') ||
-                                (op.type === 'register' && ['h', 'l'].includes(String(op.value).toLowerCase())));
-                        }
-                        if ((m === 'add' || m === 'adc' || m === 'sbc') && ops.length >= 1) {
-                            const dst = ops[0];
-                            return !!(dst.type === 'register_pair' && String(dst.value).toLowerCase() === 'hl');
-                        }
-                        if (m === 'ex' && ops.length === 2) {
-                            const left = String(ops[0].value).toLowerCase();
-                            const right = String(ops[1].value).toLowerCase();
-                            return left === 'hl' || right === 'hl';
-                        }
-                        return false;
+                        return this.instructionWritesRegister(inst, 'hl') ||
+                            this.instructionWritesRegister(inst, 'h') ||
+                            this.instructionWritesRegister(inst, 'l');
                     };
                     // Delayed identical HL reloads are also redundant when the
                     // straight-line instructions in between do not change HL and do not

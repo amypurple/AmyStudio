@@ -1,0 +1,1297 @@
+cartridge "FOOSBALL 64/TONY BRANTNER/1990"
+' TABLE SOCCER - a ColecoVision port of SOCCER 64 ("FOOSBALL 64" on the
+' disk), a C64 machine-code game from RUN magazine's ReRUN disk of
+' January/February 1990. The disk's article text does not name its author.
+'
+' The game (rules read from the original's 6502 code, timing measured in
+' cycles; see README.md):
+' - a foosball table: six rods, yellow (goalie 3 men, midfield 5, attack 3)
+'   against red (attack 3, midfield 5, goalie 3). Yellow attacks right.
+' - each side controls ONE rod at a time: the one picked by the ball's
+'   column (picked again only while that rod is at rest).
+' - stick up/down slides the rod one row per tick (a tick = 64 passes of
+'   the original's loop, about 3 frames); the button starts a kick: the men
+'   swing through 8 poses, one per tick. Resting men let the ball pass;
+'   a man in a kicking pose sends it toward the other goal at full speed,
+'   with a random vertical speed and direction.
+' - the ball slows by 1 every 4 ticks (to 3 at least); a rail bounce halves
+'   its speed on that axis.
+' - a goal scores 1; first to 9 wins. 1 player: the computer plays red; its
+'   LEVEL 1-9 sets how often it moves (every 9-L+1 ticks). SPEED 1/2: the
+'   ball's top speed (31 or 63 / 256 px per pass, 21 passes a frame).
+'
+' Controls: controller 1 = yellow (1 player: either controller); controller
+' 2 = red. Stick up/down, either button kicks. No keypad.
+
+const TTurf = 128
+const TRod = 129
+const TVline = 130
+const TSpot = 131
+const TBoxl = 132
+const TBoxr = 133
+const TBoxtl = 134
+const TBoxbl = 135
+const TBoxtr = 136
+const TBoxbr = 137
+const THline = 138
+const TRailh = 139
+const TRailr = 140
+const TRailv = 141
+const TRailvr = 142
+const TCorner = 143
+const TCornr = 144
+const TCornbl = 145
+const TCornbr = 146
+const TNet = 147
+const TYrestl = 148
+const TYrestm = 149
+const TYrestr = 150
+const TYtiltbl = 151
+const TYtiltbm = 152
+const TYtiltbr = 153
+const TYupm = 154
+const TYtiltfl = 155
+const TYtiltfm = 156
+const TYtiltfr = 157
+const TYflatl = 158
+const TYflatm = 159
+const TYflatr = 160
+const TRrestl = 161
+const TRrestm = 162
+const TRrestr = 163
+const TRtiltbl = 164
+const TRtiltbm = 165
+const TRtiltbr = 166
+const TRupm = 167
+const TRtiltfl = 168
+const TRtiltfm = 169
+const TRtiltfr = 170
+const TRflatl = 171
+const TRflatm = 172
+const TRflatr = 173
+const TTball00 = 174
+const TTball01 = 175
+const TTball10 = 176
+const TTball11 = 177
+const TShirty = 178
+const TShirtr = 179
+const SBall = 0
+const SBshade = 4
+const SBline = 8
+const NTiles8 = 416
+const SprBytes = 96
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndPick = 6
+const SndKick = 7
+const SndWall = 8
+const SndGoal = 9
+const SndOver = 10
+const TuneFrames = 784
+const TxtCredits = 0
+const NSpr = 2
+const HideY = 192
+' field: rails on rows 3 and 21, columns 2 and 28; goal mouths rows 10-14
+const RowTop = 4
+const RowBot = 20
+const GoalTop = 10
+const GoalBot = 14
+' a goal: the ball's centre past these x (2 px into the left mouth column,
+' 4 px into the right one, as on the C64)
+const GoalLx = 22
+const GoalRx = 228
+' passes of the original's loop per frame (723 cycles a pass, NTSC)
+const PassPF = 21
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StGoal = 5
+const StOver = 9
+
+' rods 0-5 left to right: mid column 5 + 4 * rod; even = yellow, odd = red
+data RodNF bytes 3,3,5,5,3,3
+data RodSp bytes 3,4,3,3,4,3
+data RodTop0 bytes 5,4,2,2,4,5
+data RodMax bytes 10,8,4,4,8,10
+' rows from the first man to the last
+data RodSpan bytes 6,8,12,12,8,6
+data RodRow bytes TTurf,TRod,TTurf
+' drawn frame (0-7) -> pose: 0 rest, 1 tilted back, 2 upright, 3 tilted
+' forward, 4 flat forward (the C64's GHI, @, ABC, DEF, ABC, @, GHI, JKL)
+data PoseOf bytes 1,2,3,4,3,2,1,0
+' pose tiles: team * 15 + pose * 3 + (left, mid, right); 128 = turf
+data PoseTile bytes
+  TYrestl,TYrestm,TYrestr, TYtiltbl,TYtiltbm,TYtiltbr, 128,TYupm,128, TYtiltfl,TYtiltfm,TYtiltfr, TYflatl,TYflatm,TYflatr
+  TRrestl,TRrestm,TRrestr, TRtiltbl,TRtiltbm,TRtiltbr, 128,TRupm,128, TRtiltfl,TRtiltfm,TRtiltfr, TRflatl,TRflatm,TRflatr
+end data
+
+u8 Top[6]
+u8 RowBuf[3]
+u8 DrFull = 0
+u8 Act[2]
+u8 Fr[2]
+u8 Inp[2]
+u8 Score[2]
+u16 AccX = 0
+u16 AccY = 0
+u16 W16 = 0
+u16 Rs = 1
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+' the ball: centre pixel, speeds (per pass, /256), directions (0 = +1)
+u8 Bx = 0
+u8 By = 0
+u8 Vx = 0
+u8 Vy = 0
+u8 Dx = 0
+u8 Dy = 0
+u8 Nx = 0
+u8 Ny = 0
+u8 Vmax = 31
+u8 Scored = 0
+u8 TickN = 0
+u8 TickF = 0
+u8 AiC = 0
+' options (kept between games)
+u8 Players = 1
+u8 Level = 1
+u8 Speed = 1
+u8 Winner = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 GoalT = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+' loop counters (never used by helper subs)
+u8 Oi = 0
+u8 Li = 0
+u8 Ri = 0
+u8 Rr = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Q = 0
+u8 Ck = 0
+u8 Cx = 0
+u8 Cy = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 4 then
+    HowTo
+    goto title
+  end if
+  if Menu = 5 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if Scored > 0 then
+    GoalPause
+    if Winner > 0 then goto game_over
+    NewPoint
+  end if
+  goto play_loop
+
+game_over:
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules
+
+' 16-bit xorshift: stepped every title frame, so each game is different
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub NewGame:
+  Score[0] = 0
+  Score[1] = 0
+  Winner = 0
+  Vmax = 31
+  if Speed = 2 then Vmax = 63
+  DrawPlay
+  NewPoint
+  State = StPlay
+  return
+end sub
+
+' a kick-off: men back to their places at rest, the ball in the centre with
+' speed 10 both ways and random directions (the C64 clears its whole state)
+sub NewPoint:
+  for Ri = 0 to 5
+    Top[Ri] = RodTop0[Ri]
+  next
+  Fr[0] = 0
+  Fr[1] = 0
+  Act[0] = 2
+  Act[1] = 3
+  Inp[0] = 0
+  Inp[1] = 0
+  AiC = 0
+  AccX = 0
+  AccY = 0
+  Scored = 0
+  DrFull = 1
+  for Ri = 0 to 5
+    DrawRod
+  next
+  DrFull = 0
+  Bx = 124
+  By = 100
+  Vx = 10
+  Vy = 10
+  Rand
+  T = Rs
+  Dx = T & 1
+  T = T >> 1
+  Dy = T & 1
+  State = StPlay
+  DrawBall
+  return
+end sub
+
+' one frame: the ball (21 passes of the original's loop), then a tick every
+' third frame (64 passes)
+sub PlayStep:
+  MoveBall
+  inc TickF
+  if TickF >= 3 then
+    TickF = 0
+    DoTick
+  else
+    ' yellow's rod is served one frame after red's, so no frame draws
+    ' two rods (the C64 does both in one pass; 1/60 s apart here)
+    if TickF = 1 then
+      Oi = 0
+      RodTeam
+    end if
+  end if
+  DrawBall
+  return
+end sub
+
+sub MoveBall:
+  W16 = Vy * PassPF
+  AccY += W16
+  W16 = AccY >> 8
+  Ny = W16
+  AccY = AccY & 255
+  W16 = Vx * PassPF
+  AccX += W16
+  W16 = AccX >> 8
+  Nx = W16
+  AccX = AccX & 255
+mb_loop:
+  if Ny > 0 then
+    dec Ny
+    StepY
+  end if
+  if Nx > 0 then
+    dec Nx
+    StepX
+  end if
+  if Bx < GoalLx then
+    Scored = 2
+    return
+  end if
+  if Bx >= GoalRx then
+    Scored = 1
+    return
+  end if
+  if Ny > 0 then goto mb_loop
+  if Nx > 0 then goto mb_loop
+  return
+end sub
+
+sub StepY:
+  Cy = By + 1
+  if Dy = 1 then Cy = By - 1
+  Cx = Bx
+  CellKind
+  if Ck = 0 then
+    By = Cy
+    return
+  end if
+  if Ck = 1 then
+    ' a rail: the other way, half the speed (odd), the bounce click
+    Dy = Dy ^ 1
+    Vy = Vy >> 1
+    Vy = Vy | 1
+    Ny = 0
+    play sound SndWall
+    return
+  end if
+  HitMan
+  if Ck = 0 then By = Cy
+  return
+end sub
+
+sub StepX:
+  Cx = Bx + 1
+  if Dx = 1 then Cx = Bx - 1
+  Cy = By
+  CellKind
+  if Ck = 0 then
+    Bx = Cx
+    return
+  end if
+  if Ck = 1 then
+    Dx = Dx ^ 1
+    Vx = Vx >> 1
+    Vx = Vx | 1
+    Nx = 0
+    play sound SndWall
+    return
+  end if
+  HitMan
+  if Ck = 0 then Bx = Cx
+  return
+end sub
+
+' a kicking man of team Ck - 2: the ball goes his way at full speed with a
+' random vertical speed and direction; if it already does, it passes
+' (Ck = 0: the caller moves the ball on)
+sub HitMan:
+  T = Ck - 2
+  if Dx = T then
+    if Vx = Vmax then
+      Ck = 0
+      return
+    end if
+  end if
+  Dx = T
+  Vx = Vmax
+  Rand
+  T = Rs
+  Vy = T & Vmax
+  Vy = Vy | 1
+  T = T >> 4
+  Dy = T & 1
+  Nx = 0
+  Ny = 0
+  play sound SndKick
+  return
+end sub
+
+' what the ball's centre pixel (Cx, Cy) is on: Ck = 0 free, 1 rail,
+' 2 a kicking yellow man, 3 a kicking red man (men at rest let it pass)
+sub CellKind:
+  Ck = 1
+  C = Cx >> 3
+  Q = Cy >> 3
+  if Q < RowTop then return
+  if Q > RowBot then return
+  if C <= 2 then
+    if C = 2 then
+      if Q >= GoalTop then
+        if Q <= GoalBot then Ck = 0
+      end if
+    end if
+    return
+  end if
+  if C >= 28 then
+    if C = 28 then
+      if Q >= GoalTop then
+        if Q <= GoalBot then Ck = 0
+      end if
+    end if
+    return
+  end if
+  Ck = 0
+  if C < 4 then return
+  C -= 4
+  V = C & 3
+  if V = 3 then return
+  K = C >> 2
+  J = K & 1
+  if Act[J] <> K then return
+  T = Fr[J] - 1
+  T = T & 7
+  T = PoseOf[T]
+  if T = 0 then return
+  if T = 2 then
+    if V <> 1 then return
+  end if
+  Q -= RowTop
+  T = Top[K]
+  if Q < T then return
+  Q -= T
+  T = RodSp[K]
+  V = Q % T
+  if V <> 0 then return
+  V = Q / T
+  if V >= RodNF[K] then return
+  Ck = J + 2
+  return
+end sub
+
+' a tick: friction every 4th, each side's rod picked by the ball's column
+' (only while at rest), the inputs, then red's rod (yellow's next frame)
+sub DoTick:
+  inc TickN
+  T = TickN & 3
+  if T = 0 then
+    if Vx >= 4 then dec Vx
+    if Vy >= 4 then dec Vy
+  end if
+  C = Bx >> 3
+  K = 0
+  if C >= 11 then K = 2
+  if C >= 19 then K = 4
+  if Fr[0] = 0 then Act[0] = K
+  if Fr[1] = 0 then Act[1] = K + 1
+  if Players = 2 then
+    Inp[0] = J1
+    Inp[1] = J2
+  else
+    T = J1 | J2
+    Inp[0] = T
+    AiInput
+  end if
+  Oi = 1
+  RodTeam
+  return
+end sub
+
+' team Oi: a kick in progress (or a new press) takes the next pose; stick
+' up or down (not both) slides the rod one row while there is room
+sub RodTeam:
+  Ri = Act[Oi]
+  Rr = 0
+  T = Inp[Oi] & 16
+  if Fr[Oi] <> 0 then T = 1
+  if T > 0 then
+    T = Fr[Oi] + 1
+    Fr[Oi] = T & 7
+    Rr = 1
+  end if
+  T = Inp[Oi] & 3
+  if T = 1 then
+    if Top[Ri] > 0 then
+      dec Top[Ri]
+      Rr = 1
+    end if
+  end if
+  if T = 2 then
+    if Top[Ri] < RodMax[Ri] then
+      inc Top[Ri]
+      Rr = 1
+    end if
+  end if
+  if Rr = 1 then DrawRod
+  return
+end sub
+
+' the computer (red, 1 player): acts on one tick in 10 - Level; the man of
+' its rod nearest the ball's row (the first one on a tie) goes toward it,
+' or kicks when level with it
+sub AiInput:
+  Inp[1] = 0
+  inc AiC
+  if AiC < 9 then return
+  AiC = Level - 1
+  C = By - 32
+  C = C >> 3
+  K = Act[1]
+  Q = Top[K]
+  V = 255
+  for J = 1 to RodNF[K]
+    if Q >= C then
+      T = Q - C
+    else
+      T = C - Q
+    end if
+    if T < V then
+      V = T
+      Inp[1] = 16
+      if Q < C then Inp[1] = 2
+      if Q > C then Inp[1] = 1
+    end if
+    Q += RodSp[K]
+  next
+  return
+end sub
+
+' a goal: the score goes up, the goal sweep sounds and GOAL blinks (2 Hz)
+' for three seconds (the C64's sweep and digit roll take 180 jiffies)
+sub GoalPause:
+  State = StGoal
+  T = Scored - 1
+  K = Score[T] + 1
+  Score[T] = K
+  ShowHud
+  play sound SndGoal
+  for GoalT = 1 to 180
+    Frame1
+    T = GoalT & 31
+    if T = 1 then print at 13,22, "GOAL!"
+    if T = 16 then print at 13,22, "     "
+  next
+  print at 13,22, "     "
+  if Score[0] >= 9 then Winner = 1
+  if Score[1] >= 9 then Winner = 2
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+sub DrawBall:
+  T = By - 5
+  V = Bx - 4
+  set sprite 0 to T,V,SBall,15
+  set sprite 1 to T,V,SBshade,14
+  update sprites
+  return
+end sub
+
+' rod Ri: men in their pose (the active rod of a side shows its kick frame,
+' every other rod rests), rod tiles between them. Only the rows from one
+' above the first man to one below the last can change (a slide moves the
+' rod one row): each row is one 3-tile write.
+sub DrawRod:
+  J = Ri & 1
+  C = Ri << 2
+  C += 4
+  K = 0
+  if Act[J] = Ri then
+    T = Fr[J] - 1
+    T = T & 7
+    K = PoseOf[T]
+  end if
+  K = K * 3
+  T = J * 15
+  K += T
+  RowBuf[0] = PoseTile[K]
+  inc K
+  RowBuf[1] = PoseTile[K]
+  inc K
+  RowBuf[2] = PoseTile[K]
+  Q = Top[Ri]
+  V = RodNF[Ri]
+  Ck = RodSp[Ri]
+  ' Rr = last row to draw, Li = first
+  Rr = Q + RodSpan[Ri]
+  if Rr < 16 then inc Rr
+  Li = Q
+  if Li > 0 then dec Li
+  if DrFull = 1 then
+    Li = 0
+    Rr = 16
+  end if
+  T = Li + RowTop
+dr_row:
+  if Li = Q then
+    if V > 0 then
+      put RowBuf at C,T
+      Q += Ck
+      dec V
+      goto dr_next
+    end if
+  end if
+  put RodRow at C,T
+dr_next:
+  inc T
+  inc Li
+  if Li <= Rr then goto dr_row
+  return
+end sub
+
+sub DrawField:
+  for Li = 4 to 20
+    fill TTurf count 25 at 3,Li
+    put char TVline at 15,Li
+    put char TRailv at 2,Li
+    put char TRailvr at 28,Li
+    for Oi = 0 to 5
+      C = Oi << 2
+      C += 5
+      put char TRod at C,Li
+    next
+  next
+  put char TSpot at 15,12
+  for Li = 10 to 14
+    put char TNet at 2,Li
+    put char TNet at 28,Li
+  next
+  put char TBoxtl at 3,8
+  put char TBoxtr at 27,8
+  for Li = 9 to 15
+    put char TBoxl at 3,Li
+    put char TBoxr at 27,Li
+  next
+  put char TBoxbl at 3,16
+  put char TBoxbr at 27,16
+  put char TCorner at 2,3
+  put char TCornr at 28,3
+  put char TCornbl at 2,21
+  put char TCornbr at 28,21
+  fill TRailh count 25 at 3,3
+  fill TRailh count 25 at 3,21
+  for Li = 0 to 5
+    C = Li << 2
+    C += 5
+    put char TRailr at C,3
+    put char TRailr at C,21
+  next
+  return
+end sub
+
+sub ShowHud:
+  put char TShirty at 2,1
+  print at 4,1, "YELLOW"
+  T = Score[0] + 48
+  put char T at 11,1
+  put char TShirtr at 27,1
+  print at 23,1, "RED"
+  T = Score[1] + 48
+  put char T at 21,1
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  DrawField
+  ShowHud
+  if Players = 1 then
+    print at 4,22, "LEVEL"
+    T = Level + 48
+    put char T at 10,22
+  else
+    print at 4,22, "2 PLAYERS"
+  end if
+  print at 20,22, "SPEED"
+  T = Speed + 48
+  put char T at 26,22
+  ShowScreen
+  return
+end sub
+
+sub GameOver:
+  HideSprites
+  fill 32 count 18 at 6,9
+  fill 32 count 18 at 6,10
+  fill 32 count 18 at 6,11
+  fill 32 count 18 at 6,12
+  fill 32 count 18 at 6,13
+  fill 32 count 18 at 6,14
+  print at 10,10, "GAME OVER"
+  if Winner = 1 then print at 9,12, "YELLOW WINS"
+  if Winner = 2 then
+    if Players = 1 then
+      print at 8,12, "COMPUTER WINS"
+    else
+      print at 10,12, "RED WINS"
+    end if
+  end if
+  print at 8,14, "PRESS BUTTON"
+  play sound SndOver
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' J1/J2 = each controller (1 up, 2 down, 4 left, 8 right, 16 a button);
+' Jk = directions of both, Edge = newly pressed, Press = a new button press
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  for J = 0 to 1
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a strip of table: rails on rows R and R+2, men between (title, HOW TO PLAY)
+sub Strip:
+  fill TRailh count 25 at 3,Rr
+  T = Rr + 1
+  fill TTurf count 25 at 3,T
+  T = Rr + 2
+  fill TRailh count 25 at 3,T
+  return
+end sub
+
+' a man: team J, pose K, at mid column C, row T
+sub PutMan:
+  Q = J * 15
+  V = K * 3
+  Q += V
+  C -= 1
+  put char PoseTile[Q] at C,T
+  inc C
+  inc Q
+  put char PoseTile[Q] at C,T
+  inc C
+  inc Q
+  put char PoseTile[Q] at C,T
+  C -= 1
+  return
+end sub
+
+' the title: name, a strip of table, the menu with the options
+sub TitlePage:
+  State = StTitle
+  NewScreen
+  put char TTball00 at 3,2
+  put char TTball01 at 4,2
+  put char TTball10 at 3,3
+  put char TTball11 at 4,3
+  put char TTball00 at 27,2
+  put char TTball01 at 28,2
+  put char TTball10 at 27,3
+  put char TTball11 at 28,3
+  print at 10,2, "FOOSBALL 64"
+  Rr = 5
+  Strip
+  for Li = 0 to 5
+    C = Li << 2
+    C += 5
+    T = 6
+    J = Li & 1
+    K = 0
+    if Li = 2 then K = 2
+    if Li = 3 then K = 4
+    PutMan
+  next
+  print at 11,10, "START"
+  print at 11,12, "PLAYERS"
+  print at 11,14, "LEVEL"
+  print at 11,16, "SPEED"
+  print at 11,18, "HOW TO PLAY"
+  print at 11,20, "CREDITS"
+  print at 5,22, "RERUN 1990  PORT 2026"
+  Menu = 0
+  ShowOpts
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 5
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 5 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  ' left/right (or the button) changes PLAYERS, LEVEL, SPEED
+  K = Edge & 12
+  if Menu >= 1 then
+    if Menu <= 3 then
+      if Press = 1 then K = 8
+      Press = 0
+      if K > 0 then
+        ChangeOpt
+        play sound SndClick
+        ShowOpts
+      end if
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  play sound SndPick
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+' K = 4 left (down a value), 8 right (up a value), wrapping
+sub ChangeOpt:
+  if Menu = 1 then Players = Players ^ 3
+  if Menu = 3 then Speed = Speed ^ 3
+  if Menu = 2 then
+    if K = 4 then
+      dec Level
+      if Level = 0 then Level = 9
+    else
+      inc Level
+      if Level > 9 then Level = 1
+    end if
+  end if
+  return
+end sub
+
+sub ShowOpts:
+  T = Players + 48
+  put char T at 23,12
+  T = Level + 48
+  put char T at 23,14
+  if Players = 2 then put char 45 at 23,14
+  T = Speed + 48
+  put char T at 23,16
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 5
+    C = J << 1
+    C += 10
+    put char 32 at 9,C
+  next
+  C = Menu << 1
+  C += 10
+  put char 62 at 9,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  State = StCredits
+  print at 10,2, "FOOSBALL 64"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three airy pages (text on alternate rows), pictures made of
+' the game's own tiles and sprite
+sub HowTo:
+  Page = 1
+  NewScreen
+  State = StHow
+  print at 8,1, "HOW TO PLAY  1/3"
+  print at 2,3, "YELLOW ATTACKS RIGHT, RED"
+  print at 2,5, "ATTACKS LEFT. A KICK:"
+  ' the five poses of a kick, left to right
+  Rr = 7
+  Strip
+  for Li = 0 to 4
+    C = Li * 5
+    C += 5
+    T = 8
+    J = 0
+    K = Li
+    PutMan
+  next
+  set sprite 0 to 62,212,SBall,15
+  set sprite 1 to 62,212,SBshade,14
+  update sprites
+  print at 2,12, "THE ROD NEAREST THE BALL"
+  print at 2,14, "IS YOURS. STICK UP/DOWN"
+  print at 2,16, "SLIDES IT, THE BUTTON"
+  print at 2,18, "KICKS."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  Page = 2
+  NewScreen
+  HideSprites
+  print at 8,1, "HOW TO PLAY  2/3"
+  print at 2,3, "MEN AT REST LET THE BALL"
+  print at 2,5, "PASS. A KICKING MAN SENDS"
+  print at 2,7, "IT AT FULL SPEED TOWARD"
+  print at 2,9, "THE OTHER GOAL."
+  for Li = 12 to 14
+    put char TRailv at 2,Li
+    fill TTurf count 6 at 3,Li
+  next
+  put char TNet at 2,13
+  J = 1
+  K = 3
+  C = 6
+  T = 13
+  PutMan
+  set sprite 0 to 98,20,SBall,15
+  set sprite 1 to 98,20,SBshade,14
+  update sprites
+  print at 2,17, "SCORE IN THE OTHER NET:"
+  print at 2,19, "FIRST TO 9 GOALS WINS."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then goto ht_end
+  Page = 3
+  NewScreen
+  print at 8,1, "HOW TO PLAY  3/3"
+  print at 2,3, "1 PLAYER: THE COMPUTER"
+  print at 2,5, "PLAYS RED. LEVEL 1 TO 9"
+  print at 2,7, "SETS HOW QUICK IT IS."
+  print at 2,12, "2 PLAYERS: CONTROLLER 2"
+  print at 2,14, "PLAYS RED."
+  print at 2,16, "SPEED 2: A FASTER BALL."
+  print at 2,18, "THE BALL SLOWS AS IT ROLLS."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+ht_end:
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $62,$00,$02,$00,$2A,$20,$00,$18,$00,$9A,$C3,$81,$00,$09,$81,$C3,$18,$03,$69,$C0,$68,$00,$28,$03
+  $68,$00,$1F,$CA,$38,$FE,$5A,$18,$5A,$40,$5A,$02,$58,$E6,$00,$80,$E0,$24,$00,$01,$E6,$C2,$24,$80
+  $00,$A8,$01,$3F,$88,$AA,$22,$AA,$F8,$B8,$26,$FA,$F9,$7D,$64,$E0,$F7,$BA,$C3,$01,$01,$C3,$FE,$9E
+  $F0,$D0,$5B,$E0,$A7,$E1,$E0,$88,$C1,$81,$81,$A2,$18,$8A,$07,$07,$13,$DE,$A0,$80,$8B,$80,$80,$96
+  $D0,$EF,$C0,$FA,$D0,$07,$95,$70,$F7,$30,$65,$F0,$76,$90,$56,$10,$E4,$03,$F0,$1C,$38,$87,$83,$20
+  $70,$C0,$F0,$38,$1C,$E1,$C1,$04,$0E,$70,$20,$83,$87,$ED,$E7,$F0,$03,$0E,$04,$C1,$E1,$CD,$F0,$C0
+  $99,$2E,$14,$FE,$BD,$00,$F0,$D5,$55,$60
+end data
+data TileColZ bytes
+  $6F,$02,$32,$02,$F8,$BC,$E2,$FE,$A0,$F2,$2A,$2F,$AA,$0F,$2F,$80,$F2,$3B,$A4,$E7,$D1,$EA,$EE,$F1
+  $E6,$E0,$17,$E6,$F1,$FF,$0A,$0B,$0A,$61,$99,$0B,$0A,$EA,$EB,$EA,$95,$EB,$EA,$BA,$8F,$0A,$AB,$F0
+  $79,$D2,$6B,$AB,$D8,$F0,$E7,$F1,$1F,$FC,$BB,$6D,$2A,$73,$2A,$7B,$C0,$0B,$AA,$FE,$E2,$A9,$02,$21
+  $A6,$02,$8F,$2A,$D0,$0B,$12,$BE,$FE,$F5,$E3,$EB,$B1,$FE,$0B,$FB,$E0,$B3,$12,$96,$C0,$EF,$A2,$FE
+  $F5,$DF,$80,$D0,$79,$40,$E5,$D0,$BB,$09,$FE,$E0,$D0,$8E,$28,$08,$08,$28,$70,$79,$D0,$6E,$82,$FE
+  $FB,$F5,$E3,$91,$AF,$FE,$09,$B0,$EF,$FE,$C0,$76,$F0,$1F,$80,$7D,$D0,$F7,$40,$6F,$58,$FB,$A9,$FE
+  $F1,$A5,$1F,$EF,$EC,$D8,$38,$FF,$A9,$1B,$0B,$1B,$9A,$01,$19,$09,$9B,$19,$01,$55,$55,$80
+end data
+data SpritePatZ bytes
+  $68,$3C,$7E,$FF,$64,$FD,$F9,$62,$3C,$00,$58,$25,$02,$06,$1C,$00,$03,$55,$55,$80
+end data
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$03,$54,$48,$45,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2E
+  $07,$28,$54,$52,$41,$44,$2E,$29,$05,$31,$39,$39,$30,$2E,$05,$32,$30,$32,$36,$2E,$02,$36,$34,$09
+  $42,$49,$45,$4E,$56,$45,$4E,$55,$2C,$09,$42,$52,$41,$4E,$54,$4E,$45,$52,$2E,$04,$43,$36,$34,$2C
+  $06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$05,$44,$49,$53
+  $4B,$2C,$08,$46,$4F,$4F,$53,$42,$41,$4C,$4C,$03,$46,$4F,$52
+end data
+data TxD_1 bytes
+  $02,$49,$4E,$07,$4A,$41,$4E,$2F,$46,$45,$42,$0A,$4D,$41,$47,$41,$5A,$49,$4E,$45,$27,$53,$02,$4F
+  $4E,$09,$4F,$52,$49,$47,$49,$4E,$41,$4C,$3A,$04,$50,$4F,$52,$54,$05,$52,$45,$52,$55,$4E,$03,$52
+  $55,$4E,$06,$53,$41,$49,$4E,$54,$53,$04,$54,$4F,$4E,$59,$05,$54,$55,$4E,$45,$3A
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $14,$0E,$07,$0F,$FE,$02,$0A,$13,$17,$12,$FE,$16,$0D,$11,$05,$FE,$01,$19,$09,$FE,$0C,$15,$10,$00
+  $FE,$01,$0B,$03,$FE,$00,$01,$00,$08,$06,$FE,$1A,$02,$18,$04,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScPick:
+    db $40,$01,$12,$08,$40,$01,$32,$07,$50
+ScKick:
+    db $40,$AB,$10,$01,$40,$AB,$30,$02,$50
+ScWall:
+    db $40,$46,$11,$01,$40,$46,$31,$02,$50
+ScGoal:
+    db $40,$7F,$13,$02,$40,$BF,$11,$02,$40,$7F,$13,$02,$40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02
+    db $40,$E0,$10,$02,$40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02,$40,$B3,$10,$02,$40,$E0,$10,$02
+    db $40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02,$40,$95,$10,$02,$40,$B3,$10,$02,$40,$E0,$10,$02
+    db $40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02,$40,$80,$10,$02,$40,$95,$10,$02,$40,$B3,$10,$02
+    db $40,$E0,$10,$02,$40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02,$40,$70,$10,$02,$40,$80,$10,$02
+    db $40,$95,$10,$02,$40,$B3,$10,$02,$40,$E0,$10,$02,$40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02
+    db $40,$64,$10,$02,$40,$70,$10,$02,$40,$80,$10,$02,$40,$95,$10,$02,$40,$B3,$10,$02,$40,$E0,$10,$02
+    db $40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02,$40,$5A,$10,$02,$40,$64,$10,$02,$40,$70,$10,$02
+    db $40,$80,$10,$02,$40,$95,$10,$02,$40,$B3,$10,$02,$40,$E0,$10,$02,$40,$2A,$11,$02,$40,$BF,$11,$02
+    db $40,$7F,$13,$02,$40,$51,$10,$02,$40,$5A,$10,$02,$40,$64,$10,$02,$40,$70,$10,$02,$40,$80,$10,$02
+    db $40,$95,$10,$02,$40,$B3,$10,$02,$40,$E0,$10,$02,$40,$2A,$11,$02,$40,$BF,$11,$02,$40,$7F,$13,$02
+    db $50
+ScOver:
+    db $40,$D6,$10,$0A,$40,$AA,$10,$0A,$40,$8F,$10,$0A,$40,$6B,$20,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScPick,$705D
+    dw ScKick,$705D
+    dw ScWall,$705D
+    dw ScGoal,$705D
+    dw ScOver,$705D
+; When the Saints Go Marching In (traditional) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$1F,$01,$23,$01,$24,$01,$26,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$1F,$01,$23,$01,$24,$01,$26,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$1F,$01,$23,$01,$24,$01,$26,$01,$01,$01,$23,$01
+    db $01,$01,$1F,$01,$01,$01,$23,$01,$01,$01,$21,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$23,$01,$21,$01,$1F,$01,$01,$01,$01,$01
+    db $1F,$01,$23,$01,$26,$01,$01,$01,$26,$01,$24,$01,$01,$01,$01,$01
+    db $01,$01,$01,$01,$23,$01,$24,$01,$26,$01,$23,$01,$1F,$01,$21,$01
+    db $1F,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01
+    db $1A,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01
+    db $1A,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01
+    db $1A,$01,$01,$01,$15,$01,$01,$01,$12,$01,$01,$01,$15,$01,$01,$01
+    db $12,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01,$17,$01,$01,$01
+    db $1A,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$01,$01,$18,$01,$01,$01
+    db $1C,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01,$15,$01,$01,$01
+    db $17,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$33,$1A,$14,$66,$22
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$21,$C0,$98,$F0,$1B,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B
+    db $C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$72,$F0,$1D,$C0,$98,$F0,$38
+    db $C0,$66,$F0,$1B,$C0,$98,$F0,$1D,$C0,$66,$F0,$1B,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$72,$F0,$1D
+    db $C0,$5A,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$72,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$72,$F0,$38,$C0,$98,$F0,$33
+    db $C0,$72,$F0,$1A,$E2
+    db $D0
+}

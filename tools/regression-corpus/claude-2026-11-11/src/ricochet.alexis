@@ -1,0 +1,1105 @@
+cartridge "RICOCHET/TONY BRANTNER/1992"
+' RICOCHET by Tony Brantner (ReRUN, March/April 1992, Commodore 64, machine
+' code). ColecoVision port in Amy.
+'
+' Air hockey with phasers: the red phaser (controller 1) on the left and the
+' blue one (controller 2 or the computer) on the right slide up and down and
+' shoot at the puck. Where a shot hits the puck sets its vertical speed and
+' direction; the puck slows down as it slides (its speed drops by one every
+' pixel it moves) and each wall bounce halves it. A puck that reaches an end
+' wall inside the goal mouth scores for the other side. First to 9 goals.
+'
+' The rules run in the ORIGINAL's units (C64 sprite coordinates, the 6502's
+' 8-bit speed accumulators) and the original's pace: the C64 main loop runs
+' about 15 times per NTSC frame (998 cycles per pass measured in jsc64,
+' ~15000 free cycles per frame), so Pass runs 15 times per frame here. Only
+' the drawing is scaled: x * 0.7, y * 0.875 (see SprX/SprY).
+
+const TF0 = 128
+const TF1 = 129
+const TF2 = 130
+const TF3 = 131
+const TF4 = 132
+const TF5 = 133
+const TF6 = 134
+const TF7 = 135
+const TF8 = 136
+const TF9 = 137
+const TF10 = 138
+const TF11 = 139
+const TF12 = 140
+const TF13 = 141
+const TF14 = 142
+const TF15 = 143
+const TF16 = 144
+const TF17 = 145
+const TF18 = 146
+const TF19 = 147
+const TF20 = 148
+const TF21 = 149
+const TF22 = 150
+const TF23 = 151
+const TF24 = 152
+const TF25 = 153
+const TF26 = 154
+const TF27 = 155
+const TF28 = 156
+const TF29 = 157
+const TF30 = 158
+const TF31 = 159
+const TF32 = 160
+const TF33 = 161
+const TF34 = 162
+const TF35 = 163
+const TF36 = 164
+const TF37 = 165
+const TF38 = 166
+const TF39 = 167
+const TF40 = 168
+const TF41 = 169
+const TF42 = 170
+const TF43 = 171
+const TF44 = 172
+const TF45 = 173
+const TF46 = 174
+const TF47 = 175
+const TF48 = 176
+const TCur = 177
+const TBar = 178
+const SPuck = 0
+const SRed = 4
+const SBlue = 8
+const SShot = 12
+const NTiles8 = 408
+const SprBytes = 128
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndShoot = 6
+const SndHit = 7
+const SndBounce = 8
+const SndGoal = 9
+const TuneFrames = 448
+const TxtCredits = 0
+const NSpr = 5
+const HideY = 192
+const NPass = 15
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StGoal = 5
+const StOver = 9
+' the original's limits (C64 sprite coordinates)
+const PyMin = 56
+const PyEnd = 206
+const ShotMin = 50
+const ShotMax = 311
+const ByMin = 53
+const ByEnd = 199
+const BxMin = 49
+const BxEnd = 299
+const GoalTop = 97
+const GoalEnd = 155
+const RedX = 24
+const BlueX = 320
+const WinGoals = 9
+
+' where the shot hits the puck (0..10): vertical direction and speed
+data HitDir bytes 1,1,1,1,1,0,0,0,0,0,0
+data HitVs bytes $70,$50,$28,$18,$08,$04,$08,$18,$28,$50,$70
+' the puck's speed after a hit, for SPEED 1..3
+data PuckSpd bytes $73,$B9,$FF
+
+u8 PY[2]
+u8 PAcc[2]
+u8 PSpd[2]
+u8 Jp[2]
+u8 SY[2]
+u16 SX[2]
+u8 Sc[2]
+u16 BX = 0
+u8 BY = 0
+u8 VAcc = 0
+u8 VSpd = 0
+u8 VDir = 0
+u8 HAcc = 0
+u8 HSpd = 0
+u8 HDir = 0
+u8 Goal = 0
+u8 Players = 1
+u8 Lvl = 1
+u8 Speed = 1
+u8 Pn = 0
+u8 Scorer = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 W = 0
+u16 W2 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 Blink = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Li = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 E = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Xs = 0
+u8 Ys = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 4 then
+    HowTo
+    goto title
+  end if
+  if Menu = 5 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  Jp[0] = J1
+  Jp[1] = J2
+  if Players = 1 then Jp[0] = J1 | J2
+  for Pn = 1 to NPass
+    Pass
+    if Goal > 0 then exit for
+  next
+  DrawSprites
+  if Goal = 0 then goto play_loop
+  GoalSeq
+  if Sc[Scorer] < WinGoals then
+    ResetPlay
+    State = StPlay
+    goto play_loop
+  end if
+
+  GameOver
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (the original's main-loop pass, $093A-$098F)
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+sub NewGame:
+  Sc[0] = 0
+  Sc[1] = 0
+  ' phaser speeds: a player 32/256 px per pass, the computer (LEVEL) less
+  PSpd[0] = 32
+  PSpd[1] = 32
+  if Players = 1 then
+    T = Lvl << 2
+    PSpd[1] = T + 2
+  end if
+  DrawPlay
+  ResetPlay
+  State = StPlay
+  return
+end sub
+
+' after a goal and at the start ($08FF): everything cleared, the puck at
+' rest at x 176 and a random height 62..189, phasers at 130
+sub ResetPlay:
+  Rand
+  T = Rs & 127
+  BY = T + 62
+  BX = 176
+  VAcc = 0
+  VSpd = 0
+  VDir = 0
+  HAcc = 0
+  HSpd = 0
+  HDir = 0
+  Goal = 0
+  for J = 0 to 1
+    PY[J] = 130
+    PAcc[J] = 0
+    SY[J] = 0
+    SX[J] = 0
+  next
+  DrawSprites
+  return
+end sub
+
+sub Pass:
+  if Players = 1 then AiJoy
+  MovePh0
+  ShotStep0
+  MovePh1
+  ShotStep1
+  PuckV
+  PuckH
+  return
+end sub
+
+' the computer ($0B62): follows the puck's height, fires when level with it
+sub AiJoy:
+  K = 0
+  C = BY + 6
+  T = PY[1]
+  if C <> T then
+    if C > T then
+      K = 2
+    else
+      K = 1
+    end if
+  end if
+  if SY[1] = 0 then
+    C = BY + 7
+    E = C - T
+    if E < 5 then K = K | 16
+  end if
+  Jp[1] = K
+  return
+end sub
+
+' a phaser ($0A14): an 8-bit accumulator; on its carry one pixel up/down
+sub MovePh0:
+  T = PAcc[0]
+  V = T + PSpd[0]
+  PAcc[0] = V
+  if V < T then
+    K = Jp[0] & 3
+    C = PY[0]
+    if K = 1 then dec C
+    if K = 2 then inc C
+    if C >= PyMin then
+      if C < PyEnd then PY[0] = C
+    end if
+  end if
+  return
+end sub
+
+' a shot ($0A39): one at a time per phaser, one pixel per pass
+sub ShotStep0:
+  if SY[0] = 0 then
+    K = Jp[0] & 16
+    if K = 0 then return
+    SY[0] = PY[0]
+    SX[0] = ShotMin
+    play sound SndShoot
+  end if
+  W = SX[0]
+  W += 1
+  if W > ShotMax then
+    SY[0] = 0
+    return
+  end if
+  SX[0] = W
+  ' hit: shot inside the puck's 17 x 11 box
+  W2 = BX + 16
+  if W2 < W then return
+  W2 -= W
+  if W2 >= 17 then return
+  C = BY + 10
+  E = C - SY[0]
+  if E >= 11 then return
+  VDir = HitDir[E]
+  Rand
+  T = Rs & 7
+  VSpd = HitVs[E] | T
+  SY[0] = 0
+  HDir = 0
+  T = Speed - 1
+  HSpd = PuckSpd[T]
+  play sound SndHit
+  return
+end sub
+
+' (the same for the blue phaser)
+' a phaser ($0A14): an 8-bit accumulator; on its carry one pixel up/down
+sub MovePh1:
+  T = PAcc[1]
+  V = T + PSpd[1]
+  PAcc[1] = V
+  if V < T then
+    K = Jp[1] & 3
+    C = PY[1]
+    if K = 1 then dec C
+    if K = 2 then inc C
+    if C >= PyMin then
+      if C < PyEnd then PY[1] = C
+    end if
+  end if
+  return
+end sub
+
+' a shot ($0A39): one at a time per phaser, one pixel per pass
+sub ShotStep1:
+  if SY[1] = 0 then
+    K = Jp[1] & 16
+    if K = 0 then return
+    SY[1] = PY[1]
+    SX[1] = ShotMax
+    play sound SndShoot
+  end if
+  W = SX[1]
+  W -= 1
+  if W < ShotMin then
+    SY[1] = 0
+    return
+  end if
+  SX[1] = W
+  ' hit: shot inside the puck's 17 x 11 box
+  W2 = BX + 16
+  if W2 < W then return
+  W2 -= W
+  if W2 >= 17 then return
+  C = BY + 10
+  E = C - SY[1]
+  if E >= 11 then return
+  VDir = HitDir[E]
+  Rand
+  T = Rs & 7
+  VSpd = HitVs[E] | T
+  SY[1] = 0
+  HDir = 1
+  T = Speed - 1
+  HSpd = PuckSpd[T]
+  play sound SndHit
+  return
+end sub
+
+' the puck, up/down ($0ADD): speed drops by one per pixel, halves on a bounce
+sub PuckV:
+  if VSpd = 0 then return
+  T = VAcc
+  V = T + VSpd
+  VAcc = V
+  if V >= T then return
+  dec VSpd
+  C = BY
+  if VDir = 0 then
+    inc C
+  else
+    dec C
+  end if
+  if C >= ByMin then
+    if C < ByEnd then
+      BY = C
+      return
+    end if
+  end if
+  VDir = VDir ^ 1
+  VSpd = VSpd >> 1
+  play sound SndBounce
+  return
+end sub
+
+' the puck, left/right ($0B12): an end wall inside the goal mouth scores
+sub PuckH:
+  if HSpd = 0 then return
+  T = HAcc
+  V = T + HSpd
+  HAcc = V
+  if V >= T then return
+  dec HSpd
+  W = BX
+  if HDir = 0 then
+    W += 1
+  else
+    W -= 1
+  end if
+  if W >= BxMin then
+    if W < BxEnd then
+      BX = W
+      return
+    end if
+  end if
+  HDir = HDir ^ 1
+  HSpd = HSpd >> 1
+  if BY >= GoalTop then
+    if BY < GoalEnd then
+      Goal = 1
+      return
+    end if
+  end if
+  play sound SndBounce
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: C64 sprite coordinates -> ColecoVision pixels
+
+sub SprX:
+  W2 = W - RedX
+  W2 *= 179
+  W2 = W2 >> 8
+  Xs = W2
+  Xs += 16
+  return
+end sub
+
+sub SprY:
+  W2 = T
+  W2 -= 50
+  W2 *= 7
+  W2 = W2 >> 3
+  Ys = W2
+  Ys += 26
+  return
+end sub
+
+sub DrawSprites:
+  W = BX
+  SprX
+  T = BY
+  SprY
+  set sprite 0 to Ys,Xs,SPuck,13
+  T = PY[0]
+  SprY
+  set sprite 1 to Ys,16,SRed,9
+  T = PY[1]
+  SprY
+  set sprite 2 to Ys,222,SBlue,5
+  for Li = 0 to 1
+    C = Li + 3
+    T = SY[Li]
+    if T = 0 then
+      set sprite C to HideY,0,SShot,0
+    else
+      W = SX[Li]
+      SprX
+      SprY
+      if Li = 0 then
+        set sprite C to Ys,Xs,SShot,8
+      else
+        set sprite C to Ys,Xs,SShot,4
+      end if
+    end if
+  next
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  print at 2,1, "RED"
+  NumU = Sc[0]
+  print at 6,1, digits$(NumU, 1)
+  print at 23,1, "BLUE"
+  NumU = Sc[1]
+  print at 28,1, digits$(NumU, 1)
+  if Players = 1 then
+    print at 10,1, "LEV"
+    NumU = Lvl
+    print at 14,1, digits$(NumU, 1)
+  else
+    print at 10,1, "2 UP"
+  end if
+  print at 16,1, "SPD"
+  NumU = Speed
+  print at 20,1, digits$(NumU, 1)
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  decompress zx0 FieldZ to vram.name
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' a goal ($0991): shots off, the falling sweeps (1.5 s), the score counts up
+' (8 steps of 6 frames, as the C64's rolling digit), then play goes on
+sub GoalSeq:
+  State = StGoal
+  SY[0] = 0
+  SY[1] = 0
+  DrawSprites
+  play sound SndGoal
+  for J = 1 to 90
+    Frame1
+  next
+  ' the puck's side tells who scored: right half -> red
+  Scorer = 1
+  if BX >= 256 then Scorer = 0
+  inc Sc[Scorer]
+  for J = 1 to 48
+    Frame1
+  next
+  ShowHud
+  for J = 1 to 60
+    Frame1
+  next
+  return
+end sub
+
+' GAME OVER / PRESS BUTTON in turns (1 s each), then one press or 30 s
+sub GameOver:
+  State = StOver
+  HideSprites
+  Waited = 0
+  Blink = 0
+  WasBtn = 16
+go_loop:
+  if Waited = 0 then
+    print at 10,11, "            "
+    print at 10,13, "            "
+    print at 10,12, " "
+    print at 21,12, " "
+  end if
+  if Blink = 0 then print at 11,12, "GAME  OVER"
+  if Blink = 60 then print at 11,12, "PRESS FIRE"
+  Frame1
+  ReadPad
+  inc Blink
+  if Blink >= 120 then Blink = 0
+  inc Waited
+  if Waited < 60 then Press = 0
+  if Waited >= 1800 then Press = 1
+  if Press = 0 then goto go_loop
+  play sound SndClick
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' both controllers; J1/J2 = 1 up, 2 down, 4 left, 8 right, 16 button;
+' Jk = directions held on either, Edge = newly pressed, Press = button
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 2
+  sprites flicker on
+  for J = 0 to 4
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' the title: the C64 logo, author, menu (cursor back on START), tune once
+sub TitlePage:
+  NewScreen
+  put LogoA at 4,3
+  put LogoB at 4,4
+  print at 8,6, "BY TONY BRANTNER"
+  fill TBar count 20 at 6,8
+  set sprite 1 to 57,16,SRed,9
+  set sprite 2 to 57,222,SBlue,5
+  set sprite 0 to 54,80,SPuck,13
+  update sprites
+  print at 11,10, "START"
+  print at 11,12, "PLAYERS"
+  print at 11,14, "LEVEL"
+  print at 11,16, "SPEED"
+  print at 11,18, "HOW TO PLAY"
+  print at 11,20, "CREDITS"
+  ShowOpts
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 5
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 5 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  ' options: left/right (or the button) change the number
+  K = Edge & 12
+  if Press > 0 then
+    if Menu >= 1 then
+      if Menu <= 3 then K = 8
+    end if
+  end if
+  if K > 0 then
+    if Menu >= 1 then
+      if Menu <= 3 then
+        ChangeOpt
+        play sound SndClick
+        ShowOpts
+        Press = 0
+      end if
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+' K = 4 (left) or 8 (right) on option Menu 1..3
+sub ChangeOpt:
+  if Menu = 1 then
+    Players = 3 - Players
+  end if
+  if Menu = 2 then
+    if K = 4 then
+      dec Lvl
+      if Lvl = 0 then Lvl = 5
+    else
+      inc Lvl
+      if Lvl > 5 then Lvl = 1
+    end if
+  end if
+  if Menu = 3 then
+    if K = 4 then
+      dec Speed
+      if Speed = 0 then Speed = 3
+    else
+      inc Speed
+      if Speed > 3 then Speed = 1
+    end if
+  end if
+  return
+end sub
+
+sub ShowOpts:
+  NumU = Players
+  print at 21,12, digits$(NumU, 1)
+  if Players = 1 then
+    NumU = Lvl
+    print at 21,14, digits$(NumU, 1)
+  else
+    print at 21,14, "-"
+  end if
+  NumU = Speed
+  print at 21,16, digits$(NumU, 1)
+  return
+end sub
+
+sub ShowMenu:
+  for J = 0 to 5
+    C = J << 1
+    C += 10
+    put char 32 at 9,C
+  next
+  C = Menu << 1
+  C += 10
+  put char TCur at 9,C
+  return
+end sub
+
+sub CreditsPage:
+  NewScreen
+  print at 12,2, "RICOCHET"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  State = StCredits
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages; pictures from the game's own sprites and tiles
+sub HowTo:
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  print at 2,3, "AIR HOCKEY WITH PHASERS:"
+  print at 2,5, "SHOOT THE PUCK INTO THE"
+  print at 2,7, "GOAL AT THE OTHER END."
+  fill TBar count 28 at 2,9
+  fill TBar count 28 at 2,14
+  set sprite 1 to 85,16,SRed,9
+  set sprite 3 to 86,60,SShot,8
+  set sprite 0 to 82,112,SPuck,13
+  set sprite 2 to 93,222,SBlue,5
+  set sprite 4 to 94,170,SShot,4
+  update sprites
+  print at 2,16, "RED: CONTROLLER 1, FIRES"
+  print at 2,18, "RIGHT. BLUE: CONTROLLER 2"
+  print at 2,20, "OR THE COMPUTER."
+  print at 8,22, "PRESS THE BUTTON"
+  State = StHow
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    print at 2,3, "STICK UP/DOWN MOVES YOUR"
+    print at 2,5, "PHASER; THE BUTTON FIRES"
+    print at 2,7, "ONE SHOT AT A TIME."
+    print at 2,9, "WHERE THE SHOT HITS THE"
+    print at 2,11, "PUCK SETS ITS ANGLE: NEAR"
+    print at 2,13, "AN EDGE, STEEP AND FAST."
+    print at 2,15, "THE PUCK SLOWS AS IT"
+    print at 2,17, "SLIDES; A BOUNCE HALVES"
+    print at 2,19, "ITS SPEED."
+    print at 8,22, "PRESS THE BUTTON"
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    print at 2,3, "FIRST TO 9 GOALS WINS."
+    print at 2,6, "TITLE MENU, LEFT/RIGHT:"
+    print at 2,8, "PLAYERS 1 OR 2 (2: BLUE"
+    print at 2,10, "IS CONTROLLER 2)."
+    print at 2,12, "LEVEL 1-5: HOW FAST THE"
+    print at 2,14, "COMPUTER'S PHASER MOVES."
+    print at 2,16, "SPEED 1-3: PUCK SPEED."
+    print at 8,22, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+
+
+' every screen starts here: wait for the frame, NMI off, display off, load
+' the tiles into the three screen thirds, clear
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  ' art packed with ZX0 (pack.mjs); unpacked with the display off
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $9A,$00,$03,$69,$00,$4B,$80,$D2,$E0,$BA,$01,$FE,$9A,$C0,$03,$58,$93,$00,$E0,$AF,$AE,$B0,$FE,$E4
+  $AE,$BE,$0D,$FE,$24,$00,$07,$A5,$C0,$A5,$E0,$A5,$B0,$A5,$00,$A5,$0D,$A5,$07,$A0,$B0,$A2,$8E,$82
+  $0D,$90,$8E,$38,$BA,$E3,$B4,$76,$88,$D8,$E0,$8C,$29,$80,$5B,$01,$8A,$E2,$07,$5D,$EF,$E8,$00,$FE
+  $A6,$F0,$81,$00,$69,$E0,$3E,$C1,$FE,$78,$F0,$38,$FE,$5F,$D0,$1C,$8E,$D0,$8F,$68,$80,$C0,$E0,$BD
+  $07,$03,$FE,$3C,$90,$0F,$FE,$62,$38,$83,$2E,$38,$E2,$1D,$55,$56
+end data
+data TileColZ bytes
+  $9A,$01,$B1,$69,$01,$A6,$0B,$92,$01,$F3,$1B,$F0,$C3,$E0,$F7,$B5,$FE,$A5,$F1,$0B,$EB,$CE,$1E,$FA
+  $FE,$AE,$FF,$0E,$FE,$E0,$7E,$C1,$FE,$46,$96,$1E,$97,$0E,$DF,$E0,$C0,$0B,$1F,$A0,$FF,$1E,$A2,$F1
+  $96,$1F,$97,$F1,$9F,$E4,$CA,$FF,$FE,$F1,$76,$88,$97,$B1,$69,$8D,$1B,$7F,$E3,$E0,$79,$C0,$7C,$A0
+  $E9,$FF,$13,$A6,$01,$93,$03,$BF,$F0,$E8,$B9,$F7,$31,$FE,$F9,$C1,$FE,$F7,$E0,$FC,$C0,$FE,$E7,$B0
+  $E8,$FE,$12,$89,$03,$02,$3A,$F0,$FF,$21,$FE,$AF,$F8,$F4,$D1,$E6,$13,$12,$FE,$24,$31,$21,$E3,$A0
+  $BF,$B0,$F2,$FB,$BA,$A0,$9F,$6A,$D0,$63,$D1,$1D,$B6,$FF,$D1,$8C,$1D,$55,$56
+end data
+data SpritePatZ bytes
+  $89,$00,$82,$03,$07,$1F,$64,$07,$03,$00,$82,$80,$E0,$F0,$F8,$20,$98,$F0,$E0,$80,$00,$99,$3F,$FF
+  $80,$3F,$07,$00,$A1,$FF,$BD,$E3,$E0,$28,$C3,$1A,$FE,$08,$B8,$FE,$F0,$FE,$60,$91,$78,$FC,$78,$00
+  $35,$55,$58
+end data
+data FieldZ bytes
+  $90,$20,$06,$08,$80,$81,$82,$83,$46,$09,$84,$81,$85,$20,$82,$86,$87,$88,$89,$11,$9E,$8A,$8B,$8C
+  $C0,$27,$8D,$8E,$8F,$90,$FE,$8F,$90,$91,$C0,$05,$28,$92,$52,$80,$93,$A1,$94,$4A,$95,$01,$02,$85
+  $96,$2D,$97,$D5,$00,$E0,$C0,$11,$83,$98,$99,$9A,$9B,$90,$FE,$82,$9C,$9D,$9E,$20,$00,$1D,$55,$56
+end data
+
+data LogoA bytes 159,160,161,162,163,164,160,165,32,160,165,164,160,165,32,160,166,164,160,161,32,165,160,165
+data LogoB bytes 167,168,169,170,171,172,168,173,174,168,173,172,168,173,174,168,175,172,168,176,174,32,168,32
+
+data TxD_0 bytes
+  $03,$41,$4D,$59,$02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$06,$28,$43,$36
+  $34,$29,$2E,$04,$28,$4E,$45,$57,$04,$31,$39,$39,$32,$05,$32,$30,$32,$36,$2E,$09,$42,$49,$45,$4E
+  $56,$45,$4E,$55,$2C,$09,$42,$52,$41,$4E,$54,$4E,$45,$52,$2C,$06,$43,$4C,$41,$55,$44,$45,$0C,$43
+  $4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$03,$46,$4F,$52,$04,$47,$41,$4D,$45,$02,$49,$4E,$0B
+  $4D,$41,$52,$43,$48,$2F,$41,$50,$52,$49,$4C,$08,$4F,$52,$49,$47,$49,$4E,$41,$4C
+end data
+data TxD_1 bytes
+  $06,$50,$48,$41,$53,$45,$52,$04,$50,$4F,$52,$54,$05,$50,$4F,$52,$54,$29,$04,$50,$55,$43,$4B,$05
+  $52,$45,$52,$55,$4E,$04,$54,$48,$49,$53,$05,$54,$49,$54,$4C,$45,$04,$54,$4F,$4E,$59,$05,$54,$55
+  $4E,$45,$3A
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $0F,$0C,$01,$FE,$17,$08,$14,$FE,$0E,$05,$03,$FE,$0A,$11,$0D,$00,$FE,$01,$09,$02,$FE,$00,$01,$00
+  $07,$06,$FE,$16,$18,$10,$13,$FE,$04,$0B,$15,$12,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$FF,$21,$0C,$40,$FF,$41,$03,$50
+ScShoot:
+    db $00,$00,$14,$02,$00,$00,$34,$02,$00,$00,$54,$03,$00,$00,$74,$03,$10
+ScHit:
+    db $40,$AB,$10,$02,$40,$AB,$30,$02,$40,$AB,$50,$02,$50
+ScBounce:
+    db $40,$45,$11,$02,$40,$45,$31,$02,$40,$45,$61,$02,$50
+ScGoal:
+    db $40,$7F,$23,$02,$40,$BF,$21,$02,$40,$7F,$23,$02,$40,$2A,$21,$02,$40,$BF,$21,$02,$40,$7F,$23,$02
+    db $40,$E0,$20,$02,$40,$2A,$21,$02,$40,$BF,$21,$02,$40,$7F,$23,$02,$40,$B3,$20,$02,$40,$E0,$20,$02
+    db $40,$2A,$21,$02,$40,$BF,$21,$02,$40,$7F,$23,$02,$40,$95,$20,$02,$40,$B3,$20,$02,$40,$E0,$20,$02
+    db $40,$2A,$21,$02,$40,$BF,$21,$02,$40,$7F,$23,$02,$40,$80,$20,$02,$40,$95,$20,$02,$40,$B3,$20,$02
+    db $40,$E0,$20,$02,$40,$2A,$21,$02,$40,$BF,$21,$02,$40,$7F,$23,$02,$40,$70,$20,$02,$40,$80,$20,$02
+    db $40,$95,$20,$02,$40,$B3,$20,$02,$40,$E0,$20,$02,$40,$2A,$21,$02,$40,$BF,$21,$02,$40,$7F,$23,$02
+    db $40,$64,$20,$02,$40,$70,$20,$02,$40,$80,$20,$02,$40,$95,$20,$02,$40,$B3,$20,$02,$40,$E0,$20,$02
+    db $40,$2A,$21,$02,$40,$BF,$21,$02,$40,$7F,$23,$02,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScShoot,$7053
+    dw ScHit,$705D
+    dw ScBounce,$705D
+    dw ScGoal,$705D
+; Phaser Puck (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$1C,$01,$1F,$23,$28,$01,$23,$01,$26,$01,$23,$1F
+    db $21,$01,$01,$01,$24,$01,$23,$21,$1F,$01,$21,$01,$23,$01,$1F,$01
+    db $1C,$01,$01,$01,$1C,$01,$1F,$23,$28,$01,$2A,$01,$2B,$01,$2A,$28
+    db $26,$01,$23,$01,$24,$01,$28,$01,$26,$01,$23,$21,$23,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1F,$01,$01,$01,$1E,$01,$01,$01
+    db $1A,$01,$01,$01,$1C,$01,$01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01
+    db $17,$01,$01,$01,$17,$01,$01,$01,$23,$01,$01,$01,$23,$01,$01,$01
+    db $21,$01,$01,$01,$1F,$01,$01,$01,$1E,$01,$01,$01,$1B,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$02,$36,$04,$13,$11
+    db $02,$33,$08,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11
+    db $02,$33,$09,$14,$66,$02,$36,$04,$13,$11,$02,$33,$08,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66
+    db $22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22,$02,$36,$04,$13,$11,$02,$33,$16,$14,$66
+    db $22,$02,$45,$05,$13,$11,$02,$33,$09,$14,$66,$02,$36,$04,$13,$11,$02,$33,$08,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$16,$14,$66,$3E
+    db $10
+ScTuneBassPitch:
+    db $C0,$88,$F0,$3C,$C0,$72,$F0,$1D,$C0,$98,$F0,$1B,$C0,$AB,$F0,$38,$C0,$B5,$F0,$1D,$C0,$88,$F0,$38
+    db $C0,$5A,$F0,$1B,$C0,$88,$F0,$1D,$C0,$98,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$72,$F0,$1B,$C0,$B5,$F0,$16
+    db $FE
+    db $D0
+}
