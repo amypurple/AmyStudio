@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearcolecoTestCore.js";
@@ -10,6 +10,7 @@ const root = resolve(import.meta.dirname, "..");
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
 const temp = mkdtempSync(join(tmpdir(), "amy-main-sub-layout-"));
 const sourcePath = join(temp, "main.alexis");
+const deadChainPath = join(temp, "deadchain.alexis");
 
 writeFileSync(sourcePath, `cartridge "MAIN SUB LAYOUT/CODEX/2026"
 u8 Early = 0
@@ -32,6 +33,33 @@ Bump:
   inc (hl)
   ret
 }
+`);
+
+writeFileSync(deadChainPath, `cartridge "DEAD SUB CHAIN/CLAUDE/2026"
+u8 A = 0
+u8 B = 0
+u8 C = 0
+  Init
+idle_here:
+  wait
+  StepA
+  StepB
+  StepC
+  goto idle_here
+sub Init:
+  A = 1
+  B = 2
+  C = 3
+end sub
+sub StepA:
+  A = A + 1
+end sub
+sub StepB:
+  B = B + A
+end sub
+sub StepC:
+  C = C + B
+end sub
 `);
 
 function addressOf(asm, name) {
@@ -63,6 +91,19 @@ try {
     } finally {
       core.destroy();
     }
+  }
+  const expectedDeadChainSizes = new Map([
+    ["off", 235], ["safe", 229], ["balanced", 227], ["aggressive", 227], ["experimental", 227]
+  ]);
+  for (const profile of profiles) {
+    const asmPath = join(temp, `deadchain-${profile}.asm`);
+    const romPath = join(temp, `deadchain-${profile}.rom`);
+    const build = spawnSync(process.execPath, [
+      "tools/amyc.mjs", deadChainPath, "--asm", asmPath, "--rom", romPath, "--opt", profile
+    ], { cwd: root, encoding: "utf8" });
+    assert.equal(build.status, 0, `${profile} dead chain: ${build.error?.stack || ""}${build.stdout || ""}${build.stderr || ""}`);
+    assert.equal(statSync(romPath).size, expectedDeadChainSizes.get(profile), `${profile}: dead routine chain ROM size`);
+    assert.doesNotMatch(readFileSync(asmPath, "utf8"), /AMY_MAIN_AFTER_SUB_/, `${profile}: unreachable main continuation chain`);
   }
   console.log(`Main/sub layout runtime: PASS (${profiles.length} profiles)`);
 } finally {

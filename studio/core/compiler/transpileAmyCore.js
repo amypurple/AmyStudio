@@ -5292,11 +5292,51 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
-      const routineEndsExplicitly = /^sub\s+/i.test(line) && (() => {
-        for (let probe = sourceLineNumber + 1; probe < lines.length; probe += 1) {
-          const probeLine = String(lines[probe] || "").replace(/'.*$/, "").trim();
-          if (/^end\s+sub$/i.test(probeLine)) return true;
-          if (/^(?:sub|function)\s+/i.test(probeLine)) return false;
+      const normalizedFutureLine = (index) => String(lines[index] || "").replace(/'.*$/, "").trim();
+      const skipDetachedAsmBlock = (index) => {
+        if (!/^asm\s*\{/i.test(normalizedFutureLine(index))) return index;
+        while (index + 1 < lines.length && !/^\s*}\s*$/.test(String(lines[index] || ""))) index += 1;
+        return index + 1;
+      };
+      const findExplicitSubEnd = (startIndex) => {
+        for (let probe = startIndex + 1; probe < lines.length; probe += 1) {
+          const probeLine = normalizedFutureLine(probe);
+          if (/^end\s+sub$/i.test(probeLine)) return probe;
+          if (/^(?:sub|function)\s+/i.test(probeLine)) return -1;
+        }
+        return -1;
+      };
+      const findMainResumeAfterRoutineBlock = (startIndex) => {
+        let routineStart = startIndex;
+        for (;;) {
+          const endIndex = findExplicitSubEnd(routineStart);
+          if (endIndex < 0) return -1;
+          let probe = endIndex + 1;
+          while (probe < lines.length) {
+            const probeLine = normalizedFutureLine(probe);
+            if (!probeLine) { probe += 1; continue; }
+            if (/^asm\s*\{/i.test(probeLine)) { probe = skipDetachedAsmBlock(probe); continue; }
+            if (/^sub\s+/i.test(probeLine)) { routineStart = probe; break; }
+            return probe;
+          }
+          if (probe >= lines.length) return -1;
+        }
+      };
+      const explicitSubEnd = /^sub\s+/i.test(line) ? findExplicitSubEnd(sourceLineNumber) : -1;
+      const mainResumeIndex = explicitSubEnd >= 0 ? findMainResumeAfterRoutineBlock(sourceLineNumber) : -1;
+      const lastGeneratedLine = [...body].reverse().find((entry) => {
+        const text = String(entry || "").trim();
+        return text && !text.startsWith(";") && !/^[A-Za-z_][A-Za-z0-9_]*:$/.test(text);
+      }) || "";
+      const mainCanFallThrough = !/^(?:ret|reti|retn|(?:jp|jr)\s+(?:[A-Za-z]+,\s*)?[A-Za-z_][A-Za-z0-9_]*)$/i.test(String(lastGeneratedLine).trim());
+      const routineEndsExplicitly = explicitSubEnd >= 0 && mainResumeIndex >= 0 && mainCanFallThrough;
+      const resumesAfterThisEnd = /^end\s+sub$/i.test(line) && (() => {
+        let probe = sourceLineNumber + 1;
+        while (probe < lines.length) {
+          const probeLine = normalizedFutureLine(probe);
+          if (!probeLine) { probe += 1; continue; }
+          if (/^asm\s*\{/i.test(probeLine)) { probe = skipDetachedAsmBlock(probe); continue; }
+          return !/^sub\s+/i.test(probeLine);
         }
         return false;
       })();
@@ -5331,6 +5371,7 @@ export function transpileAmyCore(sourceText, deps) {
         openStartProc,
         makeGeneratedLabel,
         allowMainContinuation: routineEndsExplicitly,
+        resumeMainContinuation: resumesAfterThisEnd,
         addCompilerWarning
       });
       if (procFunctionStmt.handled) {

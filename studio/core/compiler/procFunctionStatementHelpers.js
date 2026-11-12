@@ -19,6 +19,7 @@ export function handleProcFunctionStatement({
   openStartProc,
   makeGeneratedLabel,
   allowMainContinuation,
+  resumeMainContinuation,
   addCompilerWarning
 }) {
   if (/^proc\b/i.test(line)) {
@@ -152,7 +153,7 @@ export function handleProcFunctionStatement({
       return { handled: true, ok: true };
     }
     emitCurrentProcReturnLinesIfNeeded();
-    if (state.pendingMainContinuation) {
+    if (state.pendingMainContinuation && resumeMainContinuation) {
       body.push(`${state.pendingMainContinuation}:`);
       state.pendingMainContinuation = null;
       state.currentProc = "Start";

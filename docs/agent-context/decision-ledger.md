@@ -1478,3 +1478,18 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   still require a block `if`, with a specific diagnostic.
 - Evidence: `tools/test-main-sub-layout-runtime.mjs`,
   `tools/test-deepwarden-stage1-regressions.mjs`, and `node tools/amy-qa.mjs quick`.
+
+# 2026-11-11 - Main/sub continuation remains size-neutral when unreachable
+
+- External r9 validation accepted runtime behavior but rejected its unconditional
+  continuation jump after every explicit sub: all 39 sampled games grew and the
+  32 KB Deepwarden teaser exceeded its ROM window.
+- The compiler now emits one continuation jump only when main can fall through
+  a consecutive routine block and executable main code actually resumes after
+  that block. Terminated main loops retain single-call inlining and generate no
+  dead `jp` chain.
+- Claude's dead-chain fixture is restored exactly to r8 sizes at all profiles:
+  235/229/227/227/227 bytes. Deepwarden returns to 32,762 bytes, while the two
+  r9 silent-miscompile fixes remain covered by GearColeco execution.
+- Evidence: `tools/test-main-sub-layout-runtime.mjs`, `Codex-r9-validation.zip`,
+  and `node tools/amy-qa.mjs quick`.
