@@ -290,8 +290,11 @@ export function createControlFlowHelpers(ctx) {
   }
 
   function emitMixedSignedUnsignedCompareGoto(leftToken, operator, rightToken, asmLabel, leftDeclared, rightDeclared, compareMode) {
-    if (operator === "==" || operator === "!=") return null;
-    if (compareMode === "signed" || compareMode === "unsigned") return null;
+    const equality = operator === "==" || operator === "=";
+    const inequality = operator === "!=" || operator === "<>";
+    const normalizedOperator = equality ? "==" : inequality ? "!=" : operator;
+    if ((compareMode === "signed" || compareMode === "unsigned")
+      && !equality && !inequality) return null;
     const leftWidth = declaredTypeBitWidth(leftDeclared);
     const rightWidth = declaredTypeBitWidth(rightDeclared);
     if (leftWidth !== rightWidth || (leftWidth !== 8 && leftWidth !== 16)) return null;
@@ -301,9 +304,9 @@ export function createControlFlowHelpers(ctx) {
 
     const signedOnLeft = leftIsSigned;
     const doneLabel = makeGeneratedLabel("MixedCompareDone");
-    const negativeIsTrue = signedOnLeft
+    const negativeIsTrue = inequality || (signedOnLeft
       ? (operator === "<" || operator === "<=")
-      : (operator === ">" || operator === ">=");
+      : (operator === ">" || operator === ">="));
 
     if (leftWidth === 8) {
       const lines = [];
@@ -322,7 +325,9 @@ export function createControlFlowHelpers(ctx) {
         lines.push(`    jp m,${negativeIsTrue ? asmLabel : doneLabel}`);
         lines.push(...loadLeft, "    cp b");
       }
-      if (!emitUnsignedCompareBranch(lines, operator, asmLabel)) return null;
+      if (equality) lines.push(`    jp z,${asmLabel}`);
+      else if (inequality) lines.push(`    jp nz,${asmLabel}`);
+      else if (!emitUnsignedCompareBranch(lines, normalizedOperator, asmLabel)) return null;
       lines.push(`${doneLabel}:`);
       return lines;
     }
@@ -542,7 +547,7 @@ export function createControlFlowHelpers(ctx) {
     if (!loadLeft || !loadRight) return null;
     lines.push(...loadLeft, "    push hl", ...loadRight, "    ex de,hl", "    pop hl");
     const signed = leftSigned || rightSigned;
-    if (!emitPreparedWordCompareBranch(lines, operator, asmLabel, signed)) return null;
+    if (!emitPreparedWordCompareBranch(lines, normalizedOperator, asmLabel, signed)) return null;
     return lines;
   }
 
@@ -681,6 +686,16 @@ export function createControlFlowHelpers(ctx) {
       : tryEvaluateConstantExpression;
     const leftConstant = compareNumericEvaluator(leftToken);
     const rightConstant = compareNumericEvaluator(rightToken);
+    const earlyMixedSignedCompare = emitMixedSignedUnsignedCompareGoto(
+      leftToken,
+      effectiveOperator,
+      rightToken,
+      asmLabel,
+      leftDomainDeclared,
+      rightDomainDeclared,
+      compareMode
+    );
+    if (earlyMixedSignedCompare) return earlyMixedSignedCompare;
     const isUnsignedIntegerDeclared = (declared) => ["u8", "u16", "u32", "boolean", "bool", "byte"].includes(String(declared || "").toLowerCase());
     const knownUnsignedVsNegative = rightConstant < 0 && isUnsignedIntegerDeclared(leftDomainDeclared)
       ? ({ "==": false, "!=": true, ">": true, ">=": true, "<": false, "<=": false })[effectiveOperator]
@@ -772,7 +787,15 @@ export function createControlFlowHelpers(ctx) {
         : null;
       if (wordLiteralCompare) return wordLiteralCompare;
     }
-    const mixedSignedUnsignedCompare = emitMixedSignedUnsignedCompareGoto(leftToken, effectiveOperator, rightToken, asmLabel, leftDeclared, rightDeclared, compareMode);
+    const mixedSignedUnsignedCompare = emitMixedSignedUnsignedCompareGoto(
+      leftToken,
+      effectiveOperator,
+      rightToken,
+      asmLabel,
+      leftDomainDeclared,
+      rightDomainDeclared,
+      compareMode
+    );
     if (mixedSignedUnsignedCompare) return mixedSignedUnsignedCompare;
     const mixedByteWordCompare = emitMixedByteWordCompareGoto(leftToken, effectiveOperator, rightToken, asmLabel, leftDeclared, rightDeclared, compareMode);
     if (mixedByteWordCompare) return mixedByteWordCompare;
@@ -974,6 +997,15 @@ export function createControlFlowHelpers(ctx) {
           lines.push(`    ld de,${symbolOrValue(rightToken)}`);
         }
       }
+      const mixedWordEquality = (effectiveOperator === "==" || effectiveOperator === "!=")
+        && declaredTypeBitWidth(leftDomainDeclared) === 16
+        && declaredTypeBitWidth(rightDomainDeclared) === 16
+        && isSignedDeclaredType(leftDomainDeclared) !== isSignedDeclaredType(rightDomainDeclared);
+      const mixedWordDone = mixedWordEquality ? makeGeneratedLabel("MixedWordEqualityDone") : null;
+      if (mixedWordEquality) {
+        lines.push(`    ld a,${isSignedDeclaredType(leftDomainDeclared) ? "h" : "d"}`, "    or a");
+        lines.push(`    jp m,${effectiveOperator === "!=" ? asmLabel : mixedWordDone}`);
+      }
       lines.push("    or a");
       lines.push("    sbc hl,de");
       if (effectiveOperator === "==") lines.push(`    jp z,${asmLabel}`);
@@ -989,6 +1021,7 @@ export function createControlFlowHelpers(ctx) {
         lines.push(`    jp nc,${asmLabel}`);
         lines.push(`${doneLabel}:`);
       } else return null;
+      if (mixedWordDone) lines.push(`${mixedWordDone}:`);
       return lines;
     }
     const loadLeft = emitLoadByteComparisonOperand("a", leftToken);

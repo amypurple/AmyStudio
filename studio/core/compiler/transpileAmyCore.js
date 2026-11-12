@@ -3413,6 +3413,19 @@ export function transpileAmyCore(sourceText, deps) {
     if (node.kind === "binary") {
       const leftType = resolveExpressionAstComputationType(node.left);
       const rightType = resolveExpressionAstComputationType(node.right);
+      if (node.op === "&") {
+        const leftMask = tryEvaluateAstInteger(node.left);
+        const rightMask = tryEvaluateAstInteger(node.right);
+        const mask = leftMask !== null && leftMask >= 0 ? leftMask
+          : rightMask !== null && rightMask >= 0 ? rightMask
+          : null;
+        if (mask !== null && mask <= 0xFFFF) {
+          const source = leftMask !== null ? rightType : leftType;
+          const width = Math.max(declaredTypeBitWidth(source?.declaredType), mask > 0xFF ? 16 : 8);
+          const declaredType = declaredTypeForWidth(width, false);
+          return { declaredType, runtimeType: runtimeTypeForDeclaredType(declaredType) };
+        }
+      }
       const needsWideIntermediate = (node.op === "/" || node.op === ">>")
         && node.left?.kind === "binary"
         && ["+", "-", "*"].includes(node.left.op)

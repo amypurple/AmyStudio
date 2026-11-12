@@ -23,6 +23,11 @@ i16 SignedDivisor = -23635, ShiftLiteral = 0
 u16 MixedModulo = 0, MixedQuotient = 0, MixedWord[1]
 u8 UnsignedDividend = 255, MixedFunction = 0, MixedEquality = 0
 i8 PositiveSignedDivisor = 1, SignedZero = 0, MixedByte[1]
+u8 EqualityUnsigned8 = 255, EqualityByte = 0, InequalityByte = 0, MaskCompare = 0
+i8 EqualitySigned8 = -1, MaskSigned = -2
+u16 EqualityUnsigned16 = 65535
+i16 EqualitySigned16 = -1
+u8 EqualityWord = 0, InequalityWord = 0
 AC[0] |= (($905A * W1) & $3F)
 Mask(1, 5)
 Shift8 >>= 1
@@ -56,6 +61,15 @@ if MixedResult(0, 0) <= SignedZero then
   MixedFunction = 1
 else
   MixedFunction = 2
+end if
+if EqualityUnsigned8 == EqualitySigned8 then EqualityByte = 1
+if EqualityUnsigned8 <> EqualitySigned8 then InequalityByte = 1
+if EqualityUnsigned16 == EqualitySigned16 then EqualityWord = 1
+if EqualityUnsigned16 <> EqualitySigned16 then InequalityWord = 1
+if (MaskSigned & $F0) <= 0 then
+  MaskCompare = 1
+else
+  MaskCompare = 2
 end if
 loop forever
 sub Mask(u8 Q, u8 R):
@@ -118,6 +132,11 @@ for (const profile of profiles) {
     assert.equal(word("shiftliteral"), 26184, `${profile}: unsigned literal right shift into signed destination`);
     assert.equal(byte("mixedequality"), 0, `${profile}: mixed-width array equality preserves both operands`);
     assert.equal(byte("mixedfunction"), 2, `${profile}: mixed-sign function comparison preserves both operands`);
+    assert.equal(byte("equalitybyte"), 0, `${profile}: mixed-sign byte equality uses mathematical values`);
+    assert.equal(byte("inequalitybyte"), 1, `${profile}: mixed-sign byte inequality uses mathematical values`);
+    assert.equal(byte("equalityword"), 0, `${profile}: mixed-sign word equality uses mathematical values`);
+    assert.equal(byte("inequalityword"), 1, `${profile}: mixed-sign word inequality uses mathematical values`);
+    assert.equal(byte("maskcompare"), 2, `${profile}: positive bit mask yields an unsigned comparison value`);
   } finally {
     core.destroy();
   }
