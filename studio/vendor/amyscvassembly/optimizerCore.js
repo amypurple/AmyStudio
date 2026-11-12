@@ -5379,6 +5379,13 @@ export class Z80Optimizer {
                             storeTemp.operands[1].type === 'register' &&
                             storeTemp.operands[1].value.toLowerCase() === 'a') {
                             const tempName = storeTemp.operands[0].value;
+                            const indirectRegisterMemory = /^(?:af|bc|de|hl|ix|iy|sp)(?:[+\-].+)?$/i.test(
+                                String(tempName).replace(/\s+/g, '')
+                            );
+                            if (indirectRegisterMemory) {
+                                optimized.push(token);
+                                continue;
+                            }
                             let mid = null;
                             let loadIndex = i + 2;
                             let loadTemp = tokens[loadIndex];

@@ -804,7 +804,15 @@ export function createRuntimeValueHelpers({
     const valueAst = parseExpressionAst(value);
     if ((targetType === "int8" || targetType === "int16") && valueAst
       && (valueAst.kind === "binary" || valueAst.kind === "unary")) {
-      const computed = emitComputeExpressionAst(valueAst, targetDeclaredType);
+      const computationTarget = targetType === "int16"
+        ? (isSignedDeclaredType(targetDeclaredType) ? "i16" : "u16")
+        : targetDeclaredType;
+      if (targetType === "int16" && valueAst.kind === "binary" && ["+", "-", "*"].includes(valueAst.op)) {
+        const loadWord = emitLoadInt16AstIntoHL(valueAst, computationTarget);
+        const storeWord = emitStoreInt16FromHL(name);
+        if (loadWord && storeWord) return [...loadWord, ...storeWord];
+      }
+      const computed = emitComputeExpressionAst(valueAst, computationTarget);
       const stored = emitStoreComputedExpression(name, computed);
       if (stored) return stored;
     }
@@ -820,7 +828,10 @@ export function createRuntimeValueHelpers({
       return [...loadSource, ...storeFixedByte];
     }
     if ((targetType === "int8" || targetType === "int16") && valueAst) {
-      const computed = emitComputeExpressionAst(valueAst, targetDeclaredType);
+      const computationTarget = targetType === "int16"
+        ? (isSignedDeclaredType(targetDeclaredType) ? "i16" : "u16")
+        : targetDeclaredType;
+      const computed = emitComputeExpressionAst(valueAst, computationTarget);
       const stored = emitStoreComputedExpression(name, computed);
       if (stored) return stored;
     }

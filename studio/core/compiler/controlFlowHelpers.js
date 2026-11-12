@@ -547,7 +547,7 @@ export function createControlFlowHelpers(ctx) {
     if (!loadLeft || !loadRight) return null;
     lines.push(...loadLeft, "    push hl", ...loadRight, "    ex de,hl", "    pop hl");
     const signed = leftSigned || rightSigned;
-    if (!emitPreparedWordCompareBranch(lines, normalizedOperator, asmLabel, signed)) return null;
+    if (!emitPreparedWordCompareBranch(lines, operator, asmLabel, signed)) return null;
     return lines;
   }
 
@@ -743,8 +743,9 @@ export function createControlFlowHelpers(ctx) {
     const computedWidth = Math.max(declaredTypeBitWidth(leftComputedDeclared), declaredTypeBitWidth(rightComputedDeclared));
     const hasByteArithmetic = (ast) => ast?.kind === "binary"
       && ["+", "-", "*"].includes(ast.op);
-    const byteArithmeticNeedsWideCompare = computedWidth <= 8
-      && (hasByteArithmetic(leftAst) || hasByteArithmetic(rightAst));
+    const byteArithmeticNeedsWideCompare = (hasByteArithmetic(leftAst)
+      && declaredTypeBitWidth(leftComputedDeclared) <= 8)
+      || (hasByteArithmetic(rightAst) && declaredTypeBitWidth(rightComputedDeclared) <= 8);
     const byteArithmeticNeedsSignedCompare = byteArithmeticNeedsWideCompare
       && (leftAst?.op === "-" || rightAst?.op === "-");
     const computedMixedSignedness = effectiveOperator !== "=="
@@ -755,6 +756,7 @@ export function createControlFlowHelpers(ctx) {
     // Recomputing both directly as i32 loses that distinction and rejects
     // otherwise valid 16-bit expressions such as abs(i16) <= i16.
     const preserveSignedMixedCompare = computedMixedSignedness
+      && !byteArithmeticNeedsWideCompare
       && (compareMode === "unsigned" || compareMode === "auto");
     const computedSigned = compareMode === "signed"
       || byteArithmeticNeedsSignedCompare

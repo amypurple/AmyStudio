@@ -1494,15 +1494,16 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Evidence: `tools/test-main-sub-layout-runtime.mjs`, `Codex-r9-validation.zip`,
   and `node tools/amy-qa.mjs quick`.
 
-# 2026-11-11 - Forty-ROM handoff corpus adopted
+# 2026-11-11 - Forty-two-ROM handoff corpus adopted
 
-- Claude supplied 40 complete generated Amy sources and their accepted balanced
-  ROMs, covering the 38-game validation set plus Out of Order and the 32 KB
-  Deepwarden teaser. Five focused main/sub regressions accompany the corpus.
+- Claude supplied 42 complete generated Amy sources and their accepted balanced
+  ROMs, covering the 38-game validation set plus Out of Order, the 32 KB
+  Deepwarden teaser, Angler 64 and Face Invaders. Five focused main/sub
+  regressions accompany the corpus.
 - The checker was made Windows-safe and now exits nonzero on a failed build or
   byte difference. It remains a deliberate handoff/promotion gate rather than
-  part of quick QA because the 40 compilations take roughly two minutes.
-- Current experimental compiler result: 40 identical, 0 different, 0 failed.
+  part of quick QA because the 42 compilations take roughly two minutes.
+- Current experimental compiler result: 42 identical, 0 different, 0 failed.
 - Evidence: `tools/regression-corpus/claude-2026-11-11/README.md` and
   `tools/regression-corpus/claude-2026-11-11/check.mjs`.
 
@@ -1537,3 +1538,97 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Handoff packages may add `baseCommit`, `handoff` and `status`, but regenerating
   the ordinary toolchain can no longer leave only an anonymous hash and timestamp.
 - The bundled-toolchain test rejects a staged package without this identity.
+
+# 2026-11-12 - ZX0-inspired replacement formats rejected
+
+- Six isolated experiments tested repeat-offset caches, RLE/LZ packets, alternate integer/offset
+  codes, a two-offset ZX0 state, a rare FILL escape, and reversible byte/row transforms.
+- Every emitted candidate stream passed exact host roundtrip tests, but none improved ZX0 payload.
+  The strongest full-corpus result, a FILL escape, tied ZX0 byte-for-byte because its optimal model
+  selected zero FILL tokens, while its estimated decoder would grow by about 28 bytes.
+- Production ZX0 remains unchanged. No candidate reached the prerequisite host-size gate for Z80,
+  direct-to-VRAM, cycle, or clean-repository promotion work.
+- Evidence: `docs/audits/compression/zx0-inspired-variants-2026-11-12.md` and
+  `tools/compression-research/`.
+
+# 2026-11-12 - Compact ZX0 VRAM loop is only a verified subset
+
+- The first ZX0-to-VRAM routine is 133 bytes, two bytes smaller than the corrected 135-byte source,
+  but it repeats the low-byte remainder instead of transferring full pages: lengths 256, 257 and
+  512 write 512, 2 and 768 bytes respectively and desynchronize the compressed source.
+- All 84 streams in the 42-picture corpus happen to qualify for the compact loop: none of their
+  24,036 literal blocks exceeds 255 bytes, and the observed maximum is 143.
+- Do not expose this as a separate general codec. ZX0 cannot split arbitrary consecutive literals
+  without a new token, framing, or a match that may not exist. Those mechanisms cost more than the
+  two decoder bytes recovered.
+- A future linker-wide decoder-specialization feature may select the compact loop only after proving
+  every linked stream has literals at most 255; normal ZX0 keeps the general corrected routine.
+- Evidence: `docs/audits/compression/zx0-vram-compact-subset-2026-11-12.md`.
+
+# 2026-11-12 - Full replacements lose; short-length hybrid survives selectively
+
+- Exact globally costed prototypes retained ZX0's state grammar while testing fixed Rice/Golomb
+  parameters and a DAN3-inspired bounded gamma plus tiered offset-page code.
+- Best fixed Rice (`k=2`) added 1,016 payload bytes over four pictures; even selecting the best Rice
+  parameter per stream lost 575 bytes at first use. The DAN3-inspired code added 521 payload bytes
+  over three pictures and required an estimated 158-174-byte decoder rather than 136 bytes.
+- The DAN3-style DP matches exhaustive enumeration on 510 small streams. A separate static-prefix
+  experiment was rejected when its Elias-specific dominance shortcut disagreed with exhaustive
+  enumeration; no measurements from that parser are accepted.
+- Production ZX0 retains interlaced Elias. A narrower hybrid keeps Elias for offsets/end and uses a
+  `unary-2` short-length code. Across 42 pictures it loses 863 payload bytes overall, but wins payload
+  on 10 and estimated first-use size on 6, including Lenna (-64), Mona Lisa (-33), and Turban
+  Character (-32) bytes. Its DP matches exhaustive enumeration in 1,524 checks and makes no greedy
+  decisions.
+- Treat the hybrid as a per-asset alternative only. It requires an assembled direct-to-VRAM decoder
+  and timing proof before registration; the current 151-byte decoder size is an estimate.
+- Evidence: `docs/audits/compression/zx0-integer-code-variants-2026-11-12.md`.
+
+# 2026-11-12 - Unary-2 ZX0 hybrid has a real selective VRAM decoder
+
+- The first 156-byte decoder was invalid because unchecked state/Elias bit reads could consume the
+  marker after SL2's even-length codes. Claude's independent 540-input Z80 model found 433 failures.
+- The corrected `zx0sl_vram.asm` assembles to 159 bytes versus 136 for production ZX0. GearColeco proves exact
+  VRAM output for short backreferences, a 768-byte stream, and a 257-byte literal run.
+- The VDP read/write loop and its timing gaps are byte-for-byte structurally inherited from the
+  production decoder. MDL 2.6.2 applies zero safe pattern rewrites; no timing NOP was removed.
+- The 42-picture corpus has 10 payload wins but loses 863 bytes overall. Charging the decoder leaves
+  five first-use wins: Lenna (-56), Mona Lisa (-25), Turban Character (-24), Aloha (-12), and Blue
+  Portrait (-8). Keep it per-asset and experimental; do not replace ZX0 globally.
+- Evidence: `tools/test-zx0-short-length-vram.mjs` and
+  `tools/compression-research/agent-zx0-short-length/corpus-results.json`.
+
+# 2026-11-12 - Overnight game feedback triaged without unsafe widening shortcuts
+
+- Night Express, 64 Shuffle, and Traffic Jam compile with Aggressive optimization at 32,042,
+  12,119, and 11,558 bytes. Their complete sources and provenance are in the example browser.
+- Unsigned byte comparisons with arithmetic on both sides already use the bounded 16-bit path,
+  not 32-bit scratch. The runtime truth table now covers both-sided addition/subtraction across
+  all five profiles. A blanket 16-bit rewrite for declared `u16` expressions was rejected because
+  those expressions can legitimately exceed 65,535 without range proof.
+- The documented form for conditional ASM calls with register arguments is a multiline `if`
+  block. Mode 2 documentation now requires slow custom setup to disable NMI/display immediately,
+  and the agent kit forbids arming title input before a multi-frame draw finishes.
+## 2026-11-12: expose the exhaustive Mode 2 Repacker through the CLI
+
+- `tools/optimize-tms9918-bitmap.mjs --mode lossless` now evaluates every strategy used by Amy Studio's `Graphics > Mode 2 Repacker` for each requested codec instead of applying only equal-color-row canonicalization.
+- NIGHT EXPRESS' 440-byte sky PATTERN plus 440-byte COLOR region measures 276 bytes with plain ZX0 and 235 bytes after the winning `dp-v-c` lossless repack, with zero changed pixels. Repacking contributes 41 bytes; raw-to-ZX0 compression contributes the larger 604-byte payload reduction.
+- Do not claim multi-kilobyte savings from that backdrop pair alone. Measure and migrate the other eligible NAME, sprite, and static graphics tables separately, including decoder and loader cost.
+- Pixel equivalence does not protect runtime code that rewrites or transforms tile bytes. The CLI accepts `--preserve-tiles` with decimal/hex indexes and ranges, restoring both original PATTERN and COLOR rows for those tiles before codec measurement and output.
+
+## 2026-11-12: Claude differential fuzzing found front-end defects A-K
+
+- Claude executed about 1,407 generated programs across all five profiles (roughly 7,000 ROM runs) and isolated 11 silent front-end/code-generation families. No optimizer-specific disagreement was found.
+- Fixed family A for byte `&=`, `|=`, `^=` and `/=` with compound runtime expressions: Amy expressions are evaluated before the Z80 operation and no longer leak RAM symbols into assembler immediates.
+- Fixed family E for in-place signed right shifts: `i8 >>= n` now emits arithmetic `SRA`, while unsigned byte shifts retain `SRL`.
+- Fixed family G by testing signed-overflow before storing the next `i8` FOR value, preventing wraparound at 127/-128.
+- Fixed family I: conditional jumps are no longer mistaken for terminal unconditional jumps, so empty THEN/ELSEIF/CASE-like arms cannot fall through into the following branch.
+- Fixed family D by deriving division/modulo signedness from the dividend's native domain, not the divisor or destination, including explicit byte-to-word widening.
+- Fixed family F by deriving right-shift signedness from the shifted operand rather than the destination type.
+- Fixed family K by preserving the signed byte already widened in DE while loading an unsigned word array/function operand for mixed-width comparisons.
+- Fixed family B by widening byte addition, subtraction and multiplication before word-domain comparisons instead of comparing a wrapped byte result.
+- Fixed family C by widening `peek()` before word arithmetic. The runtime proof also exposed and fixed an assembler-optimizer defect that treated register-indirect `(hl)` as a stable symbolic temporary after HL changed.
+- Fixed families H and J with mathematical mixed-sign equality and unsigned typing for positive bit-mask results.
+- `tools/test-fuzz-r11-byte-regressions.mjs` now verifies exact RAM results for all A-K families across all five profiles and waits for an explicit program completion marker. No A-K family remains open.
+- Evidence source: `Codex-r11-fuzz.zip`, `codex-bugs/fuzz-r11-bugs.md` and its minimized A-K repros.
+

@@ -66,7 +66,12 @@ export function createExpressionComputeHelpers({
     const effectivePreferred = widenIntermediate
       ? (isSignedDeclaredType(preferredDeclaredType) ? "i16" : "u16")
       : preferredDeclaredType;
-    const computationType = resolveExpressionAstComputationType(node, effectivePreferred);
+    let computationType = resolveExpressionAstComputationType(node, effectivePreferred);
+    const normalizedPreferred = normalizeDeclaredType(effectivePreferred);
+    if (node?.kind === "binary" && ["+", "-", "*"].includes(node.op)
+      && ["u16", "i16"].includes(normalizedPreferred)) {
+      computationType = { declaredType: normalizedPreferred, runtimeType: "int16" };
+    }
     if (!computationType) return null;
     if (computationType.runtimeType === "int8") {
       const lines = emitLoadInt8AstIntoA(node);
@@ -881,6 +886,11 @@ export function createExpressionComputeHelpers({
     }
     if (node.kind === "call") {
       const callName = String(node.name || "").toLowerCase();
+      if (callName === "peek" && node.args.length === 1) {
+        const loadByte = emitLoadInt8AstIntoA(node);
+        if (!loadByte) return null;
+        return [...loadByte, "    ld l,a", "    ld h,0"];
+      }
       if ((callName === "highbyte" || callName === "lowbyte") && node.args.length === 1) {
         const loadWord = emitLoadInt16AstIntoHL(node.args[0]);
         if (!loadWord) return null;

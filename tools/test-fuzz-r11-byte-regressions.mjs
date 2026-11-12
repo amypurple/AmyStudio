@@ -28,6 +28,12 @@ i8 EqualitySigned8 = -1, MaskSigned = -2
 u16 EqualityUnsigned16 = 65535
 i16 EqualitySigned16 = -1
 u8 EqualityWord = 0, InequalityWord = 0
+u8 ArithmeticLeft = 0, ArithmeticRight = 217, ArithmeticHigh = 200, ArithmeticLow = 100
+u8 ArithmeticLessU = 0, ArithmeticLessS = 0, ArithmeticGreater = 0
+u16 ArithmeticZeroU = 0, PeekAdd = 0, PeekMultiply = 0
+i16 ArithmeticZeroS = 0, ArithmeticLimit = 250, PeekSigned = 0
+i8 PeekNegative = -75
+u8 Finished = 0
 AC[0] |= (($905A * W1) & $3F)
 Mask(1, 5)
 Shift8 >>= 1
@@ -71,6 +77,17 @@ if (MaskSigned & $F0) <= 0 then
 else
   MaskCompare = 2
 end if
+if ArithmeticLeft - ArithmeticRight < ArithmeticZeroU then ArithmeticLessU = 1
+if ArithmeticLeft - ArithmeticRight < ArithmeticZeroS then ArithmeticLessS = 1
+if ArithmeticHigh + ArithmeticLow > ArithmeticLimit then ArithmeticGreater = 1
+nmi off
+poke($7200, 200)
+poke($7201, 0)
+PeekAdd = peek($7200) + 100
+PeekMultiply = peek($7200) * 2
+PeekSigned = peek($7201) + PeekNegative
+nmi on
+Finished = 1
 loop forever
 sub Mask(u8 Q, u8 R):
   C1 &= (R & $F)
@@ -112,12 +129,20 @@ for (const profile of profiles) {
   try {
     core.loadBios(bios);
     core.loadRom(rom, { region: GEARCOLECO_TEST_REGION.NTSC });
-    for (let frame = 0; frame < 30; frame += 1) core.runFrame();
     const byte = (name) => core.readRam(addresses[name], 1)[0];
     const word = (name) => {
       const bytes = core.readRam(addresses[name], 2);
       return bytes[0] | (bytes[1] << 8);
     };
+    let completed = false;
+    for (let frame = 0; frame < 180; frame += 1) {
+      core.runFrame();
+      if (byte("finished") === 1) {
+        completed = true;
+        break;
+      }
+    }
+    assert.equal(completed, true, `${profile}: program did not reach its completion marker`);
     assert.equal(byte("ac"), 14, `${profile}: complex byte |= result`);
     assert.equal(byte("c1"), 4, `${profile}: parameter expression &= result`);
     assert.equal(byte("shift8"), 0xC0, `${profile}: signed byte >>= result`);
@@ -137,6 +162,12 @@ for (const profile of profiles) {
     assert.equal(byte("equalityword"), 0, `${profile}: mixed-sign word equality uses mathematical values`);
     assert.equal(byte("inequalityword"), 1, `${profile}: mixed-sign word inequality uses mathematical values`);
     assert.equal(byte("maskcompare"), 2, `${profile}: positive bit mask yields an unsigned comparison value`);
+    assert.equal(byte("arithmeticlessu"), 1, `${profile}: byte subtraction widens before u16 comparison`);
+    assert.equal(byte("arithmeticlesss"), 1, `${profile}: byte subtraction widens before i16 comparison`);
+    assert.equal(byte("arithmeticgreater"), 1, `${profile}: byte addition widens before i16 comparison`);
+    assert.equal(word("peekadd"), 300, `${profile}: peek addition widens before arithmetic`);
+    assert.equal(word("peekmultiply"), 400, `${profile}: peek multiplication widens before arithmetic`);
+    assert.equal(word("peeksigned"), 0xFFB5, `${profile}: peek plus signed byte preserves the signed value`);
   } finally {
     core.destroy();
   }
