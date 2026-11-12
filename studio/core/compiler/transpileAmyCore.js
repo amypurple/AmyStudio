@@ -884,6 +884,67 @@ export function transpileAmyCore(sourceText, deps) {
 
     return result;
   }
+  function validateFunctionGotoBoundaries(rawLines) {
+    let functionName = "";
+    let functionLine = -1;
+    let blockDepth = 0;
+    const labels = new Set();
+    const forwardGotos = new Map();
+    const strippedLine = (index) => stripAmyInlineComment(rawLines[index]).trim();
+    const closesBlock = (line) => /^(?:end\s*if|endif|next\b|loop\b|end\s*select|endselect|end\s+with)$/i.test(line);
+    const opensBlock = (line) => {
+      if (/^if\b/i.test(line)) return /\bthen\s*$/i.test(line) && !/\bgoto\b/i.test(line);
+      return /^(?:while\b|for\b|do\b|select\s+case\b|with\b)/i.test(line);
+    };
+    const reset = () => {
+      functionName = "";
+      functionLine = -1;
+      blockDepth = 0;
+      labels.clear();
+      forwardGotos.clear();
+    };
+
+    for (let index = 0; index < rawLines.length; index += 1) {
+      const line = strippedLine(index);
+      if (!line) continue;
+      const functionStart = line.match(/^function\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
+      if (functionStart) {
+        reset();
+        functionName = functionStart[1];
+        functionLine = index;
+        continue;
+      }
+      if (!functionName) continue;
+      if (/^sub\b|^function\b/i.test(line)) {
+        reset();
+        continue;
+      }
+
+      const label = line.match(/^([A-Za-z_][A-Za-z0-9_]*):$/);
+      if (label) labels.add(label[1].toLowerCase());
+      for (const match of line.matchAll(/\bgoto\s+([A-Za-z_][A-Za-z0-9_]*)\b/gi)) {
+        const target = match[1].toLowerCase();
+        if (!labels.has(target) && !forwardGotos.has(target)) forwardGotos.set(target, index);
+      }
+
+      if (closesBlock(line)) blockDepth = Math.max(0, blockDepth - 1);
+      if (blockDepth === 0 && /^return\s+.+$/i.test(line)) {
+        for (const target of forwardGotos.keys()) {
+          if (!labels.has(target)) {
+            const gotoLine = forwardGotos.get(target) + 1;
+            return {
+              ok: false,
+              log: `Function '${functionName}' on line ${functionLine + 1} jumps to label '${target}' after its closing return (goto on line ${gotoLine}). Move the label before the final return or rewrite the exits with if/else.`
+            };
+          }
+        }
+        reset();
+        continue;
+      }
+      if (opensBlock(line)) blockDepth += 1;
+    }
+    return { ok: true };
+  }
   function collectEarlyNumericConstants(rawLines) {
     const expressions = new Map();
     for (const rawLine of rawLines) {
@@ -1475,6 +1536,8 @@ export function transpileAmyCore(sourceText, deps) {
   if (!sceneParsing.ok) return { ok: false, asmBody: "", log: sceneParsing.log };
   const stateMachineLowering = lowerStateMachines(sceneParsing.lines, sceneParsing);
   if (!stateMachineLowering.ok) return { ok: false, asmBody: "", log: stateMachineLowering.log };
+  const functionGotoBoundaries = validateFunctionGotoBoundaries(stateMachineLowering.lines);
+  if (!functionGotoBoundaries.ok) return { ok: false, asmBody: "", log: functionGotoBoundaries.log };
   const prunedLines = pruneSourceUnreachableAfterRoutineTerminators(stateMachineLowering.lines);
   const forEachLowering = lowerForEachLoops(prunedLines);
   if (!forEachLowering.ok) return { ok: false, asmBody: "", log: forEachLowering.log };

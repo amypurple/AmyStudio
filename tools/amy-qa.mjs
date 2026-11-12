@@ -43,12 +43,17 @@ const representativeExamples = [
   "timelost-adam-anthology-lab"
 ];
 const quickTests = [
+  "test-expression-fail-closed.mjs",
+  "test-function-goto-return-boundary.mjs",
+  "test-120-color-runtime.mjs",
+  "test-data-table-runtime.mjs",
+  "test-array-store-layout-rom.mjs",
   "test-semantic-optimization-equivalence.mjs",
   "test-branch-tail-factoring.mjs",
   "test-unsigned-compare-elseif-optimization.mjs",
   "test-put-frame-coordinate-index-reuse.mjs",
-  "test-expression-fail-closed.mjs",
-  "test-array-store-layout-rom.mjs",
+  "test-optimizer-effect-barriers.mjs",
+  "test-user-routine-clobber-inference.mjs",
   "test-call-asm-abi-rom.mjs",
   "test-overlay-layout-rom.mjs",
   "test-sprite-count-init-runtime.mjs",
@@ -60,6 +65,8 @@ const quickTests = [
   "test-megalz-vram-rom.mjs",
   "test-exomizer2-codec.mjs",
   "test-exomizer2-vram-rom.mjs",
+  "test-state-update-benchmark.mjs",
+  "test-state-update-record-ix-benchmark.mjs",
   "test-internal-compiler-single-pass.mjs"
 ];
 

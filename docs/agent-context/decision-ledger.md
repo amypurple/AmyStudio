@@ -1517,3 +1517,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   snapshot. Its bundled-toolchain test now uses the supported CLI output flags.
 - Evidence: `node tools/amy-qa.mjs quick`, editor syntax/breakpoint tests, and
   `npm run package --prefix tools/vscode-amy-studio`.
+
+# 2026-11-11 - Function gotos cannot cross the implicit closing return
+
+- Amy functions still close at their first top-level terminal `return Value`.
+  A `goto` in that function whose target is not defined before the closing return
+  is now rejected instead of jumping into mainline data/code and falling through
+  without a machine `ret`.
+- Backward jumps and forward jumps to labels placed before the terminal return
+  remain valid. The diagnostic identifies the function, target and goto line.
+- Evidence: `tools/test-function-goto-return-boundary.mjs`, Claude's
+  `Gravitron-and-r10-bugs.zip`, the 42-ROM handoff corpus, and Gravitron's
+  byte-identical 20,864-byte balanced build.

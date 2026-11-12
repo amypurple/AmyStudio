@@ -15958,6 +15958,30 @@ export const exampleManifest = [
     "originLabel": "Faithful adaptation"
   },
   {
+    "id": "gravitron",
+    "label": "Gravitron (ReRUN 1989 Special Issue)",
+    "detail": "ColecoVision adaptation of Charles Orcutt's C64 machine-language game from the 1989 ReRUN Special Issue, with original graphics by Dan Diamante. Defend Earth's water over an eight-way scrolling cloud field with gravity, fuel, climbing, saucers, an orb and a gravity ring.",
+    "projectName": "GRAVITRON",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision-cartridge",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "run-magazine",
+      "rerun",
+      "faithful-adaptation",
+      "game",
+      "commodore-64",
+      "machine-language",
+      "shoot-em-up",
+      "scrolling",
+      "joystick"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
     "id": "great-canadian-mystery",
     "label": "The Great Canadian Mystery Show",
     "detail": "Original investigation game designed by Amy for Amy Studio and programmed in Amy by Claude (Anthropic), 2026. Solve one of 32 cases across 11 Canadian destinations by following leads, interviewing witnesses, consulting the atlas and dossier, and identifying the right fictional suspect before the deadline. Includes Normal and Hard modes.",

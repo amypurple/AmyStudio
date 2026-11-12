@@ -1109,6 +1109,8 @@ Current style rule:
   `end function` immediately after a terminal return
 - a top-level terminal `return Value` closes the function immediately; declarations
   and executable mainline code may follow it
+- a `goto` inside a function cannot jump forward past that closing return; place the
+  target label before the final `return Value`, or express multiple exits with `if/else`
 - a function that reaches the next routine or the end of file without a terminal
   `return Value` is a compile error
 
