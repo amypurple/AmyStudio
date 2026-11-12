@@ -255,6 +255,7 @@ u8 Buf[32]
 u8 EngT = 0
 u8 BoomShip = 0
 u8 BoomSau = 0
+u8 SprNew = 0         ' 1 = DrawAll built a sprite table; Frame1 sends it in vblank
 u8 RefTone = 0
 ' --- scratch for sprites and collisions
 u16 W16 = 0
@@ -379,6 +380,8 @@ play_loop:
     dec Lives
     if Lives = 0 then Over = 1
     ShipBoom
+    ' the last ship: straight to GAME OVER (no level rebuilt and shown first)
+    if Over = 1 then goto game_over
     goto level_start
   end if
   if ShipCol = 5 then
@@ -1479,6 +1482,9 @@ sub DrawPlay:
   ShowHidden
   ShowHidden
   DrawAll
+  ' display still off: send the sprites now, not one frame after the screen shows
+  update sprites
+  SprNew = 0
   ShowScreen
   return
 end sub
@@ -1699,7 +1705,7 @@ sub DrawAll:
   K = Dir - 1
   K = K << 2
   if BoomShip = 1 then K = SWork0
-  T = 2
+  T = 3
   if ShipCol = 1 then T = 15
   Place(0, ShipR0, 8, K, T, 8, 12)
   if BoomShip = 0 then
@@ -1749,7 +1755,9 @@ sub DrawAll:
   for Li = Sl to 11
     set sprite Li to HideY,0,0,0
   next
-  update sprites
+  ' sent to the VDP by Frame1 right after the next vblank starts (a late
+  ' pass no longer tears the sprite table across a frame)
+  SprNew = 1
   return
 end sub
 
@@ -1878,6 +1886,12 @@ end sub
 
 ' the level's number while its map is made (the C64 shows a blank screen)
 sub LevelScreen:
+  ' from a finished level the play screen is still on: blank it in vblank
+  ' first, so the name table is not cleared in view
+  Rearm
+  wait
+  nmi off
+  display off
   HideSprites
   for Li = 0 to 23
     A16 = Li
@@ -1917,13 +1931,20 @@ sub TopInit:
 end sub
 
 sub GameOverPage:
-  HideSprites
-  TitleMode
+  ' NewScreen turns the display off before it changes the table layout
+  ' (State stays StDie until the page is built)
   NewScreen
   State = StOver
   print at 11,4, "GAME OVER"
   print at 9,6, "SCORE"
   print at 15,6, Score
+  Rank = 10
+  for Li = 0 to 9
+    if Rank = 10 then
+      if Score >= TopS[Li] then Rank = Li
+    end if
+  next
+  if Rank = 10 then print at 9,8, "NOT ON TOP TEN"
   play sound SndOver
   ShowScreen
   for Li = 1 to 90
@@ -1962,18 +1983,16 @@ end sub
 sub ShowTable:
   NewScreen
   State = StTable
-  print at 11,2, "TOP TEN"
+  print at 5,1, "TOP TEN - PRESS BUTTON"
   for Li = 0 to 9
     C = Li * 3
     T = Li << 1
-    T += 4
+    T += 3
     put char TopN[C] at 10,T
     put char TopN[C + 1] at 11,T
     put char TopN[C + 2] at 12,T
     print at 15,T, TopS[Li]
   next
-  if Rank = 10 then print at 9,1, "NOT ON TOP TEN"
-  print at 8,22, "PRESS THE BUTTON"
   PageWait
   return
 end sub
@@ -2055,6 +2074,10 @@ sub Frame1:
   wait
   Idle = 0
   nmi off
+  if SprNew = 1 then
+    update sprites
+    SprNew = 0
+  end if
   inc Tick
   if State = StPlay then
     if Redraw = 1 then
@@ -2103,6 +2126,7 @@ sub HideSprites:
     set sprite J to HideY,0,0,0
   next
   update sprites
+  SprNew = 0
   return
 end sub
 
@@ -2481,13 +2505,13 @@ data HudRun1 bytes
   49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49
   49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49
   49,49,49,49,49,49,49,49,49,49,49,49,49,49,49,49
-  81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81
-  81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81
-  81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81
-  81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81
-  81,81,81,81,81,81,81,81,97,97,97,97,97,97,97,97
-  97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97
-  97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97
+  177,177,177,177,177,177,177,177,177,177,177,177,177,177,177,177
+  177,177,177,177,177,177,177,177,177,177,177,177,177,177,177,177
+  177,177,177,177,177,177,177,177,177,177,177,177,177,177,177,177
+  177,177,177,177,177,177,177,177,177,177,177,177,177,177,177,177
+  177,177,177,177,177,177,177,177,27,27,27,27,27,27,27,27
+  27,27,27,27,27,27,27,27,27,27,27,27,27,27,27,27
+  27,27,27,27,27,27,27,27,97,97,97,97,97,97,97,97
   17,17,17,17,17,17,17,17,97,17,49,49,49,49,17,97
   97,17,49,49,49,49,17,97,97,17,49,49,49,49,17,97
   97,17,49,49,49,49,17,97,97,17,49,49,49,49,17,97
@@ -2549,7 +2573,7 @@ data Life bytes
   13,11
 end data
 data BarCols bytes
-  2,10,8,7,13,5,3,14,6,10,4,9,2,10,8,7
+  3,5,13,7,3,5,13,7,3,5,13,7,3,5,13,7
 end data
 data ScrollTxt bytes
   32,82,85,78,32,77,65,71,65,90,73,78,69,32,80,82
