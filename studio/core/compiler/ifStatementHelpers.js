@@ -151,7 +151,7 @@ export function handleIfStatement({
     if (block.hasElse) return { ok: false, handled: true, log: `elseif cannot appear after else: ${rawLine}` };
     const lastElseifLine = body[body.length - 1];
     const lines = [];
-    if (!/^\s+jp\s+[^,\s]/.test(lastElseifLine)) {
+    if (!/^\s+jp\s+[^,\s]+\s*$/i.test(lastElseifLine)) {
       lines.push(`    jp ${block.endLabel}`);
       block.hasEndJump = true;
     }
@@ -169,7 +169,7 @@ export function handleIfStatement({
     if (block.hasElse) return { ok: false, handled: true, log: `Duplicate else in if block: ${rawLine}` };
     const lastElseLine = body[body.length - 1];
     const lines = [];
-    if (!/^\s+jp\s+[^,\s]/.test(lastElseLine)) {
+    if (!/^\s+jp\s+[^,\s]+\s*$/i.test(lastElseLine)) {
       lines.push(`    jp ${block.endLabel}`);
       block.hasEndJump = true;
     }

@@ -256,6 +256,7 @@ export function handleForStatement({
           lines.push("    sub c");
         }
         if (unsignedDownLoop) lines.push(`    jp c,${loop.exitLabel}`);
+        else lines.push(`    jp pe,${loop.exitLabel}`);
         lines.push(...emitStoreInt8FromA(loop.name));
       } else {
         lines.push(...emitLoadInt16IntoHL(loop.name));
@@ -276,6 +277,7 @@ export function handleForStatement({
       if (loop.constantStep === 1) {
         lines.push("    inc a");
         if (unsignedUpLoop) lines.push(`    jp z,${loop.exitLabel}`);
+        else lines.push(`    jp pe,${loop.exitLabel}`);
       } else {
         lines.push("    ld b,a");
         const loadStep = emitLoadInt8Into("a", loop.stepToken);
@@ -283,6 +285,7 @@ export function handleForStatement({
         lines.push(...loadStep);
         lines.push("    add a,b");
         if (unsignedUpLoop) lines.push(`    jp c,${loop.exitLabel}`);
+        else lines.push(`    jp pe,${loop.exitLabel}`);
       }
       lines.push(...emitStoreInt8FromA(loop.name));
     } else {

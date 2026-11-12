@@ -163,6 +163,7 @@ const tests = [
   { file: "test-mul-div-assign-codegen.mjs", area: "multiply-divide-assignment", evidence: "compile+assemble" },
   { file: "test-integer-muldiv-matrix.mjs", area: "integer-multiply-divide-edge-matrix", evidence: "GearColeco" },
   { file: "test-signed-byte-division-codegen.mjs", area: "signed-byte-division", evidence: "GearColeco" },
+  { file: "test-fuzz-r11-byte-regressions.mjs", area: "differential-fuzz-byte-compound-and-signed-shift", evidence: "GearColeco" },
   { file: "test-divide-by-zero-diagnostics.mjs", area: "divide-by-zero-diagnostics", evidence: "compile+assemble" },
   { file: "test-global-scratch-clobber-warning.mjs", area: "global-scratch-clobber-diagnostics", evidence: "unit" },
   { file: "test-array-bulk-codegen.mjs", area: "bulk-arrays", evidence: "compile+assemble" },

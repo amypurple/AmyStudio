@@ -141,22 +141,24 @@ export function createSimpleArithmeticHelpers({
       ? { kind: "record_field", type: resolveValueType(target) }
       : getRuntimeInfo(target);
     if (!info || info.kind === "array") return null;
+    const signedRight = direction === "right"
+      && isSignedDeclaredType(normalizeDeclaredType(resolveDeclaredValueType(target)));
     if (recordField) {
       if (info.type === "int8") {
         const load = emitLoadInt8Into("a", target);
         const store = emitStoreInt8FromA(target);
         if (!load || !store) return null;
-        return [...load, `    ${direction === "left" ? "sla" : "srl"} a`, ...store];
+        return [...load, `    ${direction === "left" ? "sla" : signedRight ? "sra" : "srl"} a`, ...store];
       }
       const load = emitLoadInt16IntoHL(target);
       const store = emitStoreInt16FromHL(target);
       if (!load || !store) return null;
       return direction === "left"
         ? [...load, "    add hl,hl", ...store]
-        : [...load, "    srl h", "    rr l", ...store];
+        : [...load, `    ${signedRight ? "sra" : "srl"} h`, "    rr l", ...store];
     }
     if (info.isRef && info.refTargetType === "int8") {
-      const instr = direction === "left" ? "sla" : "srl";
+      const instr = direction === "left" ? "sla" : signedRight ? "sra" : "srl";
       return [
         `    ld l,(${formatIxOffset(info.offset)})`,
         `    ld h,(${formatIxOffset(info.offset + 1)})`,
@@ -164,7 +166,7 @@ export function createSimpleArithmeticHelpers({
       ];
     }
     if (info.type === "int8") {
-      const instr = direction === "left" ? "sla" : "srl";
+      const instr = direction === "left" ? "sla" : signedRight ? "sra" : "srl";
       if (info.storage === "stack") return [`    ${instr} (${formatIxOffset(info.offset)})`];
       const resolvedTarget = scopedRuntimeName(target);
       return [`    ld hl,${resolvedTarget}`, `    ${instr} (hl)`];
@@ -173,7 +175,7 @@ export function createSimpleArithmeticHelpers({
     const storeTarget = emitStoreInt16FromHL(target);
     if (!loadTarget || !storeTarget) return null;
     if (direction === "left") return [...loadTarget, "    add hl,hl", ...storeTarget];
-    return [...loadTarget, "    srl h", "    rr l", ...storeTarget];
+    return [...loadTarget, `    ${signedRight ? "sra" : "srl"} h`, "    rr l", ...storeTarget];
   }
 
   function emitShiftVarByN(target, direction, n) {
@@ -183,12 +185,14 @@ export function createSimpleArithmeticHelpers({
       ? { kind: "record_field", type: resolveValueType(target) }
       : getRuntimeInfo(target);
     if (!info || info.kind === "array") return null;
+    const signedRight = direction === "right"
+      && isSignedDeclaredType(normalizeDeclaredType(resolveDeclaredValueType(target)));
     if (recordField) {
       if (info.type === "int8") {
         const load = emitLoadInt8Into("a", target);
         const store = emitStoreInt8FromA(target);
         if (!load || !store) return null;
-        const instruction = direction === "left" ? "    sla a" : "    srl a";
+        const instruction = direction === "left" ? "    sla a" : signedRight ? "    sra a" : "    srl a";
         return [...load, ...Array.from({ length: n }, () => instruction), ...store];
       }
       const load = emitLoadInt16IntoHL(target);
@@ -196,11 +200,11 @@ export function createSimpleArithmeticHelpers({
       if (!load || !store) return null;
       const instructions = direction === "left"
         ? Array.from({ length: n }, () => "    add hl,hl")
-        : Array.from({ length: n }, () => ["    srl h", "    rr l"]).flat();
+        : Array.from({ length: n }, () => [`    ${signedRight ? "sra" : "srl"} h`, "    rr l"]).flat();
       return [...load, ...instructions, ...store];
     }
     if (info.isRef && info.refTargetType === "int8") {
-      const instr = direction === "left" ? "sla" : "srl";
+      const instr = direction === "left" ? "sla" : signedRight ? "sra" : "srl";
       return [
         `    ld l,(${formatIxOffset(info.offset)})`,
         `    ld h,(${formatIxOffset(info.offset + 1)})`,
@@ -208,7 +212,7 @@ export function createSimpleArithmeticHelpers({
       ];
     }
     if (info.type === "int8") {
-      const instr = direction === "left" ? "sla" : "srl";
+      const instr = direction === "left" ? "sla" : signedRight ? "sra" : "srl";
       if (info.storage === "stack") {
         return Array.from({ length: n }, () => `    ${instr} (${formatIxOffset(info.offset)})`);
       }
@@ -225,7 +229,7 @@ export function createSimpleArithmeticHelpers({
     }
     const shiftLines = [];
     for (let i = 0; i < n; i += 1) {
-      shiftLines.push("    srl h");
+      shiftLines.push(`    ${signedRight ? "sra" : "srl"} h`);
       shiftLines.push("    rr l");
     }
     return [...loadTarget, ...shiftLines, ...storeTarget];

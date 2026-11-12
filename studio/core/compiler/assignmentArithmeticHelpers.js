@@ -1402,10 +1402,17 @@ export function createAssignmentArithmeticHelpers({
       && (targetType === "int8" || targetType === "int16" || targetType === "u32" || targetType === "i32")) {
       const operator = opToken === "&=" ? "and" : opToken === "|=" ? "or" : "xor";
       if (targetType === "int8") {
+        const sourceType = resolveValueType(valueToken);
         const sourceArrayRef = parseArrayRef(valueToken);
-        if (sourceArrayRef && !resolveValueType(valueToken)) {
+        if (sourceArrayRef && !sourceType) {
           // Indexed ROM data is an expression, not an assembler immediate.
           // Reuse the proven long-form lowering used by R = R | Bits[G].
+          return emitCompoundExpressionStore(opToken[0]);
+        }
+        if (constantNumeric === null && !sourceType) {
+          // A compound expression is not an assembler immediate. Evaluate it
+          // through the normal expression path instead of leaking Amy symbols
+          // such as AMY_UVAR_A - AMY_UVAR_B into AND/OR/XOR operands.
           return emitCompoundExpressionStore(opToken[0]);
         }
         const arrayRef = parseArrayRef(target);
@@ -1423,9 +1430,9 @@ export function createAssignmentArithmeticHelpers({
             ];
           }
         }
-        if (arrayRef && (valueTokenReferencesRuntimeValue || resolveValueType(valueToken) === "int8") &&
+        if (arrayRef && (valueTokenReferencesRuntimeValue || sourceType === "int8") &&
             arrayInfo?.kind === "array" && arrayInfo.elementType === "int8" &&
-            resolveValueType(valueToken) === "int8") {
+            sourceType === "int8") {
           const loadValue = emitLoadInt8Into("a", valueToken);
           const loadAddress = emitLoadArrayAddressIntoHL(arrayRef.name, arrayRef.index);
           if (loadValue && loadAddress) {
@@ -1563,6 +1570,9 @@ export function createAssignmentArithmeticHelpers({
       }
       if (valueTokenReferencesRuntimeValue && opToken === "+=") return emitCompoundExpressionStore("+");
       if (valueTokenReferencesRuntimeValue && opToken === "-=") return emitCompoundExpressionStore("-");
+      if (valueTokenReferencesRuntimeValue && opToken === "/=" && !resolveValueType(valueToken)) {
+        return emitCompoundExpressionStore("/");
+      }
       if (opToken === "+=") return emitArithInt8Op(target, valueToken, "add");
       if (opToken === "-=") return emitArithInt8Op(target, valueToken, "sub");
       if (opToken === "*=") return emitMultiplyInt8Op(target, valueToken);
