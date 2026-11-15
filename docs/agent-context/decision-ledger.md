@@ -1643,3 +1643,10 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   five optimization profiles with the real OS7. `node tools/amy-qa.mjs quick` also passes in the
   clean repository.
 
+# 2026-11-15: VS Code 0.1.18 carries the promoted compiler
+
+- Rebuilt the extension from the clean compiler after the verified r15 promotion. The staged
+  toolchain contains 69 compiler modules and passes the bundled regression contracts.
+- Published `downloads/amy-studio-vscode-0.1.18.vsix` and updated `vscode.html`; the previous public
+  page still pointed to 0.1.15 even though 0.1.17 existed only in the internal build directory.
+
