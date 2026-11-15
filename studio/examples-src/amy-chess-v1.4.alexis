@@ -1,0 +1,5530 @@
+' ============================================================================
+' Amy Chess v1.4 - official single-file source
+' Built from Amy Chess v1.3 (G49 engine) by replacing the search with a
+' hand-written Z80 alpha-beta kernel (asm block at the end of this file).
+' Validated with the clean-repository Amy Studio compiler at every published play level.
+' Assets (zx0 pictures, cursor sprite, voxpcm voices) are unchanged from v1.3
+' and must sit in assets/ next to this file (--project-dir).
+' Build: node tools/amyc.mjs amy-chess-v1.4.alexis --project-dir . --opt aggressive --output amy-chess-v1.4.rom
+' UCI test kernel: add --define CHESS_UCI_HARNESS
+' ============================================================================
+project "Amy Chess v1.4"
+memory "colecovision_legacy_sdcc"
+
+const Empty = 0
+const WhitePawn = 1
+const WhiteKnight = 2
+const WhiteBishop = 3
+const WhiteRook = 4
+const WhiteQueen = 5
+const WhiteKing = 6
+const BlackPawn = 9
+const BlackKnight = 10
+const BlackBishop = 11
+const BlackRook = 12
+const BlackQueen = 13
+const BlackKing = 14
+const FlagEnPassant = 1
+const FlagCastleKing = 2
+const FlagCastleQueen = 4
+const FlagDoublePawn = 8
+const DefaultMinimaxNodeBudget = 2048
+const MateTwoNodeBudget = 512
+const QuietThreatNodeBudget = 256
+const ChessHistoryNameOffset = $0400
+const ChessHistoryRam = $7400
+
+picture ChessTitlePicture:
+  pattern from "@project/assets/amy-chess-title.pattern.zx0" codec zx0
+  color from "@project/assets/amy-chess-title.color.zx0" codec zx0
+end picture
+asset ChessBoardPatterns from "@project/assets/amy-chess-board.pattern.zx0" codec zx0
+asset ChessBoardColors from "@project/assets/amy-chess-board.color.zx0" codec zx0
+asset ChessCursorPattern from "@project/assets/amy-chess-cursor.sprpat" codec raw
+asset ChessVoiceMeowPart1 from "@project/assets/amy-chess-voice-meow-1.voxpcm"
+asset ChessVoiceMeowPart2 from "@project/assets/amy-chess-voice-meow-2.voxpcm"
+asset ChessVoiceMeowPart3 from "@project/assets/amy-chess-voice-meow-3.voxpcm"
+asset ChessVoiceDrawPart1 from "@project/assets/amy-chess-voice-draw-1.voxpcm"
+asset ChessVoiceDrawPart2 from "@project/assets/amy-chess-voice-draw-2.voxpcm"
+asset ChessVoiceWhitePart1 from "@project/assets/amy-chess-voice-white-1.voxpcm"
+asset ChessVoiceWhitePart2 from "@project/assets/amy-chess-voice-white-2.voxpcm"
+asset ChessVoiceWhitePart3 from "@project/assets/amy-chess-voice-white-3.voxpcm"
+asset ChessVoiceBlackPart1 from "@project/assets/amy-chess-voice-black-1.voxpcm"
+asset ChessVoiceBlackPart2 from "@project/assets/amy-chess-voice-black-2.voxpcm"
+asset ChessVoiceBlackPart3 from "@project/assets/amy-chess-voice-black-3.voxpcm"
+asset ChessVoiceBlackPart4 from "@project/assets/amy-chess-voice-black-4.voxpcm"
+asset ChessVoiceWinsPart1 from "@project/assets/amy-chess-voice-wins-1.voxpcm"
+asset ChessVoiceWinsPart2 from "@project/assets/amy-chess-voice-wins-2.voxpcm"
+asset ChessVoiceWinsPart3 from "@project/assets/amy-chess-voice-wins-3.voxpcm"
+asset ChessVoiceWinsPart4 from "@project/assets/amy-chess-voice-wins-4.voxpcm"
+
+record ChessSearchFrame:
+  u8 MoveFrom
+  u8 MoveTo
+  u8 MovePromotion
+  u8 MoveFlags
+  u8 UndoPiece
+  u8 UndoCaptured
+  u8 UndoCapturedSquare
+  u8 UndoCastling
+  u8 UndoEnPassant
+  u8 UndoHalfmove
+  u8 UndoFullmove
+  u8 GenerateFrom
+  u8 GenerateRow
+  u8 GenerateColumn
+  u8 ScanRow
+  u8 ScanColumn
+  u8 RayDone
+  u8 WhiteKingSquare
+  u8 BlackKingSquare
+  u8 LegalMoveCount
+end record
+
+u8 Board[64]
+u8 Side = 0
+u8 Castling = 15
+u8 EnPassant = 255
+u8 Halfmove = 0
+u8 Fullmove = 1
+u8 MoveFrom = 0
+u8 MoveTo = 0
+u8 MovePromotion = 0
+u8 MoveFlags = 0
+u8 UndoPiece = 0
+u8 UndoCaptured = 0
+u8 UndoCapturedSquare = 0
+u8 UndoCastling = 0
+u8 UndoEnPassant = 0
+u8 UndoHalfmove = 0
+u8 UndoFullmove = 0
+u8 I = 0
+u8 AttackSquare = 0
+u8 AttackSide = 0
+u8 AttackResult = 0
+u8 ScanRow = 0
+u8 ScanColumn = 0
+u8 KingSquare = 255
+u8 LegalMoveCount = 0
+u8 GenerateFrom = 0
+u8 GenerateRow = 0
+u8 GenerateColumn = 0
+u8 RayDone = 0
+u8 WhiteKingSquare = 255
+u8 BlackKingSquare = 255
+u8 FindMateMode = 0
+u8 MaterialMinorCount = 0
+u8 InsufficientMaterial = 0
+u8 BishopOnlyMaterial = 0
+u8 BishopSquareColor = 255
+u8 BishopColorMismatch = 0
+i16 MaterialBalance = 0
+u8 RepetitionLength = 0
+u8 RepetitionCount = 0
+u8 CanClaimThreefold = 0
+u8 AutomaticFivefold = 0
+u8 EffectiveEnPassant = 255
+u16 PositionHashA = 0
+u16 PositionHashB = 0
+u8 HistoryIndex = 0
+u16 HistoryAddress = 0
+u8 HistoryByte = 0
+u16 HistoryReadA = 0
+u16 HistoryReadB = 0
+u8 ExpandedRam = 0
+u8 MirrorSaveLow = 0
+u8 MirrorSaveHigh = 0
+u8 AnnouncedThreefold = 0
+u8 AnnouncedFiftyMove = 0
+u8 AnnouncedRepetitionCount = 0
+u8 SelectedMoveFrom = 255
+u8 SelectedMoveTo = 255
+u8 SelectedMoveFlags = 0
+u8 SelectedMovePromotion = 0
+u8 RequestedMoveFrom = 255
+u8 RequestedMoveTo = 255
+u8 RequestedMovePromotion = 0
+u8 RequestedMoveLegal = 0
+u8 RequestedMoveFlags = 0
+u8 CanClaimFiftyMove = 0
+u8 AutomaticSeventyFiveMove = 0
+u8 SavedMoveFrom = 0
+u8 SavedMoveTo = 0
+u8 SavedMovePromotion = 0
+u8 SavedMoveFlags = 0
+u8 SavedUndoPiece = 0
+u8 SavedUndoCaptured = 0
+u8 SavedUndoCapturedSquare = 0
+u8 SavedUndoCastling = 0
+u8 SavedUndoEnPassant = 0
+u8 SavedUndoHalfmove = 0
+u8 SavedUndoFullmove = 0
+u8 StopAfterFirstLegal = 0
+u8 EndgamePieceCount = 0
+u8 MoveVariation = 0
+u8 ChessGameSequence = 0
+u8 ChessRandomState = 165
+u8 ChessLevel = 1
+u8 MinimaxExcludeEnabled = 0
+u8 MinimaxExcludeFrom = 255
+u8 MinimaxExcludeTo = 255
+u8 MinimaxExcludeFlags = 0
+u8 MinimaxExcludePromotion = 0
+u8 WhiteCpuLastFrom = 255
+u8 WhiteCpuLastTo = 255
+u8 BlackCpuLastFrom = 255
+u8 BlackCpuLastTo = 255
+u8 GameReady = 0
+u8 BoardDrawRow = 0
+u8 BoardDrawColumn = 0
+u8 BoardDrawPiece = 0
+u8 BoardDrawKind = 0
+u8 BoardDrawTile = 0
+u8 CursorSquare = 48
+u8 SelectedSquare = 255
+u8 CursorColor = 7
+u8 WhiteControl = 0
+u8 BlackControl = 1
+u8 GameCpuMoves = 0
+u8 GameEndReason = 0
+u8 GameWinner = 255
+u8 GameMoveFrom = 0
+u8 GameMoveTo = 0
+u8 GameMoveFlags = 0
+u8 GameMoveCapture = 0
+u8 GameMovePromotion = 0
+u8 LastMoveValid = 0
+u8 MoveNotationColumn = 18
+u8 MainMenuChoice = 1
+u8 WhiteMenuChoice = 1
+u8 BlackMenuChoice = 2
+u8 VoiceMenuChoice = 1
+u8 PromotionMenuChoice = 1
+u8 BlinkTimer = 0
+u8 BlinkHide = 0
+u8 HintRequested = 0
+u8 ThinkLevel = 1
+' ---- v1.4 search kernel state (see kernel asm) ----
+u16 KNodes = 0
+u16 KHard = 300
+u16 KSoft = 150
+u8 KAbort = 0
+u8 KRootF = 255
+u8 KRootT = 255
+u8 KRootLegal = 0
+u8 KExF = 255
+u8 KExT = 255
+u8 KBookF = 255
+u8 KBookT = 255
+u8 KRand = 0
+u8 KNoise = 1
+i16 KBestScore = 0
+u8 KDepthDone = 0
+u8 KMaxD = 20
+u8 KShowProgress = 0
+u16 KProgAddr = 0
+u8 KProgChar = 0
+u8 KFirstF = 255
+u8 KFirstT = 255
+u8 KMatchF = 255
+u8 KMatchT = 255
+u8 KMatchOK = 0
+u16 KGuardHits = 0
+#ifdef CHESS_UCI_HARNESS
+u8 UciCommand = 0
+u8 UciResetHistory = 0
+u8 UciLevel = 1
+u8 UciBestFrom = 255
+u8 UciBestTo = 255
+u8 UciBestFlags = 0
+u8 UciBestPromotion = 0
+u8 UciDepth = 0
+u8 UciBudgetReached = 0
+u16 UciNodes = 0
+i16 UciScore = 0
+u8 UciMaxDepth = 0
+u8 UciRootLegal = 0
+#endif
+u8 KRamEnd = 0
+
+data InitialBoard bytes
+  12,10,11,13,14,11,10,12,
+  9,9,9,9,9,9,9,9,
+  0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0,
+  1,1,1,1,1,1,1,1,
+  4,2,3,5,6,3,2,4
+end data
+
+' BEGIN GENERATED CHESS PIECE-SQUARE TABLES
+' Exact compact representation of all twelve piece-square tables. Pawns keep
+' rank-sensitive tables; symmetric pieces use their seven possible center
+' values. Middle-game rook seventh-rank scoring is handled by the evaluator.
+' Signed i16 material values indexed directly by the internal piece code.
+data ChessMaterialValueWords bytes
+  0,0, 100,0, 64,1, 74,1, 244,1, 132,3, 0,0, 0,0,
+  0,0, 156,255, 192,254, 182,254, 12,254, 124,252, 0,0
+end data
+' END GENERATED CHESS PIECE-SQUARE TABLES
+
+' Distance from the edge, used only to confine the losing king in won endings.
+
+data ChessOpeningBook bytes
+  52,36, 12,28, 62,45, 1,18, 61,34, 6,21, 51,43, 5,26,
+  51,35, 11,27, 62,45, 6,21, 50,34, 12,20, 57,42, 5,12,
+  62,45, 6,21, 54,46, 14,22, 61,54, 5,14, 60,62, 4,6,
+  50,34, 10,26, 57,42, 1,18, 62,45, 6,21, 54,46, 14,22
+end data
+data ChessPieceKinds bytes 0,1,2,3,4,5,6,0,0,7,8,9,10,11,12
+data ChessTextCheckmate bytes 138,143,140,138,154,156,136,163,140
+data ChessTextStalemate bytes 162,163,136,155,140,156,136,163,140
+data ChessTextDraw bytes 139,161,136,166
+data ChessTextWhiteWins bytes 166,143,152,163,140,0,166,152,157,162
+data ChessTextBlackWins bytes 137,155,136,138,154,0,166,152,157,162
+data ChessTextPressFire bytes 159,161,140,162,162,0,141,152,161,140
+data ChessTextRepetition bytes 161,140,159,140,163,152,163,152,158,157
+data ChessTextFifty bytes 141,152,141,163,168,0,156,158,165,140,162
+data ChessTextMaterial bytes 157,158,0,156,136,163,140,161,152,136,155
+data ChessTextThinking bytes 163,143,152,157,154,152,157,142
+data ChessTextAmyChess bytes 0
+data ChessTextWhiteTurn bytes 166,143,152,163,140,0,163,164,161,157
+data ChessTextBlackTurn bytes 137,155,136,138,154,0,163,164,161,157
+data ChessTextLastMove bytes 155,136,162,163,0,156,158,165,140
+
+sub start:
+  ChessDetectExpandedRam
+#ifdef CHESS_UCI_HARNESS
+  ChessUciHarness
+#endif
+  ChessGameStart
+ChessKernelDone:
+  goto ChessKernelDone
+end sub
+
+sub ChessGameStart:
+  show picture ChessTitlePicture
+  play voxpcm ChessVoiceMeow
+  pause until press and release on joypad 1
+ChessGameLoop:
+  ChessGameSequence += 1
+  ' Mix the complete frame counter with persistent state. Using only frame & 3
+  ' made similarly timed CPU-vs-CPU games repeat the same move sequence.
+  asm {
+    ld hl,(AMY_FRAME_COUNTER)
+    ld a,(AMY_UVAR_ChessRandomState)
+    xor h
+    add a,l
+    ld e,a
+    ld a,(AMY_UVAR_ChessGameSequence)
+    xor e
+    ld e,a
+    ld a,r
+    xor e
+    or a
+    jr nz,AMY_CHESS_RANDOM_SEEDED
+    ld a,$A5
+AMY_CHESS_RANDOM_SEEDED:
+    ld (AMY_UVAR_ChessRandomState),a
+    ld b,a
+    ld a,(AMY_UVAR_ChessGameSequence)
+    cp 1
+    jr nz,AMY_CHESS_ROTATE_OPENING
+    ld a,b
+    rrca
+    rrca
+    xor b
+    and 3
+    jr AMY_CHESS_STORE_OPENING
+AMY_CHESS_ROTATE_OPENING:
+    ld a,(AMY_UVAR_MoveVariation)
+    inc a
+    and 3
+AMY_CHESS_STORE_OPENING:
+    ld (AMY_UVAR_MoveVariation),a
+  }
+  set sound table ChessMoveSoundTable areas 3
+  screen off
+  ChessMainMenu
+  ChessConfigurationMenu
+  ChessInitialPosition
+  ChessResetRepetitionHistory
+  WhiteCpuLastFrom = 255
+  WhiteCpuLastTo = 255
+  BlackCpuLastFrom = 255
+  BlackCpuLastTo = 255
+  ChessPrepareBoardGraphics
+  ChessRenderBoard
+  LastMoveValid = 0
+  ChessRenderMoveNotation
+  ChessDrawCursor
+  GameReady = 0
+  ChessEvaluateGameEnd
+  if GameEndReason = 0 then GameReady = 1
+  screen on
+  ChessHumanInputLoop
+  ChessGameOverScreen
+  goto ChessGameLoop
+
+sub ChessMainMenu:
+  MainMenuChoice = 2
+  while MainMenuChoice == 2
+    text screen
+    backdrop black
+    cls
+    print centered at 1, "AMY CHESS V1.4"
+    print centered at 3, "OPTIONS"
+    print at 11,8, "PLAY GAME"
+    print at 11,10, "TEST VOICES"
+    screen on
+    MainMenuChoice = 1
+    choose menu 1 to 2 into MainMenuChoice cursor $3E at 9,8 step 2
+    if MainMenuChoice = 2 then ChessVoiceTestMenu
+  end while
+  screen off
+  return
+
+sub ChessVoiceTestMenu:
+  VoiceMenuChoice = 1
+  while VoiceMenuChoice <> 6
+    text screen
+    backdrop black
+    cls
+    print centered at 1, "AMY CHESS V1.4"
+    print centered at 3, "VOICES"
+    print at 12,5, "DRAW"
+    print at 12,7, "WHITE"
+    print at 12,9, "BLACK"
+    print at 12,11, "WINS"
+    print at 12,13, "MEOW"
+    print at 12,15, "BACK"
+    screen on
+    choose menu 1 to 6 into VoiceMenuChoice cursor $3E at 10,5 step 2
+    if VoiceMenuChoice = 1 then
+      play voxpcm ChessVoiceDraw
+    end if
+    if VoiceMenuChoice = 2 then
+      play voxpcm ChessVoiceWhite
+    end if
+    if VoiceMenuChoice = 3 then
+      play voxpcm ChessVoiceBlack
+    end if
+    if VoiceMenuChoice = 4 then
+      play voxpcm ChessVoiceWins
+    end if
+    if VoiceMenuChoice = 5 then
+      play voxpcm ChessVoiceMeow
+    end if
+    mute all
+  end while
+  screen off
+  return
+
+sub ChessConfigurationMenu:
+  text screen
+  backdrop black
+  cls
+  print centered at 1, "AMY CHESS V1.4"
+  print centered at 3, "PLAYERS"
+  print at 7,6, "WHITE"
+  print at 7,8, "HUMAN"
+  print at 7,10, "BLITZ"
+  print at 7,12, "NORMAL"
+  print at 7,14, "STRONG"
+  print at 19,6, "BLACK"
+  print at 19,8, "HUMAN"
+  print at 19,10, "BLITZ"
+  print at 19,12, "NORMAL"
+  print at 19,14, "STRONG"
+  print centered at 17, "SECONDS PER MOVE: 1  5  12"
+  print centered at 19, "RIGHT FIRE OR * : HINT"
+  print centered at 21, "# : CLAIM DRAW"
+  screen on
+  choose menu 1 to 4 into WhiteMenuChoice cursor $3E at 5,8 step 2
+  choose menu 1 to 4 into BlackMenuChoice cursor $3E at 17,8 step 2
+  WhiteControl = WhiteMenuChoice - 1
+  BlackControl = BlackMenuChoice - 1
+  screen off
+  return
+
+sub ChessPrepareBoardGraphics:
+  tile screen
+  sprites 16x16
+  sprites simple
+  decompress zx0 ChessBoardPatterns to vram.pattern
+  decompress zx0 ChessBoardColors to vram.color
+  decompress zx0 ChessBoardColors to vram.color + $0800
+  decompress zx0 ChessBoardColors to vram.color + $1000
+  duplicate mode 2 text patterns
+  copy ChessCursorPattern count 32 to vram.spr_pat
+  cls with 0
+  clear sprites
+  set sprite count 4
+  return
+
+sub ChessRenderBoard:
+  for BoardDrawRow = 0 to 7
+    for BoardDrawColumn = 0 to 7
+      I = (BoardDrawRow << 3) + BoardDrawColumn
+      ChessRenderSquare
+    next
+  next
+  ChessRenderCoordinates
+  ChessRenderGameHud
+  return
+
+sub ChessRenderGameHud:
+  for I = 0 to 8
+    put char ChessTextLastMove[I] at 12 + I,21
+  next
+  ChessRenderTurn
+  return
+
+sub ChessRenderTurn:
+  for I = 0 to 31
+    put char 0 at I,1
+  next
+  if Side = 0 then
+    for I = 0 to 9
+      put char ChessTextWhiteTurn[I] at 11 + I,1
+    next
+  else
+    for I = 0 to 9
+      put char ChessTextBlackTurn[I] at 11 + I,1
+    next
+  end if
+  return
+
+sub ChessRenderCoordinates:
+  for BoardDrawColumn = 0 to 7
+    BoardDrawTile = 136 + BoardDrawColumn
+    ScanColumn = 8 + (BoardDrawColumn << 1)
+    put char BoardDrawTile at ScanColumn,3
+    put char BoardDrawTile at ScanColumn,20
+  next
+  for BoardDrawRow = 0 to 7
+    BoardDrawTile = 151 - BoardDrawRow
+    ScanRow = 4 + (BoardDrawRow << 1)
+    put char BoardDrawTile at 7,ScanRow
+    put char BoardDrawTile at 24,ScanRow
+  next
+  return
+
+sub ChessRenderSquare:
+  BoardDrawRow = I >> 3
+  BoardDrawColumn = I & 7
+  BoardDrawPiece = Board[I]
+  if BlinkHide = 1 and I = SelectedSquare then BoardDrawPiece = 0
+  BoardDrawKind = ChessPieceKinds[BoardDrawPiece]
+  if ((BoardDrawRow + BoardDrawColumn) & 1) = 1 then BoardDrawKind += 13
+  BoardDrawTile = 32 + (BoardDrawKind << 2)
+  ScanColumn = 8 + (BoardDrawColumn << 1)
+  ScanRow = 4 + (BoardDrawRow << 1)
+  put char BoardDrawTile at ScanColumn,ScanRow
+  put char BoardDrawTile + 1 at ScanColumn,ScanRow + 1
+  put char BoardDrawTile + 2 at ScanColumn + 1,ScanRow
+  put char BoardDrawTile + 3 at ScanColumn + 1,ScanRow + 1
+  return
+
+sub ChessRenderChangedSquares:
+  wait 1 frame
+  I = GameMoveFrom
+  ChessRenderSquare
+  I = GameMoveTo
+  ChessRenderSquare
+  if GameMoveFlags & FlagEnPassant then
+    if Side = 1 then I = GameMoveTo + 8 else I = GameMoveTo - 8
+    ChessRenderSquare
+  end if
+  if GameMoveFlags & FlagCastleKing then
+    if Side = 1 then
+      I = 63
+      ChessRenderSquare
+      I = 61
+      ChessRenderSquare
+    else
+      I = 7
+      ChessRenderSquare
+      I = 5
+      ChessRenderSquare
+    end if
+  end if
+  if GameMoveFlags & FlagCastleQueen then
+    if Side = 1 then
+      I = 56
+      ChessRenderSquare
+      I = 59
+      ChessRenderSquare
+    else
+      I = 0
+      ChessRenderSquare
+      I = 3
+      ChessRenderSquare
+    end if
+  end if
+  LastMoveValid = 1
+  ChessRenderMoveNotation
+  ChessRenderTurn
+  return
+
+sub ChessRenderMoveNotation:
+  for I = 0 to 31
+    put char 0 at I,22
+  next
+  MoveNotationColumn = 18
+  if LastMoveValid = 0 then return
+  if GameMoveFlags & FlagCastleKing then
+    put char 158 at 14,22
+    put char 170 at 15,22
+    put char 158 at 16,22
+    MoveNotationColumn = 17
+    return
+  end if
+  if GameMoveFlags & FlagCastleQueen then
+    put char 158 at 12,22
+    put char 170 at 13,22
+    put char 158 at 14,22
+    put char 170 at 15,22
+    put char 158 at 16,22
+    MoveNotationColumn = 17
+    return
+  end if
+  put char 136 + (GameMoveFrom & 7) at 13,22
+  put char 151 - (GameMoveFrom >> 3) at 14,22
+  if GameMoveCapture = 0 then
+    put char 170 at 15,22
+  else
+    put char 167 at 15,22
+  end if
+  put char 136 + (GameMoveTo & 7) at 16,22
+  put char 151 - (GameMoveTo >> 3) at 17,22
+  if GameMovePromotion = WhiteQueen or GameMovePromotion = BlackQueen then
+    put char 160 at 18,22
+  end if
+  if GameMovePromotion = WhiteRook or GameMovePromotion = BlackRook then
+    put char 161 at 18,22
+  end if
+  if GameMovePromotion = WhiteBishop or GameMovePromotion = BlackBishop then
+    put char 137 at 18,22
+  end if
+  if GameMovePromotion = WhiteKnight or GameMovePromotion = BlackKnight then
+    put char 157 at 18,22
+  end if
+  if GameMovePromotion <> 0 then MoveNotationColumn = 19
+  return
+
+sub ChessDrawCursor:
+  ' sprite 0: cursor (magenta). sprite 1: selected origin (light yellow).
+  ' sprites 2,3: last move from/to (dark blue).
+  BoardDrawRow = CursorSquare >> 3
+  BoardDrawColumn = CursorSquare & 7
+  ScanColumn = 64 + (BoardDrawColumn << 4)
+  ScanRow = 31 + (BoardDrawRow << 4)
+  set sprite 0 to ScanRow,ScanColumn,0,13
+  ScanRow = 192
+  ScanColumn = 0
+  if SelectedSquare <> 255 then
+    ScanColumn = 64 + ((SelectedSquare & 7) << 4)
+    ScanRow = 31 + ((SelectedSquare >> 3) << 4)
+  end if
+  set sprite 1 to ScanRow,ScanColumn,0,11
+  ScanRow = 192
+  ScanColumn = 0
+  if LastMoveValid = 1 then
+    ScanColumn = 64 + ((GameMoveFrom & 7) << 4)
+    ScanRow = 31 + ((GameMoveFrom >> 3) << 4)
+  end if
+  set sprite 2 to ScanRow,ScanColumn,0,4
+  if LastMoveValid = 1 then
+    ScanColumn = 64 + ((GameMoveTo & 7) << 4)
+    ScanRow = 31 + ((GameMoveTo >> 3) << 4)
+  end if
+  set sprite 3 to ScanRow,ScanColumn,0,4
+  update sprites
+  return
+
+sub ChessHumanInputLoop:
+  while GameReady = 1
+    wait 1 frame
+    if Side = 0 and WhiteControl > 0 then
+      ChessLevel = WhiteControl - 1
+      ChessRunCpuTurn
+    elseif Side = 1 and BlackControl > 0 then
+      ChessLevel = BlackControl - 1
+      ChessRunCpuTurn
+    else
+      if keypad(1) = 11 then ChessClaimDraw
+      if keypad(1) = 10 or joypad(1).button2.pressed then
+        if HintRequested = 0 then ChessHint
+        HintRequested = 1
+      else
+        HintRequested = 0
+      end if
+      if joypad(1).up.pressed and CursorSquare >= 8 then CursorSquare -= 8
+      if joypad(1).down.pressed and CursorSquare < 56 then CursorSquare += 8
+      if joypad(1).left.pressed and (CursorSquare & 7) > 0 then CursorSquare -= 1
+      if joypad(1).right.pressed and (CursorSquare & 7) < 7 then CursorSquare += 1
+      if joypad(1).button1.pressed then ChessHandleHumanFire
+      ' blink the selected piece: 16 frames on, 16 off (about 1.9 Hz)
+      BlinkTimer += 1
+      if SelectedSquare <> 255 and (BlinkTimer & 15) = 0 then
+        BlinkHide = (BlinkTimer >> 4) & 1
+        I = SelectedSquare
+        ChessRenderSquare
+      end if
+    end if
+    if GameReady = 1 then ChessDrawCursor
+  end while
+  clear sprites
+  update sprites
+  return
+
+sub ChessHint:
+  ' suggest a move at BLITZ strength: origin blinks, cursor on the target
+  ChessDeselect
+  ChessLevel = 0
+  KShowProgress = 0
+  ChessThink
+  if SelectedMoveFrom = 255 then return
+  SelectedSquare = SelectedMoveFrom
+  CursorSquare = SelectedMoveTo
+  BlinkTimer = 0
+  return
+
+sub ChessDeselect:
+  if SelectedSquare = 255 then return
+  BlinkHide = 0
+  I = SelectedSquare
+  SelectedSquare = 255
+  ChessRenderSquare
+  return
+
+sub ChessRunCpuTurn:
+  ChessClaimDrawIfUseful
+  if GameReady = 0 then return
+  for I = 0 to 31
+    put char 0 at I,1
+  next
+  for I = 0 to 7
+    put char ChessTextThinking[I] at 11 + I,1
+  next
+  asm {
+    ld hl,($73F6)
+    ld de,52
+    add hl,de
+    ld (AMY_UVAR_KProgAddr),hl
+  }
+  KProgChar = 143
+  KShowProgress = 1
+  ChessThink
+  KShowProgress = 0
+  ChessAvoidWinningRepetition
+  ChessAvoidCpuMoveShuffle
+  if SelectedMoveFrom = 255 then
+    GameReady = 0
+    return
+  end if
+  MoveFrom = SelectedMoveFrom
+  MoveTo = SelectedMoveTo
+  MovePromotion = SelectedMovePromotion
+  MoveFlags = SelectedMoveFlags
+  GameMoveFrom = MoveFrom
+  GameMoveTo = MoveTo
+  GameMoveFlags = MoveFlags
+  GameMoveCapture = Board[MoveTo]
+  if MoveFlags & FlagEnPassant then GameMoveCapture = BlackPawn
+  GameMovePromotion = MovePromotion
+  if Side = 0 then
+    WhiteCpuLastFrom = MoveFrom
+    WhiteCpuLastTo = MoveTo
+  else
+    BlackCpuLastFrom = MoveFrom
+    BlackCpuLastTo = MoveTo
+  end if
+  ChessCommitMove
+  CursorSquare = GameMoveTo
+  SelectedSquare = 255
+  ChessRenderChangedSquares
+  ChessEvaluateGameEnd
+  ChessAnnounceCheck
+  GameCpuMoves += 1
+  return
+
+sub ChessClaimDraw:
+  if CanClaimThreefold = 1 then GameEndReason = 6
+  if GameEndReason = 0 and CanClaimFiftyMove = 1 then GameEndReason = 7
+  if GameEndReason <> 0 then GameReady = 0
+  return
+
+sub ChessClaimDrawIfUseful:
+  ChessEvaluateMaterial
+  if Side = 0 and MaterialBalance <= 0 then ChessClaimDraw
+  if Side = 1 and MaterialBalance >= 0 then ChessClaimDraw
+  return
+
+sub ChessHandleHumanFire:
+  if SelectedSquare = 255 then
+    BoardDrawPiece = Board[CursorSquare]
+    if Side = 0 and BoardDrawPiece >= WhitePawn and BoardDrawPiece <= WhiteKing then SelectedSquare = CursorSquare
+    if Side = 1 and BoardDrawPiece >= BlackPawn and BoardDrawPiece <= BlackKing then SelectedSquare = CursorSquare
+    BlinkTimer = 0
+    BlinkHide = 0
+    return
+  end if
+
+  if CursorSquare = SelectedSquare then
+    ChessDeselect
+    return
+  end if
+  ' choosing another own piece moves the selection
+  BoardDrawPiece = Board[CursorSquare]
+  if BoardDrawPiece <> 0 and ((BoardDrawPiece >> 3) = Side) then
+    ChessDeselect
+    SelectedSquare = CursorSquare
+    BlinkTimer = 0
+    return
+  end if
+
+  RequestedMoveFrom = SelectedSquare
+  RequestedMoveTo = CursorSquare
+  RequestedMovePromotion = 0
+  if Side = 0 and Board[SelectedSquare] = WhitePawn and CursorSquare < 8 then ChessChoosePromotion
+  if Side = 1 and Board[SelectedSquare] = BlackPawn and CursorSquare >= 56 then ChessChoosePromotion
+  ChessValidateRequestedMove
+  if RequestedMoveLegal = 1 then
+    MoveFrom = RequestedMoveFrom
+    MoveTo = RequestedMoveTo
+    MovePromotion = RequestedMovePromotion
+    MoveFlags = RequestedMoveFlags
+    GameMoveFrom = MoveFrom
+    GameMoveTo = MoveTo
+    GameMoveFlags = MoveFlags
+    GameMoveCapture = Board[MoveTo]
+    if MoveFlags & FlagEnPassant then GameMoveCapture = WhitePawn
+    GameMovePromotion = MovePromotion
+    BlinkHide = 0
+    SelectedSquare = 255
+    ChessCommitMove
+    CursorSquare = GameMoveTo
+    ChessRenderChangedSquares
+    ChessEvaluateGameEnd
+    ChessAnnounceCheck
+  end if
+  return
+
+sub ChessChoosePromotion:
+  screen off
+  clear sprites
+  text screen
+  backdrop black
+  cls
+  print centered at 5, "PROMOTE TO"
+  print at 11,8, "QUEEN"
+  print at 11,10, "ROOK"
+  print at 11,12, "BISHOP"
+  print at 11,14, "KNIGHT"
+  screen on
+  PromotionMenuChoice = 1
+  choose menu 1 to 4 into PromotionMenuChoice cursor $3E at 9,8 step 2
+  if Side = 0 then
+    RequestedMovePromotion = WhiteQueen
+    if PromotionMenuChoice = 2 then RequestedMovePromotion = WhiteRook
+    if PromotionMenuChoice = 3 then RequestedMovePromotion = WhiteBishop
+    if PromotionMenuChoice = 4 then RequestedMovePromotion = WhiteKnight
+  else
+    RequestedMovePromotion = BlackQueen
+    if PromotionMenuChoice = 2 then RequestedMovePromotion = BlackRook
+    if PromotionMenuChoice = 3 then RequestedMovePromotion = BlackBishop
+    if PromotionMenuChoice = 4 then RequestedMovePromotion = BlackKnight
+  end if
+  screen off
+  ChessPrepareBoardGraphics
+  ChessRenderBoard
+  ChessDrawCursor
+  screen on
+  return
+
+sub ChessEvaluateGameEnd:
+  GameEndReason = 0
+  GameWinner = 255
+  ChessClassifyInsufficientMaterial
+  ChessClassifyRepetition
+  ChessClassifyMoveCountDraw
+  if InsufficientMaterial = 1 then GameEndReason = 3
+  if AutomaticFivefold = 1 then GameEndReason = 4
+  if AutomaticSeventyFiveMove = 1 then GameEndReason = 5
+  if GameEndReason = 0 then
+    StopAfterFirstLegal = 1
+    FindMateMode = 0
+    ChessCountLegalMoves
+    StopAfterFirstLegal = 0
+    if LegalMoveCount = 0 then
+      ChessFindKings
+      if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+      AttackSide = 1 - Side
+      ChessIsSquareAttacked
+      if AttackResult = 1 then
+        GameEndReason = 1
+        GameWinner = 1 - Side
+      else
+        GameEndReason = 2
+      end if
+    end if
+  end if
+  if GameEndReason <> 0 then GameReady = 0
+  return
+
+sub ChessAnnounceCheck:
+  if GameEndReason = 1 then
+    put char 172 at MoveNotationColumn,22
+    return
+  end if
+  if GameEndReason <> 0 then return
+  ChessFindKings
+  if Side = 0 then AttackSquare = WhiteKingSquare else AttackSquare = BlackKingSquare
+  AttackSide = 1 - Side
+  ChessIsSquareAttacked
+  if AttackResult = 1 then
+    put char 172 at MoveNotationColumn,22
+    play sound 3
+    return
+  end if
+  if GameMoveCapture <> 0 then
+    play sound 2
+  else
+    play sound 1
+  end if
+  return
+
+sub ChessGameOverScreen:
+  BlinkHide = 0
+  SelectedSquare = 255
+  ChessDrawCursor
+  for I = 0 to 31
+    put char 0 at I,1
+    put char 0 at I,21
+  next
+  if GameEndReason = 1 then
+    for I = 0 to 8
+      put char ChessTextCheckmate[I] at 5 + I,1
+    next
+    for I = 0 to 9
+      if GameWinner = 0 then
+        put char ChessTextWhiteWins[I] at 16 + I,1
+      else
+        put char ChessTextBlackWins[I] at 16 + I,1
+      end if
+    next
+  elseif GameEndReason = 2 then
+    for I = 0 to 8
+      put char ChessTextStalemate[I] at 11 + I,1
+    next
+  else
+    for I = 0 to 3
+      put char ChessTextDraw[I] at 6 + I,1
+    next
+    for I = 0 to 10
+      if GameEndReason = 3 then put char ChessTextMaterial[I] at 12 + I,1
+      if GameEndReason = 4 or GameEndReason = 6 then put char ChessTextRepetition[I] at 12 + I,1
+      if GameEndReason = 5 or GameEndReason = 7 then put char ChessTextFifty[I] at 12 + I,1
+    next
+  end if
+  for I = 0 to 9
+    put char ChessTextPressFire[I] at 11 + I,21
+  next
+  if GameEndReason = 1 then
+    if GameWinner = 0 then
+      play voxpcm ChessVoiceWhite
+    else
+      play voxpcm ChessVoiceBlack
+    end if
+    play voxpcm ChessVoiceWins
+  else
+    play voxpcm ChessVoiceDraw
+  end if
+  pause until press and release on joypad 1
+  mute all
+  clear sprites
+  update sprites
+  return
+
+asm {
+ChessMoveSoundTable:
+    dw ChessRegularMove,$702B
+    dw ChessMoveCapture,$7035
+    dw ChessMoveCheck,$703F
+
+ChessRegularMove:
+    db $43,$25,$72,$04,$11,$C8,$11,$DE
+    db $50
+
+ChessMoveCapture:
+    db $80,$DB,$31,$01
+    db $80,$7B,$22,$01
+    db $80,$F0,$31,$01
+    db $80,$2C,$52,$01
+    db $80,$4C,$72,$01
+    db $80,$98,$92,$01
+    db $90
+
+ChessMoveCheck:
+    db $C0,$CC,$60,$01
+    db $C0,$DC,$20,$01
+    db $C1,$3F,$41,$06,$11,$48
+    db $ED
+    db $C0,$BB,$B0,$01
+    db $C0,$B8,$A0,$01
+    db $C1,$3D,$A1,$03,$11,$48
+    db $C0,$B1,$B3,$01
+    db $D0
+}
+
+asm {
+ChessVoiceMeow:
+    dw Asset_ChessVoiceMeowPart1
+    db $11,$09
+    dw Asset_ChessVoiceMeowPart2
+    db $11,$09
+    dw Asset_ChessVoiceMeowPart3
+    db $0C,$04
+    dw 0,0
+ChessVoiceDraw:
+    dw Asset_ChessVoiceDrawPart1
+    db $1B,$15
+    dw Asset_ChessVoiceDrawPart2
+    db $16,$0F
+    dw 0,0
+ChessVoiceWhite:
+    dw Asset_ChessVoiceWhitePart1
+    db $16,$0F
+    dw Asset_ChessVoiceWhitePart2
+    db $16,$0F
+    dw Asset_ChessVoiceWhitePart3
+    db $1B,$15
+    dw 0,0
+ChessVoiceBlack:
+    dw Asset_ChessVoiceBlackPart1
+    db $1B,$15
+    dw Asset_ChessVoiceBlackPart2
+    db $16,$0F
+    dw Asset_ChessVoiceBlackPart3
+    db $25,$21
+    dw Asset_ChessVoiceBlackPart4
+    db $25,$21
+    dw 0,0
+ChessVoiceWins:
+    dw Asset_ChessVoiceWinsPart1
+    db $1B,$15
+    dw Asset_ChessVoiceWinsPart2
+    db $1B,$15
+    dw Asset_ChessVoiceWinsPart3
+    db $25,$21
+    dw Asset_ChessVoiceWinsPart4
+    db $16,$0F
+    dw 0,0
+}
+
+sub ChessDetectExpandedRam:
+  MirrorSaveLow = peek($7200)
+  MirrorSaveHigh = peek($7600)
+  poke($7200, $5A)
+  poke($7600, $A5)
+  ExpandedRam = 0
+  if peek($7200) = $5A and peek($7600) = $A5 then ExpandedRam = 1
+  poke($7200, MirrorSaveLow)
+  poke($7600, MirrorSaveHigh)
+  return
+
+
+
+sub ChessAvoidWinningRepetition:
+  ' BLITZ stays pragmatic and cheap. NORMAL has the cartridge's active
+  ' personality: it refuses a voluntary threefold when another move exists.
+  if ChessLevel = 0 or SelectedMoveFrom = 255 then return
+  MoveFrom = SelectedMoveFrom
+  MoveTo = SelectedMoveTo
+  MoveFlags = SelectedMoveFlags
+  MovePromotion = SelectedMovePromotion
+  ChessClassifyAnnouncedMove
+  ' Break the cycle when this move would complete a claimable threefold.
+  ' NORMAL may repeat a motif once, but never loops merely to avoid a loss.
+  if AnnouncedThreefold = 0 then return
+  SavedMoveFrom = SelectedMoveFrom
+  SavedMoveTo = SelectedMoveTo
+  SavedMoveFlags = SelectedMoveFlags
+  SavedMovePromotion = SelectedMovePromotion
+  MinimaxExcludeEnabled = 1
+  MinimaxExcludeFrom = SelectedMoveFrom
+  MinimaxExcludeTo = SelectedMoveTo
+  MinimaxExcludeFlags = SelectedMoveFlags
+  MinimaxExcludePromotion = SelectedMovePromotion
+  ChessThink
+  MinimaxExcludeEnabled = 0
+  if SelectedMoveFrom = 255 then
+    SelectedMoveFrom = SavedMoveFrom
+    SelectedMoveTo = SavedMoveTo
+    SelectedMoveFlags = SavedMoveFlags
+    SelectedMovePromotion = SavedMovePromotion
+  end if
+  return
+
+sub ChessAvoidCpuMoveShuffle:
+  if ChessLevel = 0 or SelectedMoveFrom = 255 then return
+  if Board[SelectedMoveTo] <> Empty then return
+  if Side = 0 then
+    if SelectedMoveFrom <> WhiteCpuLastTo or SelectedMoveTo <> WhiteCpuLastFrom then return
+  else
+    if SelectedMoveFrom <> BlackCpuLastTo or SelectedMoveTo <> BlackCpuLastFrom then return
+  end if
+
+  SavedMoveFrom = SelectedMoveFrom
+  SavedMoveTo = SelectedMoveTo
+  SavedMoveFlags = SelectedMoveFlags
+  SavedMovePromotion = SelectedMovePromotion
+  MinimaxExcludeEnabled = 1
+  MinimaxExcludeFrom = SelectedMoveFrom
+  MinimaxExcludeTo = SelectedMoveTo
+  MinimaxExcludeFlags = SelectedMoveFlags
+  MinimaxExcludePromotion = SelectedMovePromotion
+  ChessThink
+  MinimaxExcludeEnabled = 0
+  if SelectedMoveFrom = 255 then
+    SelectedMoveFrom = SavedMoveFrom
+    SelectedMoveTo = SavedMoveTo
+    SelectedMoveFlags = SavedMoveFlags
+    SelectedMovePromotion = SavedMovePromotion
+  end if
+  return
+
+
+sub ChessClassifyInsufficientMaterial:
+  asm {
+    ld a,1
+    ld (AMY_UVAR_InsufficientMaterial),a
+    ld (AMY_UVAR_BishopOnlyMaterial),a
+    xor a
+    ld (AMY_UVAR_MaterialMinorCount),a
+    ld (AMY_UVAR_BishopColorMismatch),a
+    dec a
+    ld (AMY_UVAR_BishopSquareColor),a
+    push ix
+    ld ix,AMY_UVAR_Board
+    ld bc,$4000
+AMY_CHESS_INSUFFICIENT_LOOP:
+    ld a,(ix+0)
+    and 7
+    cp AMY_UCONST_WhitePawn
+    jr z,AMY_CHESS_INSUFFICIENT_MAJOR
+    cp AMY_UCONST_WhiteRook
+    jr z,AMY_CHESS_INSUFFICIENT_MAJOR
+    cp AMY_UCONST_WhiteQueen
+    jr z,AMY_CHESS_INSUFFICIENT_MAJOR
+    cp AMY_UCONST_WhiteKnight
+    jr z,AMY_CHESS_INSUFFICIENT_KNIGHT
+    cp AMY_UCONST_WhiteBishop
+    jr nz,AMY_CHESS_INSUFFICIENT_NEXT
+    ld a,(AMY_UVAR_MaterialMinorCount)
+    inc a
+    ld (AMY_UVAR_MaterialMinorCount),a
+    ld a,c
+    ld d,a
+    rrca
+    rrca
+    rrca
+    xor d
+    and 1
+    ld d,a
+    ld a,(AMY_UVAR_BishopSquareColor)
+    cp 255
+    jr nz,AMY_CHESS_INSUFFICIENT_BISHOP_COMPARE
+    ld a,d
+    ld (AMY_UVAR_BishopSquareColor),a
+    jr AMY_CHESS_INSUFFICIENT_NEXT
+AMY_CHESS_INSUFFICIENT_BISHOP_COMPARE:
+    cp d
+    jr z,AMY_CHESS_INSUFFICIENT_NEXT
+    ld a,1
+    ld (AMY_UVAR_BishopColorMismatch),a
+    jr AMY_CHESS_INSUFFICIENT_NEXT
+AMY_CHESS_INSUFFICIENT_KNIGHT:
+    ld a,(AMY_UVAR_MaterialMinorCount)
+    inc a
+    ld (AMY_UVAR_MaterialMinorCount),a
+    xor a
+    ld (AMY_UVAR_BishopOnlyMaterial),a
+    jr AMY_CHESS_INSUFFICIENT_NEXT
+AMY_CHESS_INSUFFICIENT_MAJOR:
+    xor a
+    ld (AMY_UVAR_InsufficientMaterial),a
+AMY_CHESS_INSUFFICIENT_NEXT:
+    inc ix
+    inc c
+    djnz AMY_CHESS_INSUFFICIENT_LOOP
+    pop ix
+    ld a,(AMY_UVAR_MaterialMinorCount)
+    cp 2
+    ret c
+    ld a,(AMY_UVAR_BishopOnlyMaterial)
+    or a
+    jr z,AMY_CHESS_INSUFFICIENT_FORCE_FALSE
+    ld a,(AMY_UVAR_BishopColorMismatch)
+    or a
+    ret z
+AMY_CHESS_INSUFFICIENT_FORCE_FALSE:
+    xor a
+    ld (AMY_UVAR_InsufficientMaterial),a
+  }
+  return
+
+sub ChessClassifyMoveCountDraw:
+  CanClaimFiftyMove = 0
+  AutomaticSeventyFiveMove = 0
+  if Halfmove >= 100 then CanClaimFiftyMove = 1
+  if Halfmove >= 150 then AutomaticSeventyFiveMove = 1
+  return
+
+sub ChessFindEffectiveEnPassant:
+  EffectiveEnPassant = 255
+  if EnPassant = 255 then return
+  ChessFindKings
+  MoveTo = EnPassant
+  MovePromotion = 0
+  MoveFlags = FlagEnPassant
+  if Side = 0 then
+    if (EnPassant & 7) > 0 and Board[EnPassant + 7] = WhitePawn then
+      MoveFrom = EnPassant + 7
+      KingSquare = WhiteKingSquare
+      ChessApplyMove
+      AttackSquare = KingSquare
+      AttackSide = Side
+      ChessIsSquareAttacked
+      ChessUndoMove
+      if AttackResult = 0 then EffectiveEnPassant = EnPassant
+    end if
+    if EffectiveEnPassant = 255 and (EnPassant & 7) < 7 and Board[EnPassant + 9] = WhitePawn then
+      MoveFrom = EnPassant + 9
+      KingSquare = WhiteKingSquare
+      ChessApplyMove
+      AttackSquare = KingSquare
+      AttackSide = Side
+      ChessIsSquareAttacked
+      ChessUndoMove
+      if AttackResult = 0 then EffectiveEnPassant = EnPassant
+    end if
+  else
+    if (EnPassant & 7) > 0 and Board[EnPassant - 9] = BlackPawn then
+      MoveFrom = EnPassant - 9
+      KingSquare = BlackKingSquare
+      ChessApplyMove
+      AttackSquare = KingSquare
+      AttackSide = Side
+      ChessIsSquareAttacked
+      ChessUndoMove
+      if AttackResult = 0 then EffectiveEnPassant = EnPassant
+    end if
+    if EffectiveEnPassant = 255 and (EnPassant & 7) < 7 and Board[EnPassant - 7] = BlackPawn then
+      MoveFrom = EnPassant - 7
+      KingSquare = BlackKingSquare
+      ChessApplyMove
+      AttackSquare = KingSquare
+      AttackSide = Side
+      ChessIsSquareAttacked
+      ChessUndoMove
+      if AttackResult = 0 then EffectiveEnPassant = EnPassant
+    end if
+  end if
+  MoveFlags = 0
+  return
+
+sub ChessComputePositionSignature:
+  ChessFindEffectiveEnPassant
+  PositionHashA = 5381
+  PositionHashB = 257
+  for I = 0 to 63
+    PositionHashA = PositionHashA * 33 + Board[I] + 1
+    PositionHashB = PositionHashB * 257 + Board[I] + I + 1
+  next
+  PositionHashA = PositionHashA * 33 + Side + Castling * 2 + EffectiveEnPassant
+  PositionHashB = PositionHashB * 257 + Side * 17 + Castling * 31 + EffectiveEnPassant
+  return
+
+sub ChessResetRepetitionHistory:
+  RepetitionLength = 0
+  ChessComputePositionSignature
+  HistoryIndex = 0
+  ChessWriteHistoryEntry
+  RepetitionLength = 1
+  return
+
+sub ChessWriteHistoryEntry:
+  if ExpandedRam = 1 then
+    HistoryAddress = ChessHistoryRam + HistoryIndex * 4
+    HistoryByte = PositionHashA & 255
+    poke(HistoryAddress, HistoryByte)
+    HistoryByte = PositionHashA >> 8
+    poke(HistoryAddress + 1, HistoryByte)
+    HistoryByte = PositionHashB & 255
+    poke(HistoryAddress + 2, HistoryByte)
+    HistoryByte = PositionHashB >> 8
+    poke(HistoryAddress + 3, HistoryByte)
+  else
+    HistoryAddress = ChessHistoryNameOffset + HistoryIndex * 4
+    HistoryByte = PositionHashA & 255
+    vpoke vram.name + HistoryAddress, HistoryByte
+    HistoryByte = PositionHashA >> 8
+    vpoke vram.name + HistoryAddress + 1, HistoryByte
+    HistoryByte = PositionHashB & 255
+    vpoke vram.name + HistoryAddress + 2, HistoryByte
+    HistoryByte = PositionHashB >> 8
+    vpoke vram.name + HistoryAddress + 3, HistoryByte
+  end if
+  return
+
+sub ChessReadHistoryEntry:
+  if ExpandedRam = 1 then
+    HistoryAddress = ChessHistoryRam + HistoryIndex * 4
+    HistoryReadA = peek(HistoryAddress)
+    HistoryByte = peek(HistoryAddress + 1)
+    HistoryReadA += HistoryByte << 8
+    HistoryReadB = peek(HistoryAddress + 2)
+    HistoryByte = peek(HistoryAddress + 3)
+    HistoryReadB += HistoryByte << 8
+  else
+    HistoryAddress = ChessHistoryNameOffset + HistoryIndex * 4
+    vpeek vram.name + HistoryAddress into HistoryByte
+    HistoryReadA = HistoryByte
+    vpeek vram.name + HistoryAddress + 1 into HistoryByte
+    HistoryReadA += HistoryByte << 8
+    vpeek vram.name + HistoryAddress + 2 into HistoryByte
+    HistoryReadB = HistoryByte
+    vpeek vram.name + HistoryAddress + 3 into HistoryByte
+    HistoryReadB += HistoryByte << 8
+  end if
+  return
+
+sub ChessRecordPosition:
+  if Halfmove = 0 then
+    ChessResetRepetitionHistory
+    return
+  end if
+  ChessComputePositionSignature
+  if RepetitionLength < 150 then
+    HistoryIndex = RepetitionLength
+    ChessWriteHistoryEntry
+    RepetitionLength += 1
+  end if
+  return
+
+sub ChessCommitMove:
+  ChessApplyMove
+  ChessRecordPosition
+  return
+
+sub ChessClassifyRepetition:
+  ChessComputePositionSignature
+  RepetitionCount = 0
+  for HistoryIndex = 0 to RepetitionLength - 1
+    ChessReadHistoryEntry
+    if HistoryReadA = PositionHashA and HistoryReadB = PositionHashB then RepetitionCount += 1
+  next
+  CanClaimThreefold = 0
+  AutomaticFivefold = 0
+  if RepetitionCount >= 3 then CanClaimThreefold = 1
+  if RepetitionCount >= 5 then AutomaticFivefold = 1
+  return
+
+sub ChessClassifyAnnouncedMove:
+  AnnouncedThreefold = 0
+  AnnouncedFiftyMove = 0
+  AnnouncedRepetitionCount = 0
+  ChessApplyMove
+  SavedMoveFrom = MoveFrom
+  SavedMoveTo = MoveTo
+  SavedMovePromotion = MovePromotion
+  SavedMoveFlags = MoveFlags
+  SavedUndoPiece = UndoPiece
+  SavedUndoCaptured = UndoCaptured
+  SavedUndoCapturedSquare = UndoCapturedSquare
+  SavedUndoCastling = UndoCastling
+  SavedUndoEnPassant = UndoEnPassant
+  SavedUndoHalfmove = UndoHalfmove
+  SavedUndoFullmove = UndoFullmove
+  ChessComputePositionSignature
+  for HistoryIndex = 0 to RepetitionLength - 1
+    ChessReadHistoryEntry
+    if HistoryReadA = PositionHashA and HistoryReadB = PositionHashB then AnnouncedRepetitionCount += 1
+  next
+  AnnouncedRepetitionCount += 1
+  if AnnouncedRepetitionCount >= 3 then AnnouncedThreefold = 1
+  if Halfmove >= 100 then AnnouncedFiftyMove = 1
+  MoveFrom = SavedMoveFrom
+  MoveTo = SavedMoveTo
+  MovePromotion = SavedMovePromotion
+  MoveFlags = SavedMoveFlags
+  UndoPiece = SavedUndoPiece
+  UndoCaptured = SavedUndoCaptured
+  UndoCapturedSquare = SavedUndoCapturedSquare
+  UndoCastling = SavedUndoCastling
+  UndoEnPassant = SavedUndoEnPassant
+  UndoHalfmove = SavedUndoHalfmove
+  UndoFullmove = SavedUndoFullmove
+  ChessUndoMove
+  return
+
+sub ChessInitialPosition:
+  copy InitialBoard to Board count 64
+  Side = 0
+  Castling = 15
+  EnPassant = 255
+  Halfmove = 0
+  Fullmove = 1
+  WhiteKingSquare = 60
+  BlackKingSquare = 4
+  return
+
+sub ChessFindKings:
+  asm {
+    push bc
+    push ix
+    ld ix,AMY_UVAR_Board
+    ld bc,$4000
+    ld de,$FFFF
+AMY_CHESS_FIND_KINGS_LOOP:
+    ld a,(ix+0)
+    cp AMY_UCONST_WhiteKing
+    jr nz,AMY_CHESS_FIND_KINGS_BLACK
+    ld d,c
+    jr AMY_CHESS_FIND_KINGS_NEXT
+AMY_CHESS_FIND_KINGS_BLACK:
+    cp AMY_UCONST_BlackKing
+    jr nz,AMY_CHESS_FIND_KINGS_NEXT
+    ld e,c
+AMY_CHESS_FIND_KINGS_NEXT:
+    inc ix
+    inc c
+    djnz AMY_CHESS_FIND_KINGS_LOOP
+    ld a,d
+    ld (AMY_UVAR_WhiteKingSquare),a
+    ld a,e
+    ld (AMY_UVAR_BlackKingSquare),a
+    pop ix
+    pop bc
+  }
+  return
+
+sub ChessEvaluateMaterial:
+  asm {
+    push ix
+    ld ix,AMY_UVAR_Board
+    ld hl,0
+    ld bc,$4000
+AMY_CHESS_MATERIAL_LOOP:
+    ld a,(ix+0)
+    inc ix
+    or a
+    jr z,AMY_CHESS_MATERIAL_NEXT
+    inc c
+    add a,a
+    ld e,a
+    ld d,0
+    push hl
+    ld hl,ChessMaterialValueWords
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    pop hl
+    add hl,de
+AMY_CHESS_MATERIAL_NEXT:
+    djnz AMY_CHESS_MATERIAL_LOOP
+    ld (AMY_UVAR_MaterialBalance),hl
+    ld a,c
+    ld (AMY_UVAR_EndgamePieceCount),a
+    pop ix
+  }
+  return
+
+
+sub ChessApplyMove:
+  UndoPiece = Board[MoveFrom]
+  UndoCaptured = Board[MoveTo]
+  UndoCapturedSquare = MoveTo
+  UndoCastling = Castling
+  UndoEnPassant = EnPassant
+  UndoHalfmove = Halfmove
+  UndoFullmove = Fullmove
+  EnPassant = 255
+
+  if UndoPiece = WhiteKing then Castling = Castling & 12
+  if UndoPiece = BlackKing then Castling = Castling & 3
+  if UndoPiece = WhiteRook and MoveFrom = 63 then Castling = Castling & 14
+  if UndoPiece = WhiteRook and MoveFrom = 56 then Castling = Castling & 13
+  if UndoPiece = BlackRook and MoveFrom = 7 then Castling = Castling & 11
+  if UndoPiece = BlackRook and MoveFrom = 0 then Castling = Castling & 7
+  if UndoCaptured = WhiteRook and MoveTo = 63 then Castling = Castling & 14
+  if UndoCaptured = WhiteRook and MoveTo = 56 then Castling = Castling & 13
+  if UndoCaptured = BlackRook and MoveTo = 7 then Castling = Castling & 11
+  if UndoCaptured = BlackRook and MoveTo = 0 then Castling = Castling & 7
+
+  if MoveFlags & FlagEnPassant then
+    if Side = 0 then UndoCapturedSquare = MoveTo + 8 else UndoCapturedSquare = MoveTo - 8
+    UndoCaptured = Board[UndoCapturedSquare]
+    Board[UndoCapturedSquare] = Empty
+  end if
+
+  Board[MoveFrom] = Empty
+  if MovePromotion <> 0 then Board[MoveTo] = MovePromotion else Board[MoveTo] = UndoPiece
+
+  if MoveFlags & FlagCastleKing then
+    if Side = 0 then
+      Board[61] = Board[63]
+      Board[63] = Empty
+    else
+      Board[5] = Board[7]
+      Board[7] = Empty
+    end if
+  elseif MoveFlags & FlagCastleQueen then
+    if Side = 0 then
+      Board[59] = Board[56]
+      Board[56] = Empty
+    else
+      Board[3] = Board[0]
+      Board[0] = Empty
+    end if
+  end if
+
+  if MoveFlags & FlagDoublePawn then EnPassant = (MoveFrom + MoveTo) >> 1
+  if UndoPiece = WhitePawn or UndoPiece = BlackPawn or UndoCaptured <> Empty then Halfmove = 0 else Halfmove += 1
+  if Side = 1 then Fullmove += 1
+  Side = 1 - Side
+  return
+
+sub ChessUndoMove:
+  Side = 1 - Side
+  Castling = UndoCastling
+  EnPassant = UndoEnPassant
+  Halfmove = UndoHalfmove
+  Fullmove = UndoFullmove
+
+  if MoveFlags & FlagCastleKing then
+    if Side = 0 then
+      Board[63] = Board[61]
+      Board[61] = Empty
+    else
+      Board[7] = Board[5]
+      Board[5] = Empty
+    end if
+  elseif MoveFlags & FlagCastleQueen then
+    if Side = 0 then
+      Board[56] = Board[59]
+      Board[59] = Empty
+    else
+      Board[0] = Board[3]
+      Board[3] = Empty
+    end if
+  end if
+
+  Board[MoveFrom] = UndoPiece
+  Board[MoveTo] = Empty
+  Board[UndoCapturedSquare] = UndoCaptured
+  return
+
+
+sub ChessIsSquareAttacked:
+  asm {
+    call KAmyAttacked
+  }
+  return
+
+sub ChessCountLegalMoves:
+  KMatchF = 255
+  asm {
+    call KLegalScan
+  }
+  LegalMoveCount = KRootLegal
+  return
+
+sub ChessValidateRequestedMove:
+  KMatchF = RequestedMoveFrom
+  KMatchT = RequestedMoveTo
+  asm {
+    call KLegalScan
+  }
+  RequestedMoveLegal = KMatchOK
+  RequestedMoveFlags = 0
+  if RequestedMoveLegal = 0 then return
+  I = Board[RequestedMoveFrom] & 7
+  if I = 1 then
+    if (RequestedMoveFrom & 7) <> (RequestedMoveTo & 7) and Board[RequestedMoveTo] = Empty then RequestedMoveFlags = FlagEnPassant
+    if RequestedMoveTo + 16 = RequestedMoveFrom or RequestedMoveFrom + 16 = RequestedMoveTo then RequestedMoveFlags = FlagDoublePawn
+  end if
+  if I = 6 then
+    if RequestedMoveTo = RequestedMoveFrom + 2 then RequestedMoveFlags = FlagCastleKing
+    if RequestedMoveTo + 2 = RequestedMoveFrom then RequestedMoveFlags = FlagCastleQueen
+  end if
+  return
+
+sub ChessThink:
+  ' Level budgets in frames (60/s): hard stop and "do not start a new
+  ' iteration" soft limit. Depth grows until the soft limit.
+  KMaxD = 20
+  if ChessLevel = 0 then
+    KHard = 60
+    KSoft = 20
+  elseif ChessLevel = 1 then
+    KHard = 300
+    KSoft = 120
+  else
+    KHard = 720
+    KSoft = 300
+  end if
+#ifdef CHESS_UCI_HARNESS
+  if UciMaxDepth > 0 then
+    KMaxD = UciMaxDepth
+    KHard = 60000
+    KSoft = 60000
+  end if
+#endif
+  KBookF = 255
+  KBookT = 255
+  if Fullmove <= 4 then
+    I = ((MoveVariation & 3) << 4) + ((Fullmove - 1) << 2) + (Side << 1)
+    KBookF = ChessOpeningBook[I]
+    KBookT = ChessOpeningBook[I + 1]
+  end if
+  KExF = 255
+  KExT = 255
+  if MinimaxExcludeEnabled = 1 then
+    KExF = MinimaxExcludeFrom
+    KExT = MinimaxExcludeTo
+  end if
+  KRand = ChessRandomState + Fullmove
+  KNoise = 1
+  asm {
+    call KThink
+  }
+  SelectedMoveFrom = 255
+  if KRootF < 64 then
+    RequestedMoveFrom = KRootF
+    RequestedMoveTo = KRootT
+    RequestedMovePromotion = 0
+    if Board[KRootF] = WhitePawn and KRootT < 8 then RequestedMovePromotion = WhiteQueen
+    if Board[KRootF] = BlackPawn and KRootT >= 56 then RequestedMovePromotion = BlackQueen
+    ChessValidateRequestedMove
+    if RequestedMoveLegal = 1 then
+      SelectedMoveFrom = RequestedMoveFrom
+      SelectedMoveTo = RequestedMoveTo
+      SelectedMoveFlags = RequestedMoveFlags
+      SelectedMovePromotion = RequestedMovePromotion
+    end if
+  end if
+  if SelectedMoveFrom = 255 then
+    ' safety net: first legal move
+    ChessCountLegalMoves
+    if KFirstF < 64 then
+      RequestedMoveFrom = KFirstF
+      RequestedMoveTo = KFirstT
+      ChessValidateRequestedMove
+      SelectedMoveFrom = KFirstF
+      SelectedMoveTo = KFirstT
+      SelectedMoveFlags = RequestedMoveFlags
+      SelectedMovePromotion = RequestedMovePromotion
+    end if
+  end if
+  return
+
+#ifdef CHESS_UCI_HARNESS
+sub ChessUciHarness:
+ChessUciNextCommand:
+  asm {
+AMY_CHESS_UCI_WAIT_COMMAND:
+    ld a,(AMY_UVAR_UciCommand)
+    cp 1
+    jr nz,AMY_CHESS_UCI_WAIT_COMMAND
+  }
+  ChessLevel = UciLevel
+  ChessFindKings
+  if UciResetHistory = 1 then
+    ChessResetRepetitionHistory
+    UciResetHistory = 0
+  end if
+  ChessRecordPosition
+  KShowProgress = 0
+  ChessThink
+  ChessAvoidWinningRepetition
+  ChessAvoidCpuMoveShuffle
+  UciBestFrom = SelectedMoveFrom
+  UciBestTo = SelectedMoveTo
+  UciBestFlags = SelectedMoveFlags
+  UciBestPromotion = SelectedMovePromotion
+  UciDepth = KDepthDone
+  UciBudgetReached = KAbort
+  UciNodes = KNodes
+  UciScore = KBestScore
+  UciRootLegal = KRootLegal
+  if Side = 0 then
+    WhiteCpuLastFrom = SelectedMoveFrom
+    WhiteCpuLastTo = SelectedMoveTo
+  else
+    BlackCpuLastFrom = SelectedMoveFrom
+    BlackCpuLastTo = SelectedMoveTo
+  end if
+  UciCommand = 2
+  goto ChessUciNextCommand
+end sub
+#endif
+
+asm {
+
+; ---- kernel ----
+; =============================================================================
+; Amy Chess v1.4 search kernel (Z80, hand written)
+; Board: Amy's u8 Board[64] (0=a8 .. 63=h1), white 1..6, black 9..14.
+; Negamax alpha-beta, staged moves (root best, MVV-LVA captures, killers,
+; quiet callback), quiescence with check evasions, check extension, null move,
+; late move reduction, incremental material+PST, cached pawn/king structure.
+; Frames live on the Z80 stack (IX). NMI is disabled while thinking; time is
+; measured by polling the VDP frame flag.
+; =============================================================================
+KBLO     EQU (AMY_UVAR_Board & $FF)
+KBHI     EQU (AMY_UVAR_Board >> 8)
+KMATE    EQU 30000
+KINF     EQU 32000
+KMAXPLY  EQU 30
+KCAPMAX  EQU 30
+KTEMPO   EQU 10
+; Scratch tables live in the unused tail of Amy's 32-entry sprite shadow table
+; ($7092..$7111). The game shows at most 4 sprites (16 bytes); "clear sprites"
+; may overwrite this area, which is fine: both tables are rebuilt per search.
+KSCRATCH EQU $70A2
+; Kernel-private variables live in OS7 sound work areas 4..8 ($704A-$707A),
+; unused by this cartridge (it declares 'areas 3'). $7049 is NOT used: OS7
+; keeps the sound-area list terminator there; overwriting it makes PLAY_SOUNDS
+; run away inside the NMI (found the hard way). 42 of 49 bytes used.
+KV_KScore     EQU $704A
+KV_KSide      EQU $704C
+KV_KEp        EQU $704D
+KV_KCast      EQU $704E
+KV_KKing      EQU $704F
+KV_KPly       EQU $7051
+KV_KFrames    EQU $7052
+KV_KCapTop    EQU $7054
+KV_KEg        EQU $7055
+KV_KStrIn     EQU $7056
+KV_KStrInV    EQU $7058
+KV_KArgA      EQU $7059
+KV_KArgB      EQU $705B
+KV_KArgD      EQU $705D
+KV_KArgN      EQU $705E
+KV_KSpFloor   EQU $705F
+KV_KPstBase   EQU $7061
+KV_KCurD      EQU $7063
+KV_KExtMax    EQU $7064
+KV_KGenMode   EQU $7065
+KV_KTmpL      EQU $7066
+KV_KTmp2      EQU $7067
+KV_KTmpC      EQU $7068
+KV_KTmpW      EQU $7069
+KV_KWB        EQU $706B
+KV_KBB        EQU $706C
+KV_KWR        EQU $706D
+KV_KBR        EQU $706E
+KV_KWMat      EQU $706F
+KV_KBMat      EQU $7070
+KV_KMode      EQU $7071
+KKILLT   EQU $70DE
+KFLOORM  EQU 6
+KNEED    EQU 48
+KFUTM    EQU 150
+KLAZY    EQU 200
+KEGMAT   EQU 1800
+; frame layout
+F_AL     EQU 0
+F_BE     EQU 2
+F_DP     EQU 4
+F_FL     EQU 5
+F_LG     EQU 6
+F_SC     EQU 7
+F_CA     EQU 9
+F_EP     EQU 10
+F_CB     EQU 11
+F_CN     EQU 12
+F_MF     EQU 13
+F_MT     EQU 14
+F_MP     EQU 15
+F_MC     EQU 16
+F_ST     EQU 17
+F_CT     EQU 19
+F_SP     EQU 20
+F_GS     EQU 22
+KFS      EQU 24
+; F_FL bits: 0 in check, 1 struct valid, 2 quiets pruned, 3 q-node,
+;            4 no null move, 5 child struct valid, 6 quiet stage, 7 reduced
+
+; ---------------------------------------------------------------- signed compare
+; CF=1 if HL<DE, Z=1 if equal. Preserves HL, DE, BC.
+KSCMP:
+    push hl
+    push de
+    ld a,h
+    xor $80
+    ld h,a
+    ld a,d
+    xor $80
+    ld d,a
+    or a
+    sbc hl,de
+    pop de
+    pop hl
+    ret
+
+; ---------------------------------------------------------------- KVal
+; A=piece (nonzero), E=square -> HL = white-POV value. Preserves BC, DE.
+KVal:
+    push de
+    ld d,a
+    and 8
+    ld a,e
+    jr z,KV_W
+    xor 56
+KV_W:
+    add a,a
+    ld e,a                   ; sq*2 (0..126)
+    ld a,d
+    and 7
+    rrca
+    ld d,a                   ; type*128 = (type>>1)*256 + (type&1)*128
+    and $80
+    or e
+    ld e,a
+    ld a,d
+    and $7F
+    ld d,a
+    ld hl,(KV_KPstBase)
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+    pop de
+    ret
+
+; negate HL in place if piece in A' ... (helper used below)
+KNEGHL:
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+    ret
+
+; KScore += signed value of piece A on square E (black pieces subtract)
+KAddPiece:
+    push de
+    push af
+    call KVal
+    pop af
+    and 8
+    jr z,KAP_ADD
+    call KNEGHL
+KAP_ADD:
+    ex de,hl
+    ld hl,(KV_KScore)
+    add hl,de
+    ld (KV_KScore),hl
+    pop de
+    ret
+KSubPiece:
+    push de
+    push af
+    call KVal
+    pop af
+    and 8
+    jr nz,KAP_ADD
+    call KNEGHL
+    jr KAP_ADD
+
+; ---------------------------------------------------------------- IY = KSqTab + sq*9  (A=sq)
+KSetIY:
+    push hl
+    push bc
+    ld l,a
+    ld h,0
+    ld b,h
+    ld c,l
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,bc
+    ld bc,KSqTab
+    add hl,bc
+    push hl
+    pop iy
+    pop bc
+    pop hl
+    ret
+
+; ---------------------------------------------------------------- ray walker
+; B=len>0, C=delta, D=slider code, E=queen code, L=board ptr low of origin,
+; H=KBHI.  CF=1 if the first piece on the ray is D/E (or attacker king at step 1).
+KAT_RAY:
+    ld a,l
+    add a,c
+    ld l,a
+    ld a,(hl)
+    or a
+    jr z,KAR_STEP
+    cp d
+    jr z,KAR_HIT
+    cp e
+    jr z,KAR_HIT
+    dec a
+    cp e
+    jr z,KAR_HIT
+    or a
+    ret
+KAR_STEP:
+    dec b
+    ret z
+KAR_LOOP:
+    ld a,l
+    add a,c
+    ld l,a
+    ld a,(hl)
+    or a
+    jr nz,KAR_OCC
+    djnz KAR_LOOP
+    ret
+KAR_OCC:
+    cp d
+    jr z,KAR_HIT
+    cp e
+    jr z,KAR_HIT
+    or a
+    ret
+KAR_HIT:
+    scf
+    ret
+
+; ---------------------------------------------------------------- KAttacked
+; E=square, C=attacker color (0/8). CF=1 if attacked. Clobbers all but IX.
+KAttacked:
+    ld a,e
+    call KSetIY
+    ld h,KBHI
+    ld a,c
+    or a
+    jr nz,KAT_BP
+    ld a,(iy+6)
+    or a
+    jr z,KAT_WP2
+    ld a,e
+    add a,KBLO+7
+    ld l,a
+    ld a,(hl)
+    cp 1
+    jr z,KAT_YES
+KAT_WP2:
+    ld a,(iy+7)
+    or a
+    jr z,KAT_KN
+    ld a,e
+    add a,KBLO+9
+    ld l,a
+    ld a,(hl)
+    cp 1
+    jr z,KAT_YES
+    jr KAT_KN
+KAT_BP:
+    ld a,(iy+5)
+    or a
+    jr z,KAT_BP2
+    ld a,e
+    add a,KBLO-7
+    ld l,a
+    ld a,(hl)
+    cp 9
+    jr z,KAT_YES
+KAT_BP2:
+    ld a,(iy+4)
+    or a
+    jr z,KAT_KN
+    ld a,e
+    add a,KBLO-9
+    ld l,a
+    ld a,(hl)
+    cp 9
+    jr z,KAT_YES
+KAT_KN:
+    ld a,(iy+8)
+    or a
+    jr z,KAT_RAYS
+    ld b,a
+    ld a,c
+    or 2
+    ld d,a
+    srl b
+    jr nc,KAT_N1
+    ld a,e
+    add a,KBLO-17
+    ld l,a
+    ld a,(hl)
+    cp d
+    jr z,KAT_YES
+KAT_N1:
+    srl b
+    jr nc,KAT_N2
+    ld a,e
+    add a,KBLO-15
+    ld l,a
+    ld a,(hl)
+    cp d
+    jr z,KAT_YES
+KAT_N2:
+    srl b
+    jr nc,KAT_N3
+    ld a,e
+    add a,KBLO-10
+    ld l,a
+    ld a,(hl)
+    cp d
+    jr z,KAT_YES
+KAT_N3:
+    srl b
+    jr nc,KAT_N4
+    ld a,e
+    add a,KBLO-6
+    ld l,a
+    ld a,(hl)
+    cp d
+    jr z,KAT_YES
+KAT_N4:
+    srl b
+    jr nc,KAT_N5
+    ld a,e
+    add a,KBLO+6
+    ld l,a
+    ld a,(hl)
+    cp d
+    jr z,KAT_YES
+KAT_N5:
+    srl b
+    jr nc,KAT_N6
+    ld a,e
+    add a,KBLO+10
+    ld l,a
+    ld a,(hl)
+    cp d
+    jr z,KAT_YES
+KAT_N6:
+    srl b
+    jr nc,KAT_N7
+    ld a,e
+    add a,KBLO+15
+    ld l,a
+    ld a,(hl)
+    cp d
+    jr z,KAT_YES
+KAT_N7:
+    srl b
+    jr nc,KAT_RAYS
+    ld a,e
+    add a,KBLO+17
+    ld l,a
+    ld a,(hl)
+    cp d
+    jr z,KAT_YES
+KAT_RAYS:
+    ld a,e
+    add a,KBLO
+    ld (KV_KTmpL),a
+    ld a,c
+    or 5
+    ld e,a
+    xor 1
+    ld d,a
+    ld a,(iy+0)
+    ld c,-8
+    call KAT_DIR
+    ret c
+    ld a,(iy+1)
+    ld c,8
+    call KAT_DIR
+    ret c
+    ld a,(iy+2)
+    ld c,-1
+    call KAT_DIR
+    ret c
+    ld a,(iy+3)
+    ld c,1
+    call KAT_DIR
+    ret c
+    ld a,e
+    xor 6
+    ld d,a
+    ld a,(iy+4)
+    ld c,-9
+    call KAT_DIR
+    ret c
+    ld a,(iy+5)
+    ld c,-7
+    call KAT_DIR
+    ret c
+    ld a,(iy+6)
+    ld c,7
+    call KAT_DIR
+    ret c
+    ld a,(iy+7)
+    ld c,9
+KAT_DIR:
+    or a
+    ret z
+    ld b,a
+    ld a,(KV_KTmpL)
+    ld l,a
+    jp KAT_RAY
+KAT_YES:
+    scf
+    ret
+
+; side to move in check? CF
+KInCheck:
+    ld a,(KV_KSide)
+    ld c,a
+    rrca
+    rrca
+    rrca
+    ld e,a
+    ld d,0
+    ld hl,KV_KKing
+    add hl,de
+    ld e,(hl)
+    ld a,c
+    xor 8
+    ld c,a
+    jp KAttacked
+
+; ---------------------------------------------------------------- KLegal
+; after KMake (side already toggled). CF=1 if mover's king is attacked.
+KLegal:
+    ld a,(KV_KSide)
+    ld (KV_KTmpC),a
+    ld c,a
+    xor 8
+    rrca
+    rrca
+    rrca
+    ld e,a
+    ld d,0
+    ld hl,KV_KKing
+    add hl,de
+    ld e,(hl)                ; E = mover king square, C = attacker colour
+    bit 0,(ix+F_FL)
+    jp nz,KAttacked
+    ld a,(ix+F_MP)
+    and 7
+    cp 6
+    jp z,KAttacked
+    bit 7,(ix+F_MC)
+    jp nz,KAttacked
+    ld a,(ix+F_MF)
+    ld b,a
+    and 7
+    ld d,a
+    ld a,e
+    and 7
+    ld h,a
+    ld a,d
+    sub h
+    ld d,a                   ; D = dc
+    ld a,b
+    and $38
+    ld b,a
+    ld a,e
+    and $38
+    ld h,a
+    ld a,b
+    sub h
+    sra a
+    sra a
+    sra a
+    ld b,a                   ; B = dr
+    or a
+    jr z,KLP_ALIGN
+    ld a,d
+    or a
+    jr z,KLP_ALIGN
+    ld a,b
+    call KABS
+    ld h,a
+    ld a,d
+    call KABS
+    cp h
+    jr z,KLP_ALIGN
+    or a
+    ret
+KLP_ALIGN:
+    ld a,b
+    call KSGN
+    ld h,a
+    add a,a
+    add a,h
+    ld h,a
+    ld a,d
+    call KSGN
+    add a,h
+    ld c,a
+    ld b,0
+    ld hl,KDirIdx
+    add hl,bc
+    ld a,(hl)
+    ld (KV_KTmp2),a    ; direction index
+    ld a,e
+    call KSetIY
+    ld a,(KV_KTmp2)
+    ld c,a
+    ld b,0
+    push iy
+    pop hl
+    add hl,bc
+    ld a,(hl)
+    or a
+    ret z                    ; no ray: CF clear
+    ld b,a                   ; B = ray length
+    ld a,(KV_KTmp2)
+    ld hl,KDelta
+    add a,l
+    ld l,a
+    jr nc,KLP_D1
+    inc h
+KLP_D1:
+    ld c,(hl)                ; C = delta
+    ld a,e
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(KV_KTmpC)
+    or 5
+    ld e,a                   ; queen code
+    ld a,(KV_KTmp2)
+    cp 4
+    ld a,e
+    jr c,KLP_OR
+    xor 6
+    jr KLP_C
+KLP_OR:
+    xor 1
+KLP_C:
+    ld d,a
+    jp KAT_RAY
+
+KSGN:                        ; A signed -> 0,1,2 for neg,zero,pos
+    or a
+    jr z,KSG_Z
+    jp m,KSG_N
+    ld a,2
+    ret
+KSG_Z:
+    ld a,1
+    ret
+KSG_N:
+    xor a
+    ret
+
+; ---------------------------------------------------------------- castle mask
+KCastMask:                   ; A=square -> A mask
+    cp 60
+    jr nz,KCM1
+    ld a,$FC
+    ret
+KCM1:
+    cp 63
+    jr nz,KCM2
+    ld a,$FE
+    ret
+KCM2:
+    cp 56
+    jr nz,KCM3
+    ld a,$FD
+    ret
+KCM3:
+    cp 4
+    jr nz,KCM4
+    ld a,$F3
+    ret
+KCM4:
+    cp 7
+    jr nz,KCM5
+    ld a,$FB
+    ret
+KCM5:
+    or a
+    jr nz,KCM6
+    ld a,$F7
+    ret
+KCM6:
+    ld a,$FF
+    ret
+
+; ---------------------------------------------------------------- KMake
+KMake:
+    ld hl,(KV_KScore)
+    ld (ix+F_SC),l
+    ld (ix+F_SC+1),h
+    ld a,(KV_KCast)
+    ld (ix+F_CA),a
+    ld a,(KV_KEp)
+    ld (ix+F_EP),a
+    set 5,(ix+F_FL)
+    ld a,(ix+F_MF)
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    ld (ix+F_MP),a
+    ld (hl),0
+    ld c,a
+    ld e,(ix+F_MF)
+    call KSubPiece
+    ld a,(ix+F_MT)
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    ld (ix+F_MC),a
+    or a
+    jr z,KM_NOCAP
+    ld e,(ix+F_MT)
+    call KSubPiece
+    ld a,(ix+F_MC)
+    and 7
+    cp 2
+    jr z,KM_CNQ
+    cp 5
+    jr z,KM_CNQ
+KM_CINV:
+    res 5,(ix+F_FL)
+    jr KM_PLACE
+KM_CNQ:
+    ld a,(KV_KEg)
+    or a
+    jr nz,KM_CINV
+    jr KM_PLACE
+KM_NOCAP:
+    ld a,c
+    and 7
+    cp 1
+    jr nz,KM_PLACE
+    ld a,(KV_KEp)
+    cp (ix+F_MT)
+    jr nz,KM_PLACE
+    ld a,c
+    and 8
+    ld a,(ix+F_MT)
+    jr nz,KM_EPB
+    add a,8
+    jr KM_EPX
+KM_EPB:
+    sub 8
+KM_EPX:
+    ld e,a
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    ld (hl),0
+    ld b,a
+    or $80
+    ld (ix+F_MC),a
+    ld a,b
+    call KSubPiece
+KM_PLACE:
+    ld a,c
+    and 7
+    cp 1
+    jr nz,KM_NP
+    res 5,(ix+F_FL)
+    ld a,(ix+F_MT)
+    cp 8
+    jr c,KM_PROMO
+    cp 56
+    jr c,KM_NP
+KM_PROMO:
+    ld a,c
+    and 8
+    or 5
+    ld c,a
+KM_NP:
+    ld a,(ix+F_MT)
+    ld e,a
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld (hl),c
+    ld a,c
+    call KAddPiece
+    ld a,c
+    and 7
+    cp 4
+    jr nz,KM_NR
+    res 5,(ix+F_FL)
+KM_NR:
+    cp 6
+    jr nz,KM_NK
+    res 5,(ix+F_FL)
+    ld a,c
+    and 8
+    rrca
+    rrca
+    rrca
+    ld e,a
+    ld d,0
+    ld hl,KV_KKing
+    add hl,de
+    ld a,(ix+F_MT)
+    ld (hl),a
+    sub (ix+F_MF)
+    cp 2
+    jr z,KM_CK
+    cp -2
+    jr nz,KM_NK
+    ld a,(ix+F_MT)
+    ld b,a
+    sub 2
+    ld d,a                   ; rook from
+    ld a,b
+    inc a
+    ld e,a                   ; rook to
+    call KRookMove
+    jr KM_NK
+KM_CK:
+    ld a,(ix+F_MT)
+    ld b,a
+    inc a
+    ld d,a
+    ld a,b
+    dec a
+    ld e,a
+    call KRookMove
+KM_NK:
+    ld a,(ix+F_MF)
+    call KCastMask
+    ld b,a
+    ld a,(ix+F_MT)
+    call KCastMask
+    and b
+    ld b,a
+    ld a,(KV_KCast)
+    and b
+    ld (KV_KCast),a
+    ld b,255
+    ld a,(ix+F_MP)
+    and 7
+    cp 1
+    jr nz,KM_EPS
+    ld a,(ix+F_MT)
+    sub (ix+F_MF)
+    cp 16
+    jr z,KM_EPD
+    cp -16
+    jr nz,KM_EPS
+KM_EPD:
+    ld a,(ix+F_MT)
+    add a,(ix+F_MF)
+    rra
+    ld b,a
+KM_EPS:
+    ld a,b
+    ld (KV_KEp),a
+    ld a,(KV_KSide)
+    xor 8
+    ld (KV_KSide),a
+    ret
+
+; D=rook from, E=rook to (score adjusted)
+KRookMove:
+    ld a,d
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    ld (hl),0
+    push af
+    push de
+    ld e,d
+    call KSubPiece
+    pop de
+    pop af
+    push af
+    ld b,a
+    ld a,e
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld (hl),b
+    pop af
+    jp KAddPiece
+
+; ---------------------------------------------------------------- KUnmake
+KUnmake:
+    ld a,(KV_KSide)
+    xor 8
+    ld (KV_KSide),a
+    ld l,(ix+F_SC)
+    ld h,(ix+F_SC+1)
+    ld (KV_KScore),hl
+    ld a,(ix+F_CA)
+    ld (KV_KCast),a
+    ld a,(ix+F_EP)
+    ld (KV_KEp),a
+    ld h,KBHI
+    ld a,(ix+F_MF)
+    add a,KBLO
+    ld l,a
+    ld a,(ix+F_MP)
+    ld (hl),a
+    ld a,(ix+F_MT)
+    add a,KBLO
+    ld l,a
+    ld a,(ix+F_MC)
+    bit 7,a
+    jr nz,KU_EP
+    ld (hl),a
+    jr KU_K
+KU_EP:
+    ld (hl),0
+    and $7F
+    ld b,a
+    ld a,(ix+F_MP)
+    and 8
+    ld a,(ix+F_MT)
+    jr nz,KU_EPB
+    add a,8
+    jr KU_EPX
+KU_EPB:
+    sub 8
+KU_EPX:
+    add a,KBLO
+    ld l,a
+    ld (hl),b
+KU_K:
+    ld a,(ix+F_MP)
+    and 7
+    cp 6
+    ret nz
+    ld a,(ix+F_MP)
+    and 8
+    rrca
+    rrca
+    rrca
+    ld e,a
+    ld d,0
+    push hl
+    ld hl,KV_KKing
+    add hl,de
+    ld a,(ix+F_MF)
+    ld (hl),a
+    pop hl
+    ld a,(ix+F_MT)
+    sub (ix+F_MF)
+    cp 2
+    jr z,KU_CK
+    cp -2
+    ret nz
+    ; queen side: rook went to to+1, back to to-2
+    ld a,(ix+F_MT)
+    inc a
+    add a,KBLO
+    ld l,a
+    ld b,(hl)
+    ld (hl),0
+    sub 3
+    ld l,a
+    ld (hl),b
+    ret
+KU_CK:
+    ld a,(ix+F_MT)
+    dec a
+    add a,KBLO
+    ld l,a
+    ld b,(hl)
+    ld (hl),0
+    add a,2
+    ld l,a
+    ld (hl),b
+    ret
+
+; ---------------------------------------------------------------- generator
+; KGenMode 0: tactical moves -> KCapScratch (count in KCapTop). 1: quiet moves
+; -> KVisitQ callback. CF=1 if a callback requested a cutoff.
+KGen:
+    xor a
+    ld (KV_KCapTop),a
+    ld hl,0
+    add hl,sp
+    ld (ix+F_GS),l
+    ld (ix+F_GS+1),h
+    ld hl,AMY_UVAR_Board
+    ld b,8
+KG_ROW:
+    ld a,(hl)
+    or a
+    call nz,KG_PIECE
+    inc l
+    ld a,(hl)
+    or a
+    call nz,KG_PIECE
+    inc l
+    ld a,(hl)
+    or a
+    call nz,KG_PIECE
+    inc l
+    ld a,(hl)
+    or a
+    call nz,KG_PIECE
+    inc l
+    ld a,(hl)
+    or a
+    call nz,KG_PIECE
+    inc l
+    ld a,(hl)
+    or a
+    call nz,KG_PIECE
+    inc l
+    ld a,(hl)
+    or a
+    call nz,KG_PIECE
+    inc l
+    ld a,(hl)
+    or a
+    call nz,KG_PIECE
+    inc l
+    djnz KG_ROW
+    or a
+    ret
+KG_PIECE:                    ; A=piece, HL=board ptr. Preserves HL, B.
+    ld d,a
+    and 8
+    ld c,a
+    ld a,(KV_KSide)
+    cp c
+    ret nz
+    push hl
+    push bc
+    ld a,l
+    sub KBLO
+    ld e,a
+    call KGenPiece
+    pop bc
+    pop hl
+    ret
+
+; E=from, D=piece
+KGenPiece:
+    ld a,e
+    call KSetIY
+    ld h,KBHI
+    ld a,d
+    and 7
+    cp 1
+    jp z,KGP_PAWN
+    cp 2
+    jp z,KGP_KNIGHT
+    cp 6
+    jp z,KGP_KING
+    cp 3
+    jr z,KGP_BISHOP
+    cp 4
+    jr z,KGP_ROOK
+    ; queen
+    call KGP_ORTH
+    ret c
+KGP_BISHOP:
+    ld a,(iy+4)
+    ld c,-9
+    call KGP_SLIDE
+    ret c
+    ld a,(iy+5)
+    ld c,-7
+    call KGP_SLIDE
+    ret c
+    ld a,(iy+6)
+    ld c,7
+    call KGP_SLIDE
+    ret c
+    ld a,(iy+7)
+    ld c,9
+    jr KGP_SLIDE
+KGP_ROOK:
+KGP_ORTH:
+    ld a,(iy+0)
+    ld c,-8
+    call KGP_SLIDE
+    ret c
+    ld a,(iy+1)
+    ld c,8
+    call KGP_SLIDE
+    ret c
+    ld a,(iy+2)
+    ld c,-1
+    call KGP_SLIDE
+    ret c
+    ld a,(iy+3)
+    ld c,1
+; A=len, C=delta, E=from, IY=sqtab(from), H=KBHI
+KGP_SLIDE:
+    or a
+    ret z
+    ld b,a
+    ld a,e
+    add a,KBLO
+    ld l,a
+KGS_LOOP:
+    ld a,l
+    add a,c
+    ld l,a
+    ld a,(hl)
+    or a
+    jr nz,KGS_OCC
+    ld a,(KV_KGenMode)
+    or a
+    jr z,KGS_SKIP
+    xor a
+    call KEmit
+    ret c
+KGS_SKIP:
+    djnz KGS_LOOP
+    or a
+    ret
+KGS_OCC:
+    ld d,a
+    and 8
+    push bc
+    ld b,a
+    ld a,(KV_KSide)
+    cp b
+    pop bc
+    ret z                    ; own piece (Z set, CF clear from cp equal)
+    ld a,d
+    jp KEmit
+
+KGP_KNIGHT:
+    ld a,(iy+8)
+    ld b,a
+    ld a,e
+    add a,KBLO
+    ld (KV_KTmpL),a
+    ld c,-17
+    call KGK_ONE
+    ret c
+    ld c,-15
+    call KGK_ONE
+    ret c
+    ld c,-10
+    call KGK_ONE
+    ret c
+    ld c,-6
+    call KGK_ONE
+    ret c
+    ld c,6
+    call KGK_ONE
+    ret c
+    ld c,10
+    call KGK_ONE
+    ret c
+    ld c,15
+    call KGK_ONE
+    ret c
+    ld c,17
+KGK_ONE:                     ; B=mask (shifted), C=offset
+    srl b
+    jr c,KGK_DO
+    or a
+    ret
+KGK_DO:
+    ld a,(KV_KTmpL)
+    add a,c
+    ld l,a
+    ld a,(hl)
+KGK_TGT:
+    or a
+    jp z,KEmit
+    ld d,a
+    and 8
+    push bc
+    ld b,a
+    ld a,(KV_KSide)
+    cp b
+    pop bc
+    jr nz,KGK_CAP
+    or a
+    ret
+KGK_CAP:
+    ld a,d
+    jp KEmit
+
+KGP_KING:
+    ld a,e
+    add a,KBLO
+    ld (KV_KTmpL),a
+    ld b,0
+KGKI_LOOP:
+    push bc
+    ld c,b
+    ld b,0
+    push iy
+    pop hl
+    add hl,bc
+    ld a,(hl)
+    ld hl,KDelta
+    add hl,bc
+    ld c,(hl)
+    ld h,KBHI
+    or a
+    jr z,KGKI_NX
+    ld a,(KV_KTmpL)
+    add a,c
+    ld l,a
+    ld a,(hl)
+    call KGK_TGT
+    jr c,KGKI_CUT
+KGKI_NX:
+    pop bc
+    inc b
+    ld a,b
+    cp 8
+    jr nz,KGKI_LOOP
+    ; castling (quiet mode only)
+    ld a,(KV_KGenMode)
+    or a
+    ret z
+    ld a,(KV_KCast)
+    ld b,a
+    ld a,(KV_KSide)
+    or a
+    jr z,KGC_W
+    srl b
+    srl b
+KGC_W:
+    ld a,b
+    and 3
+    ret z
+    ld a,e
+    cp 60
+    jr z,KGC_SQ
+    cp 4
+    ret nz
+KGC_SQ:
+    push bc
+    push de
+    call KInCheck
+    pop de
+    pop bc
+    ccf
+    ret nc                   ; in check: no castling (CF clear)
+    bit 0,b
+    jr z,KGC_Q
+    ; king side: e+1, e+2 empty, not attacked
+    ld a,e
+    add a,KBLO+1
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    inc l
+    or (hl)
+    jr nz,KGC_Q
+    inc l
+    ld a,(hl)
+    and 7
+    cp 4
+    jr nz,KGC_Q
+    push bc
+    push de
+    ld a,e
+    inc a
+    call KSafeSq
+    pop de
+    push de
+    jr c,KGC_K1
+    ld a,e
+    add a,2
+    call KSafeSq
+KGC_K1:
+    pop de
+    pop bc
+    jr c,KGC_Q
+    push bc
+    ld a,e
+    add a,KBLO+2
+    ld l,a
+    ld h,KBHI
+    xor a
+    call KEmit
+    pop bc
+    ret c
+KGC_Q:
+    bit 1,b
+    jr z,KGC_END
+    ld a,e
+    add a,KBLO-1
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    dec l
+    or (hl)
+    dec l
+    or (hl)
+    jr nz,KGC_END
+    dec l
+    ld a,(hl)
+    and 7
+    cp 4
+    jr nz,KGC_END
+    push de
+    ld a,e
+    dec a
+    call KSafeSq
+    pop de
+    push de
+    jr c,KGC_Q1
+    ld a,e
+    sub 2
+    call KSafeSq
+KGC_Q1:
+    pop de
+    jr c,KGC_END
+    ld a,e
+    add a,KBLO-2
+    ld l,a
+    ld h,KBHI
+    xor a
+    jp KEmit
+KGC_END:
+    or a
+    ret
+KGKI_CUT:
+    pop bc
+    scf
+    ret
+
+KSafeSq:                     ; A=square: CF=1 if attacked by opponent
+    ld e,a
+    ld a,(KV_KSide)
+    xor 8
+    ld c,a
+    jp KAttacked
+
+KGP_PAWN:
+    ld a,e
+    add a,KBLO
+    ld (KV_KTmpL),a
+    ld a,(KV_KSide)
+    or a
+    jp nz,KGPB
+    ; white: forward -8
+    ld a,(KV_KTmpL)
+    sub 8
+    ld l,a
+    ld a,(hl)
+    or a
+    jr nz,KGPW_CAP
+    ld a,e
+    cp 16
+    jr nc,KGPW_Q
+    ld a,$80                 ; promotion push: tactical
+    call KEmit
+    ret c
+    jr KGPW_CAP
+KGPW_Q:
+    xor a
+    call KEmit
+    ret c
+    ld a,e
+    cp 48
+    jr c,KGPW_CAP
+    ld a,(KV_KTmpL)
+    sub 16
+    ld l,a
+    ld a,(hl)
+    or a
+    jr nz,KGPW_CAP
+    call KEmit
+    ret c
+KGPW_CAP:
+    ld a,(iy+4)
+    or a
+    jr z,KGPW_C2
+    ld a,(KV_KTmpL)
+    sub 9
+    call KPawnCap
+    ret c
+KGPW_C2:
+    ld a,(iy+5)
+    or a
+    ret z
+    ld a,(KV_KTmpL)
+    sub 7
+    jr KPawnCap
+KGPB:
+    ld a,(KV_KTmpL)
+    add a,8
+    ld l,a
+    ld a,(hl)
+    or a
+    jr nz,KGPB_CAP
+    ld a,e
+    cp 48
+    jr c,KGPB_Q
+    ld a,$80
+    call KEmit
+    ret c
+    jr KGPB_CAP
+KGPB_Q:
+    xor a
+    call KEmit
+    ret c
+    ld a,e
+    cp 16
+    jr nc,KGPB_CAP
+    ld a,(KV_KTmpL)
+    add a,16
+    ld l,a
+    ld a,(hl)
+    or a
+    jr nz,KGPB_CAP
+    call KEmit
+    ret c
+KGPB_CAP:
+    ld a,(iy+6)
+    or a
+    jr z,KGPB_C2
+    ld a,(KV_KTmpL)
+    add a,7
+    call KPawnCap
+    ret c
+KGPB_C2:
+    ld a,(iy+7)
+    or a
+    ret z
+    ld a,(KV_KTmpL)
+    add a,9
+; A = board ptr low of capture target
+KPawnCap:
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    or a
+    jr z,KPC_EP
+    ld d,a
+    and 8
+    ld b,a
+    ld a,(KV_KSide)
+    cp b
+    jr nz,KPC_YES
+    or a
+    ret
+KPC_YES:
+    ld a,d
+    jp KEmit
+KPC_EP:
+    ld a,l
+    sub KBLO
+    ld b,a
+    ld a,(KV_KEp)
+    cp b
+    jr z,KPC_EPY
+    or a
+    ret
+KPC_EPY:
+    ld a,$80
+    jp KEmit
+
+; A=class (0 quiet, else tactical), E=from, L=target ptr low.
+; Preserves BC, DE, HL, IY. CF=1 = cutoff.
+KEmit:
+    or a
+    jr z,KE_QUIET
+    ld a,(KV_KGenMode)
+    or a
+    ret nz
+    push hl
+    push de
+    ld a,l
+    sub KBLO
+    ld d,a
+    ld a,(KV_KCapTop)
+    cp KCAPMAX*2
+    jr nc,KE_X
+    ld l,a
+    add a,2
+    ld (KV_KCapTop),a
+    ld h,0
+    push de
+    ld de,KSCRATCH
+    add hl,de
+    pop de
+    ld (hl),e
+    inc hl
+    ld (hl),d
+KE_X:
+    pop de
+    pop hl
+    or a
+    ret
+KE_QUIET:
+    ld a,(KV_KGenMode)
+    or a
+    ret z
+    push bc
+    push de
+    push hl
+    push iy
+    ld a,(KV_KTmpL)
+    push af
+    ld a,l
+    sub KBLO
+    ld d,a
+    call KVisitQ
+    jr c,KE_ABORT
+    pop af
+    ld (KV_KTmpL),a
+    ld a,1
+    ld (KV_KGenMode),a
+    pop iy
+    pop hl
+    pop de
+    pop bc
+    or a
+    ret
+KE_ABORT:                    ; cutoff: unwind the whole generator
+    ld l,(ix+F_GS)
+    ld h,(ix+F_GS+1)
+    ld sp,hl
+    scf
+    ret
+
+; ---------------------------------------------------------------- quiet visit
+; E=from, D=to.  CF = cutoff.
+KVisitQ:
+    ld (ix+F_MF),e
+    ld (ix+F_MT),d
+    call KIsDup
+    ccf
+    ret nc
+    jp KTry
+
+; CF=1 if current move (F_MF/F_MT) was already searched in an earlier stage
+; (root best move, or a killer in the quiet stage).
+KIsDup:
+    ld a,(KV_KPly)
+    or a
+    jr nz,KID_K
+    ld a,(AMY_UVAR_KRootF)
+    cp (ix+F_MF)
+    jr nz,KID_K
+    ld a,(AMY_UVAR_KRootT)
+    cp (ix+F_MT)
+    jr nz,KID_K
+    scf
+    ret
+KID_K:
+    bit 6,(ix+F_FL)
+    jr z,KID_NO
+    ld a,(KV_KPly)
+    cp 8
+    jr nc,KID_NO
+    call KKillPtr
+    ld a,(hl)
+    cp (ix+F_MF)
+    jr nz,KID_2
+    inc hl
+    ld a,(hl)
+    cp (ix+F_MT)
+    jr z,KID_YES
+    dec hl
+KID_2:
+    inc hl
+    inc hl
+    ld a,(hl)
+    cp (ix+F_MF)
+    jr nz,KID_NO
+    inc hl
+    ld a,(hl)
+    cp (ix+F_MT)
+    jr z,KID_YES
+KID_NO:
+    or a
+    ret
+KID_YES:
+    scf
+    ret
+
+KKillPtr:                    ; HL = KKill + ply*4 (ply<8)
+    ld a,(KV_KPly)
+    add a,a
+    add a,a
+    ld l,a
+    ld h,0
+    push de
+    ld de,KKILLT
+    add hl,de
+    pop de
+    ret
+
+KStoreKiller:
+    ld a,(KV_KPly)
+    cp 8
+    ret nc
+    call KKillPtr
+    ld a,(hl)
+    cp (ix+F_MF)
+    jr nz,KSK_SH
+    inc hl
+    ld a,(hl)
+    dec hl
+    cp (ix+F_MT)
+    ret z
+KSK_SH:
+    ld a,(hl)
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld (hl),a
+    inc hl
+    ld (hl),b
+    dec hl
+    dec hl
+    dec hl
+    ld a,(ix+F_MF)
+    ld (hl),a
+    inc hl
+    ld a,(ix+F_MT)
+    ld (hl),a
+    ret
+
+; ---------------------------------------------------------------- KTry
+; Search move F_MF/F_MT. CF=1 on beta cutoff or abort.
+KTry:
+    ld a,(KV_KPly)
+    or a
+    jr nz,KT_NOEX
+    ld a,(AMY_UVAR_KExF)
+    cp (ix+F_MF)
+    jr nz,KT_NOEX
+    ld a,(AMY_UVAR_KExT)
+    cp (ix+F_MT)
+    jr nz,KT_NOEX
+    or a
+    ret
+KT_NOEX:
+    in a,($BF)
+    rlca
+    call c,KTick
+    call KMake
+    call KLegal
+    jr nc,KT_LEGAL
+    call KUnmake
+    or a
+    ret
+KT_LEGAL:
+    ld a,(KV_KMode)
+    or a
+    jp nz,KT_SCAN
+    inc (ix+F_LG)
+    ld a,(ix+F_DP)
+    dec a
+    ld b,a
+    ; pawn reaching 7th rank (main search only): extend
+    bit 3,(ix+F_FL)
+    jr nz,KT_NOP7
+    ld a,(ix+F_MP)
+    and 7
+    cp 1
+    jr nz,KT_NOP7
+    ld a,(ix+F_MT)
+    and $38
+    cp $08
+    jr z,KT_P7W
+    cp $30
+    jr nz,KT_NOP7
+    bit 3,(ix+F_MP)
+    jr z,KT_NOP7
+    jr KT_P7
+KT_P7W:
+    bit 3,(ix+F_MP)
+    jr nz,KT_NOP7
+KT_P7:
+    ld a,(KV_KPly)
+    ld c,a
+    ld a,(KV_KExtMax)
+    cp c
+    jr c,KT_NOP7
+    inc b
+KT_NOP7:
+    res 7,(ix+F_FL)
+    bit 6,(ix+F_FL)
+    jr z,KT_NOLMR
+    bit 0,(ix+F_FL)
+    jr nz,KT_NOLMR
+    ld a,(ix+F_DP)
+    cp 3
+    jr c,KT_NOLMR
+    jp m,KT_NOLMR
+    ld a,(ix+F_CT)
+    cp 3
+    jr c,KT_NOLMR
+    dec b
+    set 7,(ix+F_FL)
+KT_NOLMR:
+    inc (ix+F_CT)
+    ld a,b
+    ld (KV_KArgD),a
+    call KChild
+    bit 7,(ix+F_FL)
+    jr z,KT_NORS
+    ld e,(ix+F_AL)
+    ld d,(ix+F_AL+1)
+    call KSCMP
+    jr c,KT_NORS
+    jr z,KT_NORS
+    ld a,(ix+F_DP)
+    dec a
+    ld (KV_KArgD),a
+    call KChild
+KT_NORS:
+    push hl
+    call KUnmake
+    pop hl
+    ld a,(AMY_UVAR_KAbort)
+    or a
+    jr z,KT_OK
+    scf
+    ret
+KT_OK:
+    ld e,(ix+F_AL)
+    ld d,(ix+F_AL+1)
+    call KSCMP
+    jr c,KT_NO
+    jr z,KT_NO
+    ld (ix+F_AL),l
+    ld (ix+F_AL+1),h
+    ld a,(KV_KPly)
+    or a
+    jr nz,KT_NR
+    ld a,(ix+F_MF)
+    ld (AMY_UVAR_KRootF),a
+    ld a,(ix+F_MT)
+    ld (AMY_UVAR_KRootT),a
+    ld (AMY_UVAR_KBestScore),hl
+KT_NR:
+    ld e,(ix+F_BE)
+    ld d,(ix+F_BE+1)
+    call KSCMP
+    jr c,KT_NO
+    bit 6,(ix+F_FL)
+    call nz,KStoreKiller
+    scf
+    ret
+KT_NO:
+    or a
+    ret
+
+; child search with window (-beta+b, -alpha+b), returns HL = -child + b
+KChild:
+    ld c,0
+    ld a,(KV_KPly)
+    or a
+    jr nz,KC_NB
+    call KRootBonus
+    ld c,a
+KC_NB:
+    push bc
+    ld b,0
+    ld l,(ix+F_BE)
+    ld h,(ix+F_BE+1)
+    ex de,hl
+    ld h,b
+    ld l,c
+    or a
+    sbc hl,de
+    ld (KV_KArgA),hl
+    ld l,(ix+F_AL)
+    ld h,(ix+F_AL+1)
+    ex de,hl
+    ld h,b
+    ld l,c
+    or a
+    sbc hl,de
+    ld (KV_KArgB),hl
+    ld l,(ix+F_ST)
+    ld h,(ix+F_ST+1)
+    ld (KV_KStrIn),hl
+    xor a
+    bit 1,(ix+F_FL)
+    jr z,KC_SV
+    bit 3,(ix+F_FL)
+    jr nz,KC_SV2             ; inside quiescence: inherit (stale) structure
+    bit 5,(ix+F_FL)
+    jr z,KC_SV
+KC_SV2:
+    ld a,2
+KC_SV:
+    ld (KV_KStrInV),a
+    xor a
+    ld (KV_KArgN),a
+    ld hl,KV_KPly
+    inc (hl)
+    call KSearch
+    ld a,(KV_KPly)
+    dec a
+    ld (KV_KPly),a
+    call KNEGHL
+    pop bc
+    ld b,0
+    add hl,bc
+    ret
+
+; A = root bonus for move F_MF/F_MT: book move +KBOOKB, plus seeded noise 0..3
+KRootBonus:
+    ld a,(AMY_UVAR_KRand)
+    ld b,a
+    ld a,(ix+F_MF)
+    xor b
+    ld b,a
+    ld a,(ix+F_MT)
+    add a,b
+    ld b,a
+    rrca
+    rrca
+    rrca
+    xor b
+    and 3
+    ld b,a
+    ld a,(AMY_UVAR_KNoise)
+    or a
+    jr nz,KRB_N
+    ld b,a
+KRB_N:
+    ld a,(AMY_UVAR_KBookF)
+    cp (ix+F_MF)
+    jr nz,KRB_X
+    ld a,(AMY_UVAR_KBookT)
+    cp (ix+F_MT)
+    jr nz,KRB_X
+    ld a,b
+    add a,24
+    ret
+KRB_X:
+    ld a,b
+    ret
+
+; ---------------------------------------------------------------- capture pick
+; picks best remaining entry of this node's list (on stack below IX),
+; sets F_MF/F_MT, removes it. List base = IX - 2*F_CB.
+KPickCap:
+    ld a,(ix+F_CB)
+    add a,a
+    ld e,a
+    ld d,0
+    push ix
+    pop hl
+    or a
+    sbc hl,de                ; HL = base
+    push hl
+    ld b,(ix+F_CN)
+    ld c,0                   ; best key
+    ld de,0                  ; best ptr (D=0 marks none)
+KPK_LOOP:
+    push bc
+    push hl
+    ld a,(hl)                ; from
+    add a,KBLO
+    ld c,a
+    inc hl
+    ld a,(hl)                ; to
+    ld h,KBHI
+    add a,KBLO
+    ld l,a
+    ld a,(hl)
+    and 7
+    jr nz,KPK_V
+    ld a,5                   ; promotion (or ep, scored like queen; harmless)
+KPK_V:
+    add a,a
+    add a,a
+    add a,a
+    ld b,a
+    ld l,c
+    ld a,(hl)
+    and 7
+    ld c,a
+    ld a,b
+    sub c
+    add a,8                  ; key = victim*8 - attacker + 8 (>0)
+    pop hl
+    pop bc
+    cp c
+    jr c,KPK_NX
+    jr z,KPK_NX
+    ld c,a
+    ld d,h
+    ld e,l
+KPK_NX:
+    inc hl
+    inc hl
+    djnz KPK_LOOP
+    ; DE = best entry; move it out and replace with last
+    ld a,(de)
+    ld (ix+F_MF),a
+    inc de
+    ld a,(de)
+    ld (ix+F_MT),a
+    dec de
+    pop hl                   ; base
+    ld a,(ix+F_CN)
+    dec a
+    ld (ix+F_CN),a
+    add a,a
+    ld c,a
+    ld b,0
+    add hl,bc                ; last entry
+    ld a,(hl)
+    ld (de),a
+    inc hl
+    inc de
+    ld a,(hl)
+    ld (de),a
+    ret
+
+; q-node pruning for current capture: CF=1 to skip.
+KQPrune:
+    ; victim value
+    ld a,(ix+F_MT)
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    and 7
+    jr z,KQP_NO              ; promotion / ep: never prune
+    ld c,a
+    ; delta: standpat + value(victim) + 200 < alpha -> skip
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,KMat
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld l,(ix+F_SP)
+    ld h,(ix+F_SP+1)
+    add hl,de
+    ld de,200
+    add hl,de
+    ld e,(ix+F_AL)
+    ld d,(ix+F_AL+1)
+    call KSCMP
+    jr c,KQP_YES
+    ; SEE-lite: attacker more valuable than victim and target defended by pawn
+    ld a,(ix+F_MF)
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    and 7
+    cp 6
+    jr z,KQP_NO              ; king captures are checked by legality
+    ld b,a
+    ld a,c
+    cp 2
+    jr nz,KQP_V
+    inc a                    ; knight ~ bishop
+KQP_V:
+    ld c,a
+    ld a,b
+    cp 2
+    jr nz,KQP_W
+    inc a
+KQP_W:
+    cp c
+    jr c,KQP_NO
+    jr z,KQP_NO
+    ; defended by enemy pawn?
+    ld a,(ix+F_MT)
+    ld e,a
+    call KSetIY
+    ld h,KBHI
+    ld a,(KV_KSide)
+    or a
+    jr nz,KQP_B
+    ; white to move: black pawns defend from to-9 (NW) and to-7 (NE)
+    ld a,(iy+4)
+    or a
+    jr z,KQP_W2
+    ld a,e
+    add a,KBLO-9
+    ld l,a
+    ld a,(hl)
+    cp 9
+    jr z,KQP_YES
+KQP_W2:
+    ld a,(iy+5)
+    or a
+    jr z,KQP_NO
+    ld a,e
+    add a,KBLO-7
+    ld l,a
+    ld a,(hl)
+    cp 9
+    jr z,KQP_YES
+    jr KQP_NO
+KQP_B:
+    ld a,(iy+6)
+    or a
+    jr z,KQP_B2
+    ld a,e
+    add a,KBLO+7
+    ld l,a
+    ld a,(hl)
+    cp 1
+    jr z,KQP_YES
+KQP_B2:
+    ld a,(iy+7)
+    or a
+    jr z,KQP_NO
+    ld a,e
+    add a,KBLO+9
+    ld l,a
+    ld a,(hl)
+    cp 1
+    jr z,KQP_YES
+KQP_NO:
+    or a
+    ret
+KQP_YES:
+    scf
+    ret
+
+; ---------------------------------------------------------------- killers verify
+; CF=1 if quiet move D=from E=to is pseudo-legal now (target empty, own piece).
+KVerify:
+    ld a,d
+    cp 64
+    jr nc,KVF_NO
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    or a
+    jr z,KVF_NO
+    ld c,a
+    and 8
+    ld b,a
+    ld a,(KV_KSide)
+    cp b
+    jr nz,KVF_NO
+    ld a,e
+    add a,KBLO
+    ld l,a
+    ld a,(hl)
+    or a
+    jr nz,KVF_NO
+    ; dr, dc
+    ld a,e
+    and 7
+    ld b,a
+    ld a,d
+    and 7
+    sub b
+    neg
+    ld b,a                   ; dc = col(to)-col(from)
+    ld a,e
+    and $38
+    ld h,a
+    ld a,d
+    and $38
+    sub h
+    neg
+    sra a
+    sra a
+    sra a
+    ld h,a                   ; dr = row(to)-row(from)
+    ld a,c
+    and 7
+    cp 1
+    jr z,KVF_PAWN
+    cp 2
+    jr z,KVF_KN
+    cp 6
+    jr z,KVF_KING
+    ; sliders: compute |dr|,|dc|
+    push af
+    ld a,h
+    call KABS
+    ld l,a
+    ld a,b
+    call KABS
+    ld c,a                   ; C=|dc|, L=|dr|
+    pop af
+    cp 3
+    jr z,KVF_DIAG
+    cp 4
+    jr z,KVF_ORTH
+    ; queen
+    ld a,l
+    or a
+    jr z,KVF_PATH
+    ld a,c
+    or a
+    jr z,KVF_PATH
+KVF_DIAG:
+    ld a,l
+    cp c
+    jr nz,KVF_NO
+    jr KVF_PATH
+KVF_ORTH:
+    ld a,l
+    or a
+    jr z,KVF_PATH
+    ld a,c
+    or a
+    jr nz,KVF_NO
+KVF_PATH:
+    ; step = sgn(dr)*8 + sgn(dc)
+    ld a,h
+    call KSGN
+    dec a
+    add a,a
+    add a,a
+    add a,a
+    ld c,a
+    ld a,b
+    call KSGN
+    dec a
+    add a,c
+    ld c,a                   ; step
+    ld a,d
+    add a,c
+KVF_WALK:
+    cp e
+    jr z,KVF_YES
+    ld b,a
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    or a
+    jr nz,KVF_NO
+    ld a,b
+    add a,c
+    jr KVF_WALK
+KVF_KN:
+    ld a,h
+    call KABS
+    ld l,a
+    ld a,b
+    call KABS
+    add a,l
+    cp 3
+    jr nz,KVF_NO
+    ld a,l
+    or a
+    jr z,KVF_NO
+    cp 3
+    jr z,KVF_NO
+    jr KVF_YES
+KVF_KING:
+    ld a,h
+    call KABS
+    cp 2
+    jr nc,KVF_NO
+    ld a,b
+    call KABS
+    cp 2
+    jr nc,KVF_NO
+    jr KVF_YES
+KVF_PAWN:
+    ld a,b
+    or a
+    jr nz,KVF_NO
+    ld a,c
+    and 8
+    ld a,h
+    jr nz,KVF_PB
+    neg
+KVF_PB:                      ; A = forward distance (1 or 2)
+    cp 1
+    jr z,KVF_P1
+    cp 2
+    jr nz,KVF_NO
+    ; double: from start row, middle empty
+    ld a,c
+    and 8
+    ld a,d
+    jr nz,KVF_PB2
+    and $38
+    cp $30
+    jr nz,KVF_NO
+    ld a,d
+    sub 8
+    jr KVF_MID
+KVF_PB2:
+    and $38
+    cp $08
+    jr nz,KVF_NO
+    ld a,d
+    add a,8
+KVF_MID:
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    or a
+    jr nz,KVF_NO
+    jr KVF_YES
+KVF_P1:
+    ; not a promotion push
+    ld a,e
+    cp 8
+    jr c,KVF_NO
+    cp 56
+    jr nc,KVF_NO
+KVF_YES:
+    scf
+    ret
+KVF_NO:
+    or a
+    ret
+KABS:
+    or a
+    ret p
+    neg
+    ret
+
+; ---------------------------------------------------------------- evaluation
+; HL = static eval from side-to-move POV (uses/refreshes frame struct cache)
+KEval:
+    bit 1,(ix+F_FL)
+    jr nz,KEV_C
+    call KStruct
+    ld (ix+F_ST),l
+    ld (ix+F_ST+1),h
+    set 1,(ix+F_FL)
+KEV_C:
+    ld l,(ix+F_ST)
+    ld h,(ix+F_ST+1)
+    ld de,(KV_KScore)
+    add hl,de
+    ld a,(KV_KSide)
+    or a
+    call nz,KNEGHL
+    ld de,KTEMPO
+    add hl,de
+    ret
+
+; incremental-only eval (side POV): uses cached struct when valid
+KEvalLazy:
+    bit 1,(ix+F_FL)
+    jp nz,KEV_C
+    ld hl,(KV_KScore)
+    ld a,(KV_KSide)
+    or a
+    call nz,KNEGHL
+    ld de,KTEMPO
+    add hl,de
+    ret
+
+; Structure terms (white POV) -> HL. Uses KCapScratch as file tables:
+; +0 wMin[8] +8 wMax[8] +16 bMin[8] +24 bMax[8] (rows; sentinels 7/0).
+; KTmpW = running score.
+KStruct:
+    ld hl,KSCRATCH
+    ld b,8
+KSTI:
+    ld (hl),7
+    inc hl
+    djnz KSTI
+    ld b,8
+KSTI2:
+    ld (hl),0
+    inc hl
+    djnz KSTI2
+    ld b,8
+KSTI3:
+    ld (hl),7
+    inc hl
+    djnz KSTI3
+    ld b,8
+KSTI4:
+    ld (hl),0
+    inc hl
+    djnz KSTI4
+    ld hl,0
+    ld (KV_KTmpW),hl
+    xor a
+    ld (KV_KWB),a      ; white bishops
+    ld (KV_KBB),a
+    ld (KV_KWR),a      ; rook file masks
+    ld (KV_KBR),a
+    ld (KV_KWMat),a    ; non-pawn material units (N/B=3, R=5, Q=9)
+    ld (KV_KBMat),a
+    ; scan
+    ld c,0                   ; square
+KSS_LOOP:
+    ld a,c
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    or a
+    jp z,KSS_NX
+    ld b,a
+    ld a,c
+    and 7
+    ld e,a                   ; file
+    ld a,c
+    rrca
+    rrca
+    rrca
+    and 7
+    ld d,a                   ; row
+    ld a,b
+    cp 1
+    jr z,KSS_WP
+    cp 9
+    jr z,KSS_BP
+    and 7
+    cp 3
+    jr z,KSS_BI
+    cp 4
+    jr z,KSS_RK
+    cp 2
+    jr z,KSS_KN
+    cp 5
+    jr nz,KSS_NX
+    ld a,9
+    jr KSS_MAT
+KSS_KN:
+    ld a,3
+    jr KSS_MAT
+KSS_BI:
+    bit 3,b
+    ld hl,KV_KWB
+    jr z,KSS_BI2
+    ld hl,KV_KBB
+KSS_BI2:
+    inc (hl)
+    ld a,3
+    jr KSS_MAT
+KSS_RK:
+    ld a,e
+    call KBitOf
+    bit 3,b
+    ld hl,KV_KWR
+    jr z,KSS_RK2
+    ld hl,KV_KBR
+KSS_RK2:
+    or (hl)
+    ld (hl),a
+    ld a,5
+KSS_MAT:
+    bit 3,b
+    ld hl,KV_KWMat
+    jr z,KSS_M2
+    ld hl,KV_KBMat
+KSS_M2:
+    add a,(hl)
+    ld (hl),a
+    jr KSS_NX
+KSS_WP:
+    ld hl,KSCRATCH
+    ld a,l
+    add a,e
+    ld l,a
+    jr nc,KSS_W1
+    inc h
+KSS_W1:
+    ld a,d
+    cp (hl)
+    jr nc,KSS_W2
+    ld (hl),a
+KSS_W2:
+    ld a,l
+    add a,8
+    ld l,a
+    jr nc,KSS_W3
+    inc h
+KSS_W3:
+    ld a,d
+    cp (hl)
+    jr c,KSS_NX
+    ld (hl),a
+    jr KSS_NX
+KSS_BP:
+    ld hl,KSCRATCH+16
+    ld a,l
+    add a,e
+    ld l,a
+    jr nc,KSS_B1
+    inc h
+KSS_B1:
+    ld a,d
+    cp (hl)
+    jr nc,KSS_B2
+    ld (hl),a
+KSS_B2:
+    ld a,l
+    add a,8
+    ld l,a
+    jr nc,KSS_B3
+    inc h
+KSS_B3:
+    ld a,d
+    cp (hl)
+    jr c,KSS_NX
+    ld (hl),a
+KSS_NX:
+    inc c
+    ld a,c
+    cp 64
+    jp nz,KSS_LOOP
+    ; ---- per-file pawn terms
+    ld c,0                   ; file
+KSF_LOOP:
+    ; white pawns on file c?
+    ld a,c
+    call KFT                 ; HL = &wMin[c]
+    ld a,(hl)
+    cp 7
+    jp z,KSF_BLACK
+    ld d,a                   ; D = front row (most advanced)
+    ; doubled
+    ld a,l
+    add a,8
+    ld l,a
+    jr nc,KSF_D0
+    inc h
+KSF_D0:
+    ld a,(hl)
+    cp d
+    jr z,KSF_D1
+    ld hl,-12
+    call KAddT
+KSF_D1:
+    ; isolated: neighbours have no white pawn
+    ld a,c
+    call KNbrW               ; CF if neighbour has white pawn
+    jr c,KSF_I1
+    ld hl,-12
+    call KAddT
+KSF_I1:
+    ; passed: no black pawn with row < d on files c-1..c+1  (bMin < d)
+    ld a,c
+    ld b,d
+    call KPassW
+    jr nc,KSF_BLACK
+    ; bonus by advancement: adv = 6 - row
+    ld a,6
+    sub d
+    ld e,a
+    call KPassBonus          ; HL = bonus for adv E
+    call KAddT
+    ld a,(KV_KEg)
+    or a
+    jr z,KSF_BLACK
+    ; stop square (row-1)*8+file ; king distances
+    ld a,d
+    dec a
+    add a,a
+    add a,a
+    add a,a
+    add a,c
+    push bc
+    push de
+    ld b,a
+    ld a,(KV_KKing+1)
+    call KDist               ; A = dist(black king, stop)
+    ld l,a
+    ld a,(KV_KKing)
+    push hl
+    call KDist
+    pop hl
+    ld h,a                   ; H = white king dist
+    pop de
+    push de
+    ld a,l
+    sub h                    ; positive good for white
+    ld b,e
+    inc b                    ; weight adv+1
+    call KMulS               ; HL = A*B signed (small) * 4
+    call KAddT
+    pop de
+    pop bc
+    ; unstoppable in pawn ending: black has no pieces
+    ld a,(KV_KBMat)
+    or a
+    jr nz,KSF_BLACK
+    push bc
+    push de
+    ld b,c                   ; promotion square = file (row 0)
+    ld a,(KV_KKing+1)
+    call KDist
+    ld b,a                   ; black king dist to queening square
+    ld a,d
+    cp 6
+    jr nz,KSF_U1
+    dec a
+KSF_U1:
+    inc a                    ; steps+1 (side-to-move independent margin)
+    cp b
+    pop de
+    pop bc
+    jr nc,KSF_BLACK
+    ld hl,500
+    call KAddT
+KSF_BLACK:
+    ld a,c
+    call KFT
+    ld a,l
+    add a,24
+    ld l,a
+    jr nc,KSF_K0
+    inc h
+KSF_K0:
+    ld a,(hl)                ; bMax (most advanced black)
+    or a
+    jp z,KSF_NEXT
+    ld d,a
+    ld a,l
+    sub 8
+    ld l,a
+    jr nc,KSF_K1
+    dec h
+KSF_K1:
+    ld a,(hl)                ; bMin
+    cp d
+    jr z,KSF_K2
+    ld hl,12
+    call KAddT
+KSF_K2:
+    ld a,c
+    call KNbrB
+    jr c,KSF_K3
+    ld hl,12
+    call KAddT
+KSF_K3:
+    ld a,c
+    ld b,d
+    call KPassB
+    jr nc,KSF_NEXT
+    ld a,d
+    sub 1
+    ld e,a                   ; adv = row-1
+    call KPassBonus
+    call KNEGHL
+    call KAddT
+    ld a,(KV_KEg)
+    or a
+    jr z,KSF_NEXT
+    ld a,d
+    inc a
+    add a,a
+    add a,a
+    add a,a
+    add a,c
+    push bc
+    push de
+    ld b,a
+    ld a,(KV_KKing)
+    call KDist               ; white king dist to stop
+    ld l,a
+    ld a,(KV_KKing+1)
+    push hl
+    call KDist
+    pop hl
+    ld h,a
+    pop de
+    push de
+    ld a,h
+    sub l                    ; black-king - white-king (negative good for black)
+    ld b,e
+    inc b
+    call KMulS
+    call KAddT
+    pop de
+    pop bc
+    ld a,(KV_KWMat)
+    or a
+    jr nz,KSF_NEXT
+    push bc
+    push de
+    ld a,c
+    add a,56
+    ld b,a
+    ld a,(KV_KKing)
+    call KDist
+    ld b,a
+    ld a,7
+    sub d                    ; steps
+    ld e,a
+    ld a,d
+    cp 1
+    ld a,e
+    jr nz,KSF_U2
+    dec a
+KSF_U2:
+    inc a
+    cp b
+    pop de
+    pop bc
+    jr nc,KSF_NEXT
+    ld hl,-500
+    call KAddT
+KSF_NEXT:
+    inc c
+    ld a,c
+    cp 8
+    jp nz,KSF_LOOP
+    ; ---- rooks on open / half-open files
+    ld a,(KV_KWR)
+    ld c,0
+KSR_W:
+    srl a
+    push af
+    jr nc,KSR_WN
+    push bc
+    ld a,c
+    call KFT
+    ld a,(hl)
+    cp 7
+    jr nz,KSR_WC             ; own pawn: closed
+    ld a,l
+    add a,24
+    ld l,a
+    jr nc,KSR_W1
+    inc h
+KSR_W1:
+    ld a,(hl)
+    or a
+    ld hl,10
+    jr nz,KSR_W2
+    ld hl,20
+KSR_W2:
+    call KAddT
+KSR_WC:
+    pop bc
+KSR_WN:
+    pop af
+    inc c
+    or a
+    jr nz,KSR_W
+    ld a,(KV_KBR)
+    ld c,0
+KSR_B:
+    srl a
+    push af
+    jr nc,KSR_BN
+    push bc
+    ld a,c
+    call KFT
+    ld a,l
+    add a,24
+    ld l,a
+    jr nc,KSR_B0
+    inc h
+KSR_B0:
+    ld a,(hl)
+    or a
+    jr nz,KSR_BC
+    ld a,l
+    sub 24
+    ld l,a
+    jr nc,KSR_B1
+    dec h
+KSR_B1:
+    ld a,(hl)
+    cp 7
+    ld hl,-10
+    jr nz,KSR_B2
+    ld hl,-20
+KSR_B2:
+    call KAddT
+KSR_BC:
+    pop bc
+KSR_BN:
+    pop af
+    inc c
+    or a
+    jr nz,KSR_B
+    ; ---- bishop pair
+    ld a,(KV_KWB)
+    cp 2
+    jr c,KSB1
+    ld hl,30
+    call KAddT
+KSB1:
+    ld a,(KV_KBB)
+    cp 2
+    jr c,KSB2
+    ld hl,-30
+    call KAddT
+KSB2:
+    ; ---- king shelter (middlegame)
+    ld a,(KV_KEg)
+    or a
+    jr nz,KSK_DONE
+    call KShelter
+KSK_DONE:
+    ; ---- mop-up: lone king pushed to edge
+    ld a,(KV_KEg)
+    or a
+    jr z,KSM_DONE
+    call KMopUp
+KSM_DONE:
+    ld hl,(KV_KTmpW)
+    ret
+
+KAddT:                       ; KTmpW += HL
+    push de
+    ex de,hl
+    ld hl,(KV_KTmpW)
+    add hl,de
+    ld (KV_KTmpW),hl
+    pop de
+    ret
+
+KFT:                         ; HL = KCapScratch + A
+    ld hl,KSCRATCH
+    add a,l
+    ld l,a
+    ret nc
+    inc h
+    ret
+
+KBitOf:                      ; A=0..7 -> bit mask
+    push bc
+    ld b,a
+    inc b
+    ld a,$80
+KBO1:
+    rlca
+    djnz KBO1
+    pop bc
+    ret
+
+; CF=1 if a neighbour file of A has a pawn of that colour. Preserves BC, DE.
+KNbrW:
+    push de
+    ld e,0
+    jr KNbr
+KNbrB:
+    push de
+    ld e,16
+KNbr:
+    ld d,a
+    or a
+    jr z,KNB1
+    dec a
+    add a,e
+    call KFT
+    ld a,(hl)
+    cp 7
+    jr c,KNB_X
+KNB1:
+    ld a,d
+    cp 7
+    jr z,KNB_NO
+    inc a
+    add a,e
+    call KFT
+    ld a,(hl)
+    cp 7
+    jr KNB_X
+KNB_NO:
+    or a
+KNB_X:
+    pop de
+    ret
+
+; white pawn file A row B passed? CF=1 if passed. Preserves BC, DE.
+KPassW:
+    push bc
+    push de
+    ld d,a
+    ld c,3
+    or a
+    jr z,KPW0
+    dec d
+    jr KPWL
+KPW0:
+    dec c
+KPWL:
+    ld a,d
+    cp 8
+    jr nc,KPWN
+    add a,16
+    call KFT
+    ld a,(hl)
+    cp b
+    jr c,KPW_BLK
+KPWN:
+    inc d
+    dec c
+    jr nz,KPWL
+    pop de
+    pop bc
+    scf
+    ret
+KPW_BLK:
+    pop de
+    pop bc
+    or a
+    ret
+
+; black pawn file A row B passed? (no white pawn with wMax > B on adj files)
+KPassB:
+    push bc
+    push de
+    ld d,a
+    ld c,3
+    or a
+    jr z,KPB0
+    dec d
+    jr KPBL
+KPB0:
+    dec c
+KPBL:
+    ld a,d
+    cp 8
+    jr nc,KPBN
+    add a,8
+    call KFT
+    ld a,(hl)
+    cp b
+    jr z,KPBN
+    jr nc,KPW_BLK
+KPBN:
+    inc d
+    dec c
+    jr nz,KPBL
+    pop de
+    pop bc
+    scf
+    ret
+
+; HL = passed pawn bonus for advancement E (0..5)
+KPassBonus:
+    push de
+    ld d,0
+    ld hl,KPassMG
+    ld a,(KV_KEg)
+    or a
+    jr z,KPBN1
+    ld hl,KPassEG
+KPBN1:
+    add hl,de
+    ld l,(hl)
+    ld h,0
+    pop de
+    ret
+
+; A = chebyshev distance between squares A and B
+KDist:
+    push bc
+    push de
+    ld c,a
+    and 7
+    ld d,a
+    ld a,b
+    and 7
+    sub d
+    call KABS
+    ld e,a
+    ld a,c
+    and $38
+    ld d,a
+    ld a,b
+    and $38
+    sub d
+    call KABS
+    rrca
+    rrca
+    rrca
+    cp e
+    jr nc,KDI1
+    ld a,e
+KDI1:
+    pop de
+    pop bc
+    ret
+
+; HL = A(signed) * B * 4
+KMulS:
+    ld l,a
+    rlca
+    sbc a,a
+    ld h,a
+    ld d,h
+    ld e,l
+    ld hl,0
+KMS1:
+    add hl,de
+    djnz KMS1
+    add hl,hl
+    add hl,hl
+    ret
+
+; king shelter terms, both sides (middlegame)
+KShelter:
+    ld a,(KV_KKing)
+    ld b,a
+    and $38
+    cp $30
+    jr c,KSH_B               ; white king not on its two back rows
+    ld a,b
+    rrca
+    rrca
+    rrca
+    and 7
+    ld d,a                   ; king row
+    ld a,b
+    and 7
+    ld e,a
+    ld b,0                   ; direction: white
+    call KShield3
+KSH_B:
+    ld a,(KV_KKing+1)
+    ld b,a
+    and $38
+    cp $10
+    ret nc
+    ld a,b
+    rrca
+    rrca
+    rrca
+    and 7
+    ld d,a
+    ld a,b
+    and 7
+    ld e,a
+    ld b,1
+; D=king row, E=king file, B=0 white / 1 black
+KShield3:
+    ld c,3
+    ld a,e
+    or a
+    jr z,KSH3A
+    dec e
+    jr KSH3L
+KSH3A:
+    dec c
+KSH3L:
+    ld a,e
+    cp 8
+    jr nc,KSH3N
+    push bc
+    push de
+    ld a,b
+    or a
+    jr nz,KSH3BL
+    ; white: least advanced white pawn on file = wMax
+    ld a,e
+    add a,8
+    call KFT
+    ld a,(hl)
+    ld c,a
+    ld a,d
+    dec a
+    cp c
+    ld hl,10
+    jr z,KSH3S
+    dec a
+    cp c
+    ld hl,5
+    jr z,KSH3S
+    ld a,c
+    or a
+    ld hl,0
+    jr nz,KSH3S
+    ld hl,-15
+    jr KSH3S
+KSH3BL:
+    ld a,e
+    add a,16
+    call KFT
+    ld a,(hl)                ; bMin = least advanced black pawn
+    ld c,a
+    ld a,d
+    inc a
+    cp c
+    ld hl,-10
+    jr z,KSH3S
+    inc a
+    cp c
+    ld hl,-5
+    jr z,KSH3S
+    ld a,c
+    cp 7
+    ld hl,0
+    jr nz,KSH3S
+    ld hl,15
+KSH3S:
+    call KAddT
+    pop de
+    pop bc
+KSH3N:
+    inc e
+    dec c
+    jr nz,KSH3L
+    ret
+
+; mop-up for won endings: loser has no pawns and is >= 4 units down
+KMopUp:
+    ld a,(KV_KWMat)
+    ld b,a
+    ld a,(KV_KBMat)
+    ld c,a
+    ld a,b
+    sub c
+    jr c,KMU_BW
+    cp 4
+    ret c
+    call KAnyBlackPawn
+    ret c
+    ld a,(KV_KKing+1)
+    ld e,a
+    ld a,(KV_KKing)
+    call KMUScore
+    jp KAddT
+KMU_BW:
+    neg
+    cp 4
+    ret c
+    call KAnyWhitePawn
+    ret c
+    ld a,(KV_KKing)
+    ld e,a
+    ld a,(KV_KKing+1)
+    call KMUScore
+    call KNEGHL
+    jp KAddT
+KMUScore:                    ; A=winner king, E=loser king -> HL
+    ld b,a
+    ld d,0
+    ld hl,KCenter
+    add hl,de
+    ld a,(hl)
+    add a,a
+    add a,a
+    add a,a
+    ld c,a
+    ld a,e
+    call KDist
+    ld b,a
+    ld a,7
+    sub b
+    add a,a
+    add a,a
+    add a,c
+    ld l,a
+    ld h,0
+    ret
+
+KAnyBlackPawn:               ; CF=1 if black has a pawn
+    ld hl,KSCRATCH+24
+    jr KAnyP
+KAnyWhitePawn:
+    ld hl,KSCRATCH+8
+KAnyP:
+    ld b,8
+KAP1:
+    ld a,(hl)
+    or a
+    jr nz,KAP_Y
+    inc hl
+    djnz KAP1
+    or a
+    ret
+KAP_Y:
+    scf
+    ret
+
+; ---------------------------------------------------------------- frame tick
+KTick:
+    push hl
+    push de
+    ld hl,(KV_KFrames)
+    inc hl
+    ld (KV_KFrames),hl
+    ld de,(AMY_UVAR_KHard)
+    or a
+    sbc hl,de
+    jr c,KTK_X
+    ld a,1
+    ld (AMY_UVAR_KAbort),a
+KTK_X:
+    pop de
+    pop hl
+    ret
+
+; ---------------------------------------------------------------- KSearch
+KS_GUARD:
+    ld hl,(AMY_UVAR_KGuardHits)
+    inc hl
+    ld (AMY_UVAR_KGuardHits),hl
+    ; out of stack: return static (incremental) eval
+    ld hl,(KV_KScore)
+    ld a,(KV_KSide)
+    or a
+    call nz,KNEGHL
+    ret
+
+KSearch:
+    ld hl,-(KFS+KNEED)
+    add hl,sp
+    ld de,(KV_KSpFloor)
+    or a
+    sbc hl,de
+    jr c,KS_GUARD
+    push ix
+    ld ix,-KFS
+    add ix,sp
+    ld sp,ix
+    ld hl,(KV_KArgA)
+    ld (ix+F_AL),l
+    ld (ix+F_AL+1),h
+    ld hl,(KV_KArgB)
+    ld (ix+F_BE),l
+    ld (ix+F_BE+1),h
+    ld a,(KV_KArgD)
+    ld (ix+F_DP),a
+    xor a
+    ld (ix+F_LG),a
+    ld (ix+F_CT),a
+    ld (ix+F_CN),a
+    ld (ix+F_CB),a
+    ld hl,(KV_KStrIn)
+    ld (ix+F_ST),l
+    ld (ix+F_ST+1),h
+    ld a,(KV_KStrInV)
+    ld b,a
+    ld a,(KV_KArgN)
+    or b
+    ld (ix+F_FL),a
+    ld hl,(AMY_UVAR_KNodes)
+    inc hl
+    ld (AMY_UVAR_KNodes),hl
+    in a,($BF)
+    rlca
+    call c,KTick
+KS_NOTICK:
+    ld a,(AMY_UVAR_KAbort)
+    or a
+    jp nz,KS_RET0
+    ld a,(KV_KPly)
+    cp KMAXPLY
+    jp nc,KS_RETEVAL
+    call KInCheck
+    jr nc,KS_NOCHK
+    set 0,(ix+F_FL)
+    ld a,(KV_KPly)
+    ld b,a
+    ld a,(KV_KExtMax)
+    cp b
+    jr c,KS_NOCHK
+    inc (ix+F_DP)
+KS_NOCHK:
+    ld a,(ix+F_DP)
+    dec a
+    jp p,KS_MAIN
+    ; ---------------- quiescence node
+    set 3,(ix+F_FL)
+    bit 0,(ix+F_FL)
+    jp nz,KS_STAGES
+    bit 1,(ix+F_FL)
+    jr nz,KS_QFULL
+    ld a,(KV_KEg)
+    or a
+    jr nz,KS_QFULL
+    ; lazy: incremental score only, margin KLAZY
+    ld hl,(KV_KScore)
+    ld a,(KV_KSide)
+    or a
+    call nz,KNEGHL
+    ld de,KTEMPO-KLAZY
+    add hl,de
+    ld e,(ix+F_BE)
+    ld d,(ix+F_BE+1)
+    call KSCMP
+    jp nc,KS_RETBETA
+    ld de,KLAZY*2
+    add hl,de
+    ld e,(ix+F_AL)
+    ld d,(ix+F_AL+1)
+    call KSCMP
+    jr nc,KS_QFULL
+    jr z,KS_QFULL
+    ld (ix+F_SP),l
+    ld (ix+F_SP+1),h
+    jp KS_STAGES
+KS_QFULL:
+    call KEval
+    ld (ix+F_SP),l
+    ld (ix+F_SP+1),h
+    ld e,(ix+F_BE)
+    ld d,(ix+F_BE+1)
+    call KSCMP
+    jp nc,KS_RETBETA
+    ld e,(ix+F_AL)
+    ld d,(ix+F_AL+1)
+    call KSCMP
+    jp c,KS_STAGES
+    jp z,KS_STAGES
+    ld (ix+F_AL),l
+    ld (ix+F_AL+1),h
+    jp KS_STAGES
+KS_MAIN:
+    ; ---------------- null move
+    bit 0,(ix+F_FL)
+    jr nz,KS_NONULL
+    bit 4,(ix+F_FL)
+    jr nz,KS_NONULL
+    ld a,(KV_KPly)
+    or a
+    jr z,KS_NONULL
+    ld a,(ix+F_DP)
+    cp 3
+    jr c,KS_NONULL
+    call KHasPieces
+    jr nc,KS_NONULL
+    call KEvalLazy
+    ld e,(ix+F_BE)
+    ld d,(ix+F_BE+1)
+    call KSCMP
+    jr c,KS_NONULL
+    ; make null
+    ld a,(KV_KEp)
+    push af
+    ld a,255
+    ld (KV_KEp),a
+    ld a,(KV_KSide)
+    xor 8
+    ld (KV_KSide),a
+    ld l,(ix+F_BE)
+    ld h,(ix+F_BE+1)
+    call KNEGHL
+    ld (KV_KArgA),hl
+    inc hl
+    ld (KV_KArgB),hl
+    ld a,(ix+F_DP)
+    sub 3
+    ld (KV_KArgD),a
+    ld l,(ix+F_ST)
+    ld h,(ix+F_ST+1)
+    ld (KV_KStrIn),hl
+    ld a,(ix+F_FL)
+    and 2
+    ld (KV_KStrInV),a
+    ld a,16
+    ld (KV_KArgN),a
+    ld hl,KV_KPly
+    inc (hl)
+    call KSearch
+    ld a,(KV_KPly)
+    dec a
+    ld (KV_KPly),a
+    ld a,(KV_KSide)
+    xor 8
+    ld (KV_KSide),a
+    pop af
+    ld (KV_KEp),a
+    call KNEGHL
+    ld a,(AMY_UVAR_KAbort)
+    or a
+    jp nz,KS_RET0
+    ld e,(ix+F_BE)
+    ld d,(ix+F_BE+1)
+    call KSCMP
+    jp nc,KS_RETBETA
+KS_NONULL:
+    ; ---------------- futility (depth 1, not at root)
+    ld a,(KV_KPly)
+    or a
+    jr z,KS_STAGES
+    ld a,(ix+F_DP)
+    cp 1
+    jr nz,KS_STAGES
+    bit 0,(ix+F_FL)
+    jr nz,KS_STAGES
+    call KEvalLazy
+    ld de,KFUTM
+    add hl,de
+    ld e,(ix+F_AL)
+    ld d,(ix+F_AL+1)
+    call KSCMP
+    jr nc,KS_STAGES
+    set 2,(ix+F_FL)
+KS_STAGES:
+    ; ---------------- stage A: root best move
+    ld a,(KV_KPly)
+    or a
+    jr nz,KS_CAPS
+    ld a,(AMY_UVAR_KRootF)
+    cp 64
+    jr nc,KS_CAPS
+    ld (ix+F_MF),a
+    ld a,(AMY_UVAR_KRootT)
+    ld (ix+F_MT),a
+    call KTry
+    jp c,KS_CUT
+KS_CAPS:
+    ; ---------------- stage B: tactical moves (MVV-LVA)
+    xor a
+    ld (KV_KGenMode),a
+    call KGen
+    ld a,(KV_KCapTop)
+    or a
+    jr z,KS_CAPDONE
+    ; room = SP - floor - KNEED ; truncate list if necessary
+    push af
+    ld hl,-KNEED
+    add hl,sp
+    ld de,(KV_KSpFloor)
+    or a
+    sbc hl,de
+    pop bc                   ; B = bytes wanted
+    jr c,KS_CAPDONE
+    ld a,h
+    or a
+    ld a,b
+    jr nz,KS_CAPOK
+    ld a,l
+    and $FE
+    cp b
+    jr c,KS_CAPTR
+    ld a,b
+    jr KS_CAPOK
+KS_CAPTR:
+    or a
+    jr z,KS_CAPDONE
+KS_CAPOK:
+    ; copy scratch list below the frame (onto the stack)
+    ld c,a
+    ld b,0
+    srl a
+    ld (ix+F_CB),a
+    ld (ix+F_CN),a
+    ld hl,0
+    add hl,sp
+    or a
+    sbc hl,bc
+    ld sp,hl
+    ex de,hl
+    ld hl,KSCRATCH
+    ldir
+KS_CAPLOOP:
+    ld a,(ix+F_CN)
+    or a
+    jr z,KS_CAPDONE
+    call KPickCap
+    bit 3,(ix+F_FL)
+    jr z,KS_CAPTRY
+    bit 0,(ix+F_FL)
+    jr nz,KS_CAPTRY
+    call KQPrune
+    jr c,KS_CAPLOOP
+KS_CAPTRY:
+    call KIsDup
+    jr c,KS_CAPLOOP
+    call KTry
+    jp c,KS_CUT
+    jr KS_CAPLOOP
+KS_CAPDONE:
+    bit 3,(ix+F_FL)
+    jr z,KS_KILL
+    bit 0,(ix+F_FL)
+    jr z,KS_END
+    jr KS_QUIET
+KS_KILL:
+    bit 2,(ix+F_FL)
+    jr nz,KS_END
+    set 6,(ix+F_FL)
+    ld a,(KV_KPly)
+    cp 8
+    jr nc,KS_QUIET
+    call KKillPtr
+    push hl
+    ld d,(hl)
+    inc hl
+    ld e,(hl)
+    call KTryKiller
+    pop hl
+    jp c,KS_CUT
+    inc hl
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld e,(hl)
+    call KTryKiller
+    jp c,KS_CUT
+KS_QUIET:
+    set 6,(ix+F_FL)
+    ld a,1
+    ld (KV_KGenMode),a
+    call KGen
+    jr c,KS_CUT
+KS_END:
+    ld a,(KV_KPly)
+    or a
+    jr nz,KS_END2
+    ld a,(ix+F_LG)
+    ld (AMY_UVAR_KRootLegal),a
+KS_END2:
+    ld a,(ix+F_LG)
+    or a
+    jr nz,KS_RETALPHA
+    bit 0,(ix+F_FL)
+    jr nz,KS_MATED
+    bit 3,(ix+F_FL)
+    jr nz,KS_RETALPHA
+    bit 2,(ix+F_FL)
+    jr nz,KS_RETALPHA
+    ld hl,0
+    jr KS_EXIT
+KS_MATED:
+    ld a,(KV_KPly)
+    ld e,a
+    ld d,0
+    ld hl,-KMATE
+    add hl,de
+    jr KS_EXIT
+KS_CUT:
+KS_RETBETA:
+    ld l,(ix+F_BE)
+    ld h,(ix+F_BE+1)
+    jr KS_EXIT
+KS_RETALPHA:
+    ld l,(ix+F_AL)
+    ld h,(ix+F_AL+1)
+    jr KS_EXIT
+KS_RETEVAL:
+    call KEval
+    jr KS_EXIT
+KS_RET0:
+    ld hl,0
+KS_EXIT:
+    ld sp,ix
+    ex de,hl
+    ld hl,KFS
+    add hl,sp
+    ld sp,hl
+    ex de,hl
+    pop ix
+    ret
+
+; D=from E=to killer candidate
+KTryKiller:
+    ld a,d
+    cp 64
+    ret nc
+    push de
+    call KVerify
+    pop de
+    ret nc
+    ld (ix+F_MF),d
+    ld (ix+F_MT),e
+    ; root duplicate?
+    ld a,(KV_KPly)
+    or a
+    jr nz,KTK_GO
+    ld a,(AMY_UVAR_KRootF)
+    cp d
+    jr nz,KTK_GO
+    ld a,(AMY_UVAR_KRootT)
+    cp e
+    ret z
+KTK_GO:
+    jp KTry
+
+; CF=1 if side to move has a non-pawn piece (null move allowed)
+KHasPieces:
+    ld hl,AMY_UVAR_Board
+    ld b,64
+    ld a,(KV_KSide)
+    ld c,a
+KHP1:
+    ld a,(hl)
+    or a
+    jr z,KHP2
+    ld d,a
+    and 8
+    cp c
+    jr nz,KHP2
+    ld a,d
+    and 7
+    cp 2
+    jr c,KHP2
+    cp 6
+    jr c,KHP_Y
+KHP2:
+    inc hl
+    djnz KHP1
+    or a
+    ret
+KHP_Y:
+    scf
+    ret
+
+; ---------------------------------------------------------------- legal scan
+; Counts legal moves for Side (KRootLegal), records the first one (KFirstF/T)
+; and whether KMatchF/KMatchT is legal (KMatchOK). Used by the game rules.
+KT_SCAN:
+    inc (ix+F_LG)
+    ld a,(AMY_UVAR_KFirstF)
+    cp 64
+    jr c,KTS1
+    ld a,(ix+F_MF)
+    ld (AMY_UVAR_KFirstF),a
+    ld a,(ix+F_MT)
+    ld (AMY_UVAR_KFirstT),a
+KTS1:
+    ld a,(AMY_UVAR_KMatchF)
+    cp (ix+F_MF)
+    jr nz,KTS2
+    ld a,(AMY_UVAR_KMatchT)
+    cp (ix+F_MT)
+    jr nz,KTS2
+    ld a,1
+    ld (AMY_UVAR_KMatchOK),a
+KTS2:
+    call KUnmake
+    or a
+    ret
+
+KLegalScan:
+    push ix
+    push iy
+    ld a,(AMY_UVAR_Side)
+    or a
+    jr z,KLS_S
+    ld a,8
+KLS_S:
+    ld (KV_KSide),a
+    ld a,(AMY_UVAR_Castling)
+    ld (KV_KCast),a
+    ld a,(AMY_UVAR_EnPassant)
+    ld (KV_KEp),a
+    call KSetup
+    ld a,255
+    ld (AMY_UVAR_KFirstF),a
+    ld (AMY_UVAR_KRootF),a
+    ld (AMY_UVAR_KExF),a
+    ld hl,KKILLT
+    ld (hl),a
+    inc hl
+    inc hl
+    ld (hl),a
+    xor a
+    ld (AMY_UVAR_KMatchOK),a
+    ld (KV_KPly),a
+    inc a
+    ld (KV_KMode),a
+    ld ix,-KFS
+    add ix,sp
+    ld sp,ix
+    xor a
+    ld (ix+F_FL),a
+    ld (ix+F_LG),a
+    call KInCheck
+    jr nc,KLS_NC
+    set 0,(ix+F_FL)
+KLS_NC:
+    xor a
+    ld (KV_KGenMode),a
+    call KGen
+    ld a,(KV_KCapTop)
+    srl a
+    jr z,KLS_Q
+    ld b,a
+    ld hl,KSCRATCH
+KLS_CL:
+    ld a,(hl)
+    ld (ix+F_MF),a
+    inc hl
+    ld a,(hl)
+    ld (ix+F_MT),a
+    inc hl
+    push bc
+    push hl
+    call KTry
+    pop hl
+    pop bc
+    djnz KLS_CL
+KLS_Q:
+    set 6,(ix+F_FL)
+    ld a,1
+    ld (KV_KGenMode),a
+    call KGen
+    ld a,(ix+F_LG)
+    ld (AMY_UVAR_KRootLegal),a
+    xor a
+    ld (KV_KMode),a
+    ld sp,ix
+    ld hl,KFS
+    add hl,sp
+    ld sp,hl
+    pop iy
+    pop ix
+    ret
+
+; Amy wrapper: AttackSquare attacked by AttackSide? -> AttackResult
+KAmyAttacked:
+    push ix
+    push iy
+    ld a,(AMY_UVAR_AttackSquare)
+    ld e,a
+    ld a,(AMY_UVAR_AttackSide)
+    add a,a
+    add a,a
+    add a,a
+    ld c,a
+    call KAttacked
+    ld a,0
+    adc a,0
+    ld (AMY_UVAR_AttackResult),a
+    pop iy
+    pop ix
+    ret
+
+; ---------------------------------------------------------------- root driver
+; In: Side, Castling, EnPassant, Board, KHard, KSoft, KMaxD, KExF/T, KBookF/T,
+; KRand, KNoise. Out: KRootF/KRootT, KBestScore, KDepthDone, KNodes, KFrames.
+KThink:
+    ; disable VDP interrupt (NMI) for the search
+    ld a,($73C4)
+    and $DF
+    ld ($73C4),a
+    ld c,a
+    ld b,1
+    call WRITE_REGISTER
+    in a,($BF)
+    ; stack floor: last Amy variable + margin
+    ld hl,AMY_UVAR_KRamEnd+KFLOORM
+    ld (KV_KSpFloor),hl
+    xor a
+    ld (KV_KMode),a
+    ld (AMY_UVAR_KAbort),a
+    ld (KV_KPly),a
+    ld (AMY_UVAR_KDepthDone),a
+    ld hl,0
+    ld (AMY_UVAR_KNodes),hl
+    ld (KV_KFrames),hl
+    ld (AMY_UVAR_KGuardHits),hl
+    ld a,255
+    ld (AMY_UVAR_KRootF),a
+    ld (AMY_UVAR_KRootT),a
+    ld hl,KKILLT
+    ld b,32
+KTH_CK:
+    ld (hl),a
+    inc hl
+    djnz KTH_CK
+    ld a,(AMY_UVAR_Side)
+    or a
+    jr z,KTH_S
+    ld a,8
+KTH_S:
+    ld (KV_KSide),a
+    ld a,(AMY_UVAR_Castling)
+    ld (KV_KCast),a
+    ld a,(AMY_UVAR_EnPassant)
+    ld (KV_KEp),a
+    call KSetup
+    ld a,1
+    ld (KV_KCurD),a
+KTH_ITER:
+    ld hl,-KINF
+    ld (KV_KArgA),hl
+    ld hl,KINF
+    ld (KV_KArgB),hl
+    ld a,(KV_KCurD)
+    ld (KV_KArgD),a
+    add a,a
+    add a,2
+    ld (KV_KExtMax),a
+    xor a
+    ld (KV_KArgN),a
+    ld (KV_KStrInV),a
+    ld (KV_KPly),a
+    call KSearch
+    ld a,(AMY_UVAR_KAbort)
+    or a
+    jr nz,KTH_DONE
+    ld a,(KV_KCurD)
+    ld (AMY_UVAR_KDepthDone),a
+    call KProgress
+    ; mate found?
+    ld hl,(AMY_UVAR_KBestScore)
+    ld a,h
+    or a
+    jp p,KTH_POS
+    call KNEGHL
+KTH_POS:
+    ld de,KMATE-100
+    or a
+    sbc hl,de
+    jr nc,KTH_DONE
+    ; only one legal move: stop
+    ; soft time
+    ld hl,(KV_KFrames)
+    ld de,(AMY_UVAR_KSoft)
+    or a
+    sbc hl,de
+    jr nc,KTH_DONE
+    ld a,(KV_KCurD)
+    ld b,a
+    ld a,(AMY_UVAR_KMaxD)
+    cp b
+    jr z,KTH_DONE
+    jr c,KTH_DONE
+    ld a,b
+    inc a
+    ld (KV_KCurD),a
+    jr KTH_ITER
+KTH_DONE:
+    ; re-enable NMI, account the frames we consumed
+    ld hl,(AMY_FRAME_COUNTER)
+    ld de,(KV_KFrames)
+    add hl,de
+    ld (AMY_FRAME_COUNTER),hl
+    ld a,($73C4)
+    or $20
+    ld ($73C4),a
+    ld c,a
+    ld b,1
+    call WRITE_REGISTER
+    in a,($BF)
+    ret
+
+; compute KScore, KKing, KEg, KPstBase from the board
+KSetup:
+    ; phase: non-pawn material of both sides
+    ld hl,0
+    ld c,0
+KSU1:
+    ld a,c
+    add a,KBLO
+    ld e,a
+    ld d,KBHI
+    ld a,(de)
+    and 7
+    cp 2
+    jr c,KSU2
+    cp 6
+    jr nc,KSU2
+    push hl
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,KMat
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    pop hl
+    add hl,de
+KSU2:
+    inc c
+    ld a,c
+    cp 64
+    jr nz,KSU1
+    ld de,KEGMAT+1
+    or a
+    sbc hl,de
+    ld a,0
+    ld hl,KVT_MG
+    jr nc,KSU3
+    inc a
+    ld hl,KVT_EG
+KSU3:
+    ld (KV_KEg),a
+    ld (KV_KPstBase),hl
+    ld hl,0
+    ld (KV_KScore),hl
+    ld c,0
+KSU4:
+    ld a,c
+    add a,KBLO
+    ld l,a
+    ld h,KBHI
+    ld a,(hl)
+    or a
+    jr z,KSU5
+    ld b,a
+    and 7
+    cp 6
+    jr nz,KSU6
+    ld a,b
+    and 8
+    rrca
+    rrca
+    rrca
+    ld e,a
+    ld d,0
+    ld hl,KV_KKing
+    add hl,de
+    ld (hl),c
+KSU6:
+    ld a,b
+    ld e,c
+    push bc
+    call KAddPiece
+    pop bc
+KSU5:
+    inc c
+    ld a,c
+    cp 64
+    jr nz,KSU4
+    ret
+
+; progress indicator hook (NMI is off: VRAM writes are safe here)
+KProgress:
+    ld a,(AMY_UVAR_KShowProgress)
+    or a
+    ret z
+    ld hl,(AMY_UVAR_KProgAddr)
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    ld a,(KV_KCurD)
+    ld b,a
+    ld a,(AMY_UVAR_KProgChar)
+    add a,b
+    nop
+    nop
+    out ($BE),a
+    ret
+
+KDirIdx:
+    db 4,0,5, 2,0,3, 6,1,7
+KDelta:
+    db -8,8,-1,1,-9,-7,7,9
+KPassMG:
+    db 5,10,20,35,60,90
+KPassEG:
+    db 10,20,35,60,100,150
+
+
+; ---- kernel tables (generated by tools/gentables.py) ----
+KSqTab:
+    db 0,7,0,7,0,0,0,7,160,0,7,1,6,0,0,1,6,224
+    db 0,7,2,5,0,0,2,5,240,0,7,3,4,0,0,3,4,240
+    db 0,7,4,3,0,0,4,3,240,0,7,5,2,0,0,5,2,240
+    db 0,7,6,1,0,0,6,1,208,0,7,7,0,0,0,7,0,80
+    db 1,6,0,7,0,1,0,6,168,1,6,1,6,1,1,1,6,232
+    db 1,6,2,5,1,1,2,5,252,1,6,3,4,1,1,3,4,252
+    db 1,6,4,3,1,1,4,3,252,1,6,5,2,1,1,5,2,252
+    db 1,6,6,1,1,1,6,1,212,1,6,7,0,1,0,6,0,84
+    db 2,5,0,7,0,2,0,5,170,2,5,1,6,1,2,1,5,235
+    db 2,5,2,5,2,2,2,5,255,2,5,3,4,2,2,3,4,255
+    db 2,5,4,3,2,2,4,3,255,2,5,5,2,2,2,5,2,255
+    db 2,5,6,1,2,1,5,1,215,2,5,7,0,2,0,5,0,85
+    db 3,4,0,7,0,3,0,4,170,3,4,1,6,1,3,1,4,235
+    db 3,4,2,5,2,3,2,4,255,3,4,3,4,3,3,3,4,255
+    db 3,4,4,3,3,3,4,3,255,3,4,5,2,3,2,4,2,255
+    db 3,4,6,1,3,1,4,1,215,3,4,7,0,3,0,4,0,85
+    db 4,3,0,7,0,4,0,3,170,4,3,1,6,1,4,1,3,235
+    db 4,3,2,5,2,4,2,3,255,4,3,3,4,3,4,3,3,255
+    db 4,3,4,3,4,3,3,3,255,4,3,5,2,4,2,3,2,255
+    db 4,3,6,1,4,1,3,1,215,4,3,7,0,4,0,3,0,85
+    db 5,2,0,7,0,5,0,2,170,5,2,1,6,1,5,1,2,235
+    db 5,2,2,5,2,5,2,2,255,5,2,3,4,3,4,2,2,255
+    db 5,2,4,3,4,3,2,2,255,5,2,5,2,5,2,2,2,255
+    db 5,2,6,1,5,1,2,1,215,5,2,7,0,5,0,2,0,85
+    db 6,1,0,7,0,6,0,1,42,6,1,1,6,1,6,1,1,43
+    db 6,1,2,5,2,5,1,1,63,6,1,3,4,3,4,1,1,63
+    db 6,1,4,3,4,3,1,1,63,6,1,5,2,5,2,1,1,63
+    db 6,1,6,1,6,1,1,1,23,6,1,7,0,6,0,1,0,21
+    db 7,0,0,7,0,7,0,0,10,7,0,1,6,1,6,0,0,11
+    db 7,0,2,5,2,5,0,0,15,7,0,3,4,3,4,0,0,15
+    db 7,0,4,3,4,3,0,0,15,7,0,5,2,5,2,0,0,15
+    db 7,0,6,1,6,1,0,0,7,7,0,7,0,7,0,0,0,5
+KVT_MG:
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 100,100,100,100,100,100,100,100,130,130,130,130,130,130,130,130
+    dw 110,110,120,130,130,120,110,110,105,105,110,125,125,110,105,105
+    dw 100,100,100,120,120,100,100,100,105,95,90,100,100,90,95,105
+    dw 105,110,110,80,80,110,110,105,100,100,100,100,100,100,100,100
+    dw 270,280,290,290,290,290,280,270,280,300,320,320,320,320,300,280
+    dw 290,320,330,335,335,330,320,290,290,325,335,340,340,335,325,290
+    dw 290,320,335,340,340,335,320,290,290,325,330,335,335,330,325,290
+    dw 280,300,320,325,325,320,300,280,270,280,290,290,290,290,280,270
+    dw 310,320,320,320,320,320,320,310,320,330,330,330,330,330,330,320
+    dw 320,330,335,340,340,335,330,320,320,335,335,340,340,335,335,320
+    dw 320,330,340,340,340,340,330,320,320,340,340,340,340,340,340,320
+    dw 320,335,330,330,330,330,335,320,310,320,320,320,320,320,320,310
+    dw 500,500,500,500,500,500,500,500,505,510,510,510,510,510,510,505
+    dw 495,500,500,500,500,500,500,495,495,500,500,500,500,500,500,495
+    dw 495,500,500,500,500,500,500,495,495,500,500,500,500,500,500,495
+    dw 495,500,500,500,500,500,500,495,500,500,500,505,505,500,500,500
+    dw 880,890,890,895,895,890,890,880,890,900,900,900,900,900,900,890
+    dw 890,900,905,905,905,905,900,890,895,900,905,905,905,905,900,895
+    dw 900,900,905,905,905,905,900,895,890,905,905,905,905,905,900,890
+    dw 890,900,905,900,900,900,900,890,880,890,890,895,895,890,890,880
+    dw -30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30
+    dw -30,-40,-40,-50,-50,-40,-40,-30,-30,-40,-40,-50,-50,-40,-40,-30
+    dw -20,-30,-30,-40,-40,-30,-30,-20,-10,-20,-20,-20,-20,-20,-20,-10
+    dw 20,20,0,0,0,0,20,20,20,30,10,0,0,10,30,20
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+KVT_EG:
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 100,100,100,100,100,100,100,100,140,140,140,140,140,140,140,140
+    dw 125,125,125,125,125,125,125,125,115,115,115,115,115,115,115,115
+    dw 108,108,108,108,108,108,108,108,104,104,104,104,104,104,104,104
+    dw 100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100
+    dw 270,280,290,290,290,290,280,270,280,300,320,320,320,320,300,280
+    dw 290,320,330,335,335,330,320,290,290,325,335,340,340,335,325,290
+    dw 290,320,335,340,340,335,320,290,290,325,330,335,335,330,325,290
+    dw 280,300,320,325,325,320,300,280,270,280,290,290,290,290,280,270
+    dw 310,320,320,320,320,320,320,310,320,330,330,330,330,330,330,320
+    dw 320,330,335,340,340,335,330,320,320,335,335,340,340,335,335,320
+    dw 320,330,340,340,340,340,330,320,320,340,340,340,340,340,340,320
+    dw 320,335,330,330,330,330,335,320,310,320,320,320,320,320,320,310
+    dw 500,500,500,500,500,500,500,500,505,510,510,510,510,510,510,505
+    dw 495,500,500,500,500,500,500,495,495,500,500,500,500,500,500,495
+    dw 495,500,500,500,500,500,500,495,495,500,500,500,500,500,500,495
+    dw 495,500,500,500,500,500,500,495,500,500,500,505,505,500,500,500
+    dw 880,890,890,895,895,890,890,880,890,900,900,900,900,900,900,890
+    dw 890,900,905,905,905,905,900,890,895,900,905,905,905,905,900,895
+    dw 900,900,905,905,905,905,900,895,890,905,905,905,905,905,900,890
+    dw 890,900,905,900,900,900,900,890,880,890,890,895,895,890,890,880
+    dw -50,-40,-30,-20,-20,-30,-40,-50,-30,-20,-10,0,0,-10,-20,-30
+    dw -30,-10,20,30,30,20,-10,-30,-30,-10,30,40,40,30,-10,-30
+    dw -30,-10,30,40,40,30,-10,-30,-30,-10,20,30,30,20,-10,-30
+    dw -30,-30,0,0,0,0,-30,-30,-50,-30,-30,-30,-30,-30,-30,-50
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+KMat:
+    dw 0,100,320,330,500,900,0,0
+KCenter:
+    db 6,5,4,3,3,4,5,6,5,4,3,2,2,3,4,5
+    db 4,3,2,1,1,2,3,4,3,2,1,0,0,1,2,3
+    db 3,2,1,0,0,1,2,3,4,3,2,1,1,2,3,4
+    db 5,4,3,2,2,3,4,5,6,5,4,3,3,4,5,6
+
+}

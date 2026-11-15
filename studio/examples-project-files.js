@@ -82,6 +82,7 @@ const derivedProjectFilesById = {
   "3d-maze-escape": mazeEscapeProjectFiles,
   "solar-system-encyclopedia": solarSystemEncyclopediaProjectFiles,
   "amy-chess": amyChessProjectFiles,
+  "amy-chess-v1.4": amyChessProjectFiles,
   "pitdemons": pitdemonsProjectFiles,
   "caverns": cavernsProjectFiles,
   "earth-globe-demo": earthGlobeProjectFiles,
