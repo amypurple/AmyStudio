@@ -20,6 +20,7 @@ export function createTypeSymbolHelpers(ctx) {
     labelAsmSymbols,
     userVarAsmSymbols,
     userAsmNames,
+    inlineAsmSymbols = new Set(),
     sourceTypeAliases
   } = ctx;
 
@@ -206,6 +207,7 @@ export function createTypeSymbolHelpers(ctx) {
     const rewrittenOperands = operands.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name, offset, expression) => {
       if (explicitSymbols.has(name)) return name;
       if (offset > 0 && expression[offset - 1] === "$") return name;
+      if (inlineAsmSymbols.has(name.toLowerCase())) return name;
       const resolved = resolveNamedAsmSymbol(name);
       if (resolved && INLINE_ASM_REGISTER_OR_CONDITION_NAMES.has(name.toLowerCase())) {
         throw new Error(

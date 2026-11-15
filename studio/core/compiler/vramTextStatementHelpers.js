@@ -669,7 +669,7 @@ export function handleVramTextStatement({
       ])
     };
   }
-  const copyTransfer = line.match(/^copy\s+(.+?)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?\s+to\s+(.+?)(?:\s+count\s+([A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|[0-9]+))?\s*$/i);
+  const copyTransfer = line.match(/^copy\s+(.+?)(?:\s+count\s+(.+?))?\s+to\s+(.+?)(?:\s+count\s+(.+?))?\s*$/i);
   if (copyTransfer && !/^copy\s+(?:bytes|bcd)\b/i.test(line)) {
     const sourceExpr = normalizeExpression(copyTransfer[1].trim());
     const countBeforeTo = copyTransfer[2];
@@ -688,6 +688,12 @@ export function handleVramTextStatement({
     const sourceVram = emitLoadVramAddressIntoDE(sourceExpr);
     const targetVram = emitLoadVramAddressIntoDE(targetExpr);
     const sourceFieldRef = parseRecordFieldRef(sourceExpr);
+    const sourceOffsetMatch = sourceExpr.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\+\s*(.+)$/);
+    const sourceOffsetBase = sourceOffsetMatch?.[1] || sourceExpr;
+    const sourceOffsetBytes = sourceOffsetMatch
+      ? tryEvaluateConstantExpression(normalizeExpression(sourceOffsetMatch[2]))
+      : 0;
+    const sourceOffsetBaseInfo = sourceOffsetMatch ? getRuntimeInfo(sourceOffsetBase) : null;
     const sourceInfo = sourceFieldRef?.isWholeArray
       ? {
           kind: "array",
@@ -715,6 +721,54 @@ export function handleVramTextStatement({
         : targetArrayBaseInfo?.kind === "array"
           ? targetArrayBaseInfo
           : getRuntimeInfo(targetExpr);
+
+    const scalarSourceBytes = sourceInfo && sourceInfo.kind !== "array" && sourceInfo.kind !== "record_array"
+      ? runtimeTypeSize(sourceInfo.type || sourceInfo.kind || sourceInfo.declaredType)
+      : sourceOffsetBaseInfo && sourceOffsetBaseInfo.kind !== "array" && sourceOffsetBaseInfo.kind !== "record_array"
+        ? runtimeTypeSize(sourceOffsetBaseInfo.type || sourceOffsetBaseInfo.kind || sourceOffsetBaseInfo.declaredType)
+      : null;
+    const arraySourceBytes = sourceInfo?.kind === "array" && Number.isInteger(sourceInfo.length)
+      ? sourceInfo.length * runtimeTypeSize(sourceInfo.elementType || sourceInfo.type || sourceInfo.declaredType)
+      : sourceInfo?.kind === "record_array" && Number.isInteger(sourceInfo.length) && Number.isInteger(sourceInfo.recordSize)
+        ? sourceInfo.length * sourceInfo.recordSize
+        : sourceOffsetBaseInfo?.kind === "array" && Number.isInteger(sourceOffsetBaseInfo.length)
+          ? sourceOffsetBaseInfo.length * runtimeTypeSize(sourceOffsetBaseInfo.elementType || sourceOffsetBaseInfo.type || sourceOffsetBaseInfo.declaredType)
+          : sourceOffsetBaseInfo?.kind === "record_array" && Number.isInteger(sourceOffsetBaseInfo.length) && Number.isInteger(sourceOffsetBaseInfo.recordSize)
+            ? sourceOffsetBaseInfo.length * sourceOffsetBaseInfo.recordSize
+        : null;
+    const dataSourceBytes = /^[A-Za-z_][A-Za-z0-9_]*$/.test(sourceOffsetBase)
+      ? dataLengths?.get(sourceOffsetBase)
+      : null;
+    const knownSourceTotalBytes = Number.isInteger(scalarSourceBytes) && scalarSourceBytes > 0
+      ? scalarSourceBytes
+      : Number.isInteger(arraySourceBytes) && arraySourceBytes > 0
+        ? arraySourceBytes
+        : Number.isInteger(dataSourceBytes) && dataSourceBytes > 0
+          ? dataSourceBytes
+          : null;
+    const knownSourceBytes = Number.isInteger(knownSourceTotalBytes) &&
+        Number.isInteger(sourceOffsetBytes) && sourceOffsetBytes >= 0
+      ? Math.max(0, knownSourceTotalBytes - sourceOffsetBytes)
+      : knownSourceTotalBytes;
+    const constantCopyCount = countToken ? tryEvaluateConstantExpression(countToken) : null;
+    if (Number.isInteger(scalarSourceBytes) && countToken && getRuntimeInfo(countToken)) {
+      return {
+        ok: false,
+        handled: true,
+        log: `copy from scalar '${sourceOffsetBase}' requires a constant count no greater than ${knownSourceBytes}; use an array or data buffer for a runtime count: ${rawLine}`
+      };
+    }
+    if (Number.isInteger(knownSourceBytes) &&
+        Number.isInteger(constantCopyCount) && constantCopyCount > knownSourceBytes) {
+      const sourceKind = Number.isInteger(scalarSourceBytes) ? "scalar" : "buffer";
+      return {
+        ok: false,
+        handled: true,
+        log: sourceOffsetMatch
+          ? `copy source '${sourceExpr}' has ${knownSourceBytes} available ${knownSourceBytes === 1 ? "byte" : "bytes"}, not ${constantCopyCount}. Copy at most ${knownSourceBytes} ${knownSourceBytes === 1 ? "byte" : "bytes"}: ${rawLine}`
+          : `copy source '${sourceExpr}' is a ${knownSourceBytes}-byte ${sourceKind}, not a ${constantCopyCount}-byte buffer. Copy at most ${knownSourceBytes} ${knownSourceBytes === 1 ? "byte" : "bytes"}: ${rawLine}`
+      };
+    }
 
     if (targetVram) {
       const sourceCode = emitLoadSourceAddressIntoHL(sourceExpr);

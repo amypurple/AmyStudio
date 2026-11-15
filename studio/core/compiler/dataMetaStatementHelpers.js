@@ -109,10 +109,15 @@ export function handleDataMetaStatement({
       const emitsOnlyEqu = substantiveAsm.length > 0 && substantiveAsm.every((entry) =>
         /^\s*[A-Za-z_][A-Za-z0-9_]*\s+equ\b/i.test(String(entry || ""))
       );
-      if (emitsInlineData || emitsOnlyEqu) {
+      if (!state.insideRoutine && (emitsInlineData || emitsOnlyEqu)) {
         state.detachedAsmData.push(...state.asmBuffer);
       } else {
-        body.push(...state.asmBuffer);
+        const markerId = Number.isInteger(state.sourceLineNumber) ? state.sourceLineNumber : 0;
+        body.push(
+          `AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_${markerId}:`,
+          ...state.asmBuffer,
+          `AMY_OPTIMIZER_TIMING_END_USER_ASM_${markerId}:`
+        );
       }
       state.asmBuffer = [];
       state.inAsm = false;
@@ -120,6 +125,10 @@ export function handleDataMetaStatement({
       const asmLine = rawLine.replace(/^  /, "");
       const overlayAliasError = validateOverlayAsmText(asmLine, "Inline ASM");
       if (overlayAliasError) return { handled: true, ok: false, log: overlayAliasError };
+      const asmEqu = asmLine.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s+equ\b/i);
+      if (asmEqu && typeof state.registerInlineAsmSymbol === "function") {
+        state.registerInlineAsmSymbol(asmEqu[1]);
+      }
       const asmLabel = asmLine.trim().match(/^([A-Za-z_][A-Za-z0-9_]*):/);
       const collision = asmLabel && typeof state.describeGlobalNameCollision === "function"
         ? state.describeGlobalNameCollision(asmLabel[1])
@@ -133,7 +142,7 @@ export function handleDataMetaStatement({
       }
       try {
         const sourceMarker = Number.isInteger(state.sourceLineNumber)
-          ? [`; @amy-source-line ${state.sourceLineNumber}`]
+          ? [`.AMY_USER_ASM_LINE_${state.sourceLineNumber}:`, `; @amy-source-line ${state.sourceLineNumber}`]
           : [];
         state.asmBuffer = [...state.asmBuffer, ...sourceMarker, state.rewriteUserSymbolsInAsmLine(asmLine)];
       } catch (error) {

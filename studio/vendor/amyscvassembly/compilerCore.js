@@ -346,12 +346,15 @@ function isIxIyDisplacementOperandText(value) {
             }
 
             legalizeOutOfRangeJr(tokens) {
-                let expanded = 0;
-                const legalized = tokens.map(token => {
-                    if (!(token instanceof Instruction) || token.mnemonic.toLowerCase() !== 'jr' || token.operands.length < 1) return token;
+                let jrExpanded = 0;
+                let djnzExpanded = 0;
+                const legalized = tokens.flatMap(token => {
+                    if (!(token instanceof Instruction) || token.operands.length < 1) return [token];
+                    const mnemonic = token.mnemonic.toLowerCase();
+                    if (mnemonic !== 'jr' && mnemonic !== 'djnz') return [token];
                     const targetOp = token.operands[token.operands.length - 1];
                     const pc = this.tokenAddressMap.get(token);
-                    if (pc === undefined || !['symbol', 'immediate'].includes(targetOp.type)) return token;
+                    if (pc === undefined || !['symbol', 'immediate'].includes(targetOp.type)) return [token];
 
                     let target;
                     if (targetOp.type === 'immediate' && typeof targetOp.value === 'number') {
@@ -361,14 +364,30 @@ function isIxIyDisplacementOperandText(value) {
                         const name = raw.startsWith('.') ? `${this.tokenScopeMap.get(token) || ''}${raw}` : raw;
                         target = this.symbolTable[name];
                     }
-                    if (target === undefined) return token;
+                    if (target === undefined) return [token];
                     const offset = target - (pc + 2);
-                    if (offset >= -128 && offset <= 127) return token;
+                    if (offset >= -128 && offset <= 127) return [token];
 
-                    expanded++;
-                    return new Instruction(token.label, 'jp', token.operands, token.lineNumber, token.sourceLine);
+                    if (mnemonic === 'jr') {
+                        jrExpanded++;
+                        return [new Instruction(token.label, 'jp', token.operands, token.lineNumber, token.sourceLine)];
+                    }
+
+                    // DJNZ does not modify flags. DEC B / JP NZ is not equivalent
+                    // because DEC changes Z/S/H/PV/N. Keep the original DJNZ and
+                    // use a nearby trampoline whose JR/JP instructions preserve F.
+                    const suffix = `${token.lineNumber}_${pc.toString(16).toUpperCase()}`;
+                    const farLabel = `AMY_DJNZ_FAR_${suffix}`;
+                    const doneLabel = `AMY_DJNZ_DONE_${suffix}`;
+                    djnzExpanded++;
+                    return [
+                        new Instruction(token.label, 'djnz', [new Operand('symbol', farLabel)], token.lineNumber, token.sourceLine),
+                        new Instruction(null, 'jr', [new Operand('symbol', doneLabel)], token.lineNumber, token.sourceLine),
+                        new Instruction(farLabel, 'jp', [targetOp], token.lineNumber, token.sourceLine),
+                        new Directive(doneLabel, 'LABEL', [], token.lineNumber, token.sourceLine)
+                    ];
                 });
-                return { tokens: legalized, expanded };
+                return { tokens: legalized, expanded: jrExpanded + djnzExpanded, jrExpanded, djnzExpanded };
             }
 
             // Post-compilation ROM patcher: Patch RST vector trampolines in ColecoVision header
@@ -605,7 +624,7 @@ function isIxIyDisplacementOperandText(value) {
                         if (s.peepholeOpts > 0) log(`  Peephole: ${s.peepholeOpts} optimization${s.peepholeOpts > 1 ? 's' : ''}`, 'info');
                         if (s.routinesInlined > 0) log(`  Inline routines: ${s.routinesInlined} routine${s.routinesInlined > 1 ? 's' : ''} expanded in ${s.inlinePasses} pass${s.inlinePasses > 1 ? 'es' : ''}`, 'info');
                         if (s.rstOptimized > 0) log(`  RST vectors: ${s.rstVectorsUsed} vector${s.rstVectorsUsed > 1 ? 's' : ''} repurposed, ${s.rstOptimized} call${s.rstOptimized > 1 ? 's' : ''} → RST`, 'info');
-                        if (s.djnzExpanded > 0) log(`  DJNZ→DEC+JP: ${s.djnzExpanded} relaxed`, 'info');
+                        if (s.djnzExpanded > 0) log(`  DJNZ trampolines: ${s.djnzExpanded} relaxed`, 'info');
                         if (s.jrExpanded > 0) log(`  JR→JP: ${s.jrExpanded} relaxed`, 'info');
                         log(`  Estimated local wins: ${s.bytesSaved} bytes before final layout`, 'success');
 
@@ -649,11 +668,13 @@ function isIxIyDisplacementOperandText(value) {
                     // so this pass converges and cannot oscillate back to the short form.
                     let finalLegalizeIteration = 0;
                     let finalJrExpanded = 0;
+                    let finalDjnzExpanded = 0;
                     const maxFinalLegalizeIterations = 10;
                     do {
                         const legalized = this.legalizeOutOfRangeJr(tokens);
                         tokens = legalized.tokens;
-                        finalJrExpanded += legalized.expanded;
+                        finalJrExpanded += legalized.jrExpanded;
+                        finalDjnzExpanded += legalized.djnzExpanded;
 
                         this.symbolTable = {};
                         this.constantTable = {};
@@ -673,6 +694,11 @@ function isIxIyDisplacementOperandText(value) {
                         this.compilationStats.optimizer.jrExpanded =
                             (this.compilationStats.optimizer.jrExpanded || 0) + finalJrExpanded;
                         log(`Final branch legalization: ${finalJrExpanded} JR→JP promotion${finalJrExpanded > 1 ? 's' : ''}`, 'info');
+                    }
+                    if (finalDjnzExpanded > 0) {
+                        this.compilationStats.optimizer.djnzExpanded =
+                            (this.compilationStats.optimizer.djnzExpanded || 0) + finalDjnzExpanded;
+                        log(`Final branch legalization: ${finalDjnzExpanded} DJNZ trampoline${finalDjnzExpanded > 1 ? 's' : ''}`, 'info');
                     }
 
                     this.currentPass = 3;
@@ -2423,6 +2449,99 @@ function isIxIyDisplacementOperandText(value) {
                     }
                 }
                 
+                // EQU expressions may reference labels and other EQU definitions
+                // declared later. Keep the historical last-definition-wins rule,
+                // then evaluate the unique dependency graph once. A fixed-point
+                // loop is both quadratic and non-convergent for duplicate names.
+                const equTokens = tokens.filter(token => token instanceof Directive && token.name === 'EQU');
+                const equEntriesByKey = new Map();
+                for (const token of equTokens) {
+                    const label = token.label || token.operands?.[0]?.value;
+                    const operand = token.label ? token.operands?.[0] : token.operands?.[1];
+                    if (!label || !operand) continue;
+                    const processedLabel = this.processTemporarySymbol(label);
+                    equEntriesByKey.set(String(processedLabel).toLowerCase(), {
+                        label: processedLabel,
+                        operand,
+                        token,
+                        key: String(processedLabel).toLowerCase()
+                    });
+                }
+                const equEntries = [...equEntriesByKey.values()];
+                const equKeys = new Set(equEntries.map(entry => entry.key));
+                const knownNames = new Set([
+                    ...Object.keys(this.symbolTable || {}),
+                    ...Object.keys(this.constantTable || {}),
+                    ...Object.keys(this.variableTable || {})
+                ].map(name => name.toLowerCase()));
+                const expressionBuiltins = new Set([
+                    'high', 'low', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
+                    'log', 'log2', 'log10', 'exp', 'sqrt', 'abs', 'floor', 'ceil', 'round',
+                    'sgn', 'int', 'frac', 'min', 'max', 'pow', 'rnd'
+                ]);
+                const dependencies = new Map();
+                for (const entry of equEntries) {
+                    const expression = String(entry.operand.value ?? entry.operand);
+                    // Do not mistake the A-F portion of numeric literals for a
+                    // symbol dependency. Character literals are values as well.
+                    const dependencyText = expression
+                        .replace(/(['"])(?:\\.|(?!\1).)*\1/g, ' ')
+                        .replace(/\$[0-9A-F]+\b/gi, ' ')
+                        .replace(/&H[0-9A-F]+\b/gi, ' ')
+                        .replace(/\b0x[0-9A-F]+\b/gi, ' ')
+                        .replace(/\b[0-9][0-9A-F]*h\b/gi, ' ')
+                        .replace(/(?:%[01]+|\b0b[01]+\b|@[0-7]+)\b/gi, ' ');
+                    const names = dependencyText.match(/[A-Za-z_.][A-Za-z0-9_.$?@]*/g) || [];
+                    const deps = new Set();
+                    for (const name of names) {
+                        const key = name.toLowerCase();
+                        if (expressionBuiltins.has(key) || this.numberParser.parseNumber(name) !== null) continue;
+                        if (equKeys.has(key)) deps.add(key);
+                        else if (!knownNames.has(key) && !Z80_OPCODES[key]) {
+                            throw new Error(`Undefined symbol '${name}' in EQU '${entry.label}'.`);
+                        }
+                    }
+                    dependencies.set(entry.key, deps);
+                }
+                const visiting = new Set();
+                const visited = new Set();
+                const evaluationOrder = [];
+                const visitEqu = (key) => {
+                    if (visiting.has(key)) throw new Error(`Cyclic EQU definition involving '${key}'.`);
+                    if (visited.has(key)) return;
+                    visiting.add(key);
+                    for (const dependency of dependencies.get(key) || []) visitEqu(dependency);
+                    visiting.delete(key);
+                    visited.add(key);
+                    evaluationOrder.push(key);
+                };
+                for (const entry of equEntries) visitEqu(entry.key);
+
+                // Evaluate each definition at the location counter of its own
+                // source line. This preserves `$`, `$-Label`, and chained EQUs.
+                const savedPass = this.currentPass;
+                const savedPc = this.pc;
+                const savedInstruction = this.currentInstruction;
+                const savedLine = this.currentLine;
+                this.currentPass = 3;
+                try {
+                    for (const key of evaluationOrder) {
+                        const entry = equEntriesByKey.get(key);
+                        this.pc = this.tokenAddressMap.get(entry.token) ?? savedPc;
+                        this.currentInstruction = entry.token;
+                        this.currentLine = entry.token.lineNumber || 0;
+                        const equValue = this.evaluateExpression(entry.operand);
+                        this.symbolTable[entry.label] = equValue;
+                        this.constantTable[entry.label] = equValue;
+                        if (this.symbolInfo[entry.label]) this.symbolInfo[entry.label].address = equValue;
+                    }
+                } finally {
+                    this.currentPass = savedPass;
+                    this.pc = savedPc;
+                    this.currentInstruction = savedInstruction;
+                    this.currentLine = savedLine;
+                }
+
                 // Calculate symbol sizes (distance to next symbol)
                 const sortedSymbols = Object.keys(this.symbolInfo)
                     .filter(name => this.symbolInfo[name].type === 'label')
@@ -2894,6 +3013,9 @@ function isIxIyDisplacementOperandText(value) {
                                         const sign = match[1] === '-' ? -1 : 1;
                                         const offsetValue = this.evaluateExpression({type: 'symbol', value: match[2]});
                                         const signedOffset = sign * offsetValue;
+                                        if (!Number.isInteger(signedOffset) || signedOffset < -128 || signedOffset > 127) {
+                                            throw new Error(`IX/IY displacement ${signedOffset} is outside the signed 8-bit range -128..127`);
+                                        }
                                         this.output.push(signedOffset & 0xFF);
                                     } else {
                                         this.output.push(0); // No offset
@@ -2923,6 +3045,9 @@ function isIxIyDisplacementOperandText(value) {
                                             const sign = match[1] === '-' ? -1 : 1;
                                             const offsetValue = this.evaluateExpression({type: 'symbol', value: match[2]});
                                             const signedOffset = sign * offsetValue;
+                                            if (!Number.isInteger(signedOffset) || signedOffset < -128 || signedOffset > 127) {
+                                                throw new Error(`IX/IY displacement ${signedOffset} is outside the signed 8-bit range -128..127`);
+                                            }
                                             this.output.push(signedOffset & 0xFF);
                                         } else {
                                             // No offset or just IX/IY - use 0

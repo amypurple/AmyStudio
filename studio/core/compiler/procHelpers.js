@@ -115,6 +115,10 @@ export function createProcHelpers({
     const canInlineProcBody = (blockLines) => {
       if (!Array.isArray(blockLines) || blockLines.length < 2) return false;
       const bodyLines = blockLines.slice(1);
+      // User-written ASM is an opaque ABI/timing region. Inlining it would
+      // expose its instructions to generated-code simplifiers and can change
+      // memory reads whose addresses are advanced inside the block.
+      if (bodyLines.some((line) => /^AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_\d+:\s*$/i.test(String(line || "").trim()))) return false;
       // Internal labels (loop/branch targets) are safe to inline only for small bodies:
       // jr has ±128-byte range; large inlined blocks with back-jumping labels could overflow.
       // Also, labels create optimizer barriers — inlining a large labeled body into the

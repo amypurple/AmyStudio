@@ -22,6 +22,15 @@ try {
     "loop forever",
     ""
   ].join("\n"));
+  const missingSigilSource = join(temp, "label-address-missing-sigil.alexis");
+  writeFileSync(missingSigilSource, [
+    "data RingN bytes",
+    "  1,2,3,4",
+    "end data",
+    "u16 W = 0",
+    "W = RingN",
+    ""
+  ].join("\n"));
 
   for (const profile of profiles) {
     const asm = join(temp, `${profile}.asm`);
@@ -49,6 +58,17 @@ try {
     const bytes = readFileSync(rom);
     const load = Buffer.from([0x21, address & 0xFF, address >>> 8, 0x22, 0x20, 0x70]);
     assert.notEqual(bytes.indexOf(load), -1, `${profile}: assembled ROM does not store Msg address in P`);
+
+    const missingSigil = spawnSync(process.execPath, [compiler, missingSigilSource, "--opt", profile], {
+      cwd: root,
+      encoding: "utf8"
+    });
+    assert.notEqual(missingSigil.status, 0, `${profile}: bare ROM label assignment must be refused`);
+    assert.match(
+      `${missingSigil.stdout}\n${missingSigil.stderr}`,
+      /ROM data label 'RingN' is an address; use 'W = @RingN'/,
+      `${profile}: bare ROM label diagnostic`
+    );
   }
 
   console.log("Data-label address assignment PASS (5 profiles)");

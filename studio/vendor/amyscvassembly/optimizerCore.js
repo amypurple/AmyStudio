@@ -1071,16 +1071,22 @@ export class Z80Optimizer {
                     }
 
                     const timingLabel = String(token?.label || '');
-                    if (/^AMY_OPTIMIZER_TIMING_BEGIN_/i.test(timingLabel)) {
+                    // User ASM is opaque to value/peephole transforms, but its
+                    // relative branches still need address relaxation after
+                    // final layout. Truly cycle-timed regions remain frozen.
+                    if (/^AMY_OPTIMIZER_TIMING_BEGIN_/i.test(timingLabel) &&
+                        !/^AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_/i.test(timingLabel)) {
                         timingSensitiveRegion = true;
+                    }
+                    if (timingSensitiveRegion && /^AMY_OPTIMIZER_TIMING_END_/i.test(timingLabel)) {
+                        optimized.push(token);
+                        timingSensitiveRegion = false;
+                        continue;
                     }
                     if (timingSensitiveRegion && token instanceof Instruction) {
                         rememberLabel(token.label, pc);
                         optimized.push(token);
                         pc += this.estimateTokenByteSize(token);
-                        if (/^AMY_OPTIMIZER_TIMING_END_/i.test(timingLabel)) {
-                            timingSensitiveRegion = false;
-                        }
                         continue;
                     }
 
@@ -1223,29 +1229,6 @@ export class Z80Optimizer {
                             }
                         } else {
                             optimizerLog(`  [JP→JR] Line ${token.lineNumber}: JP indirect - SKIP (operand type: ${lastOp.type})`, 'debug');
-                        }
-                    }
-
-                    // Relaxation 1: DJNZ → DEC B + JP NZ (when target is out of JR range)
-                    if (this.config.peephole && mnem === 'djnz' && token.operands.length === 1) {
-                        const targetOp = token.operands[0];
-                        if (targetOp.type === 'symbol' || targetOp.type === 'immediate') {
-                            const targetAddr = resolveBranchTarget(targetOp);
-                            if (targetAddr !== undefined && !this.canUseRelativeJump(pc, targetAddr, 2)) {
-                                const pcAfter = pc + 2;
-                                const offset = targetAddr - pcAfter;
-                                // Emit DEC B (1 byte) + JP NZ target (3 bytes)
-                                const decB = new Instruction(token.label, 'dec', [new Operand('register', 'b')], token.lineNumber);
-                                const jpNz = new Instruction(null, 'jp', [new Operand('condition', 'nz'), targetOp], token.lineNumber);
-                                optimized.push(decB);
-                                optimized.push(jpNz);
-                                rememberLabel(token.label, pc);
-                                this.stats.djnzExpanded++;
-                                // Net +1 byte vs DJNZ (was 2, now 4)
-                                pc += 4;
-                                optimizerLog(`  [DJNZ→DEC+JP] Line ${token.lineNumber}: DJNZ ${typeof targetOp.value === 'string' ? targetOp.value : (targetOp.value !== null && targetOp.value !== undefined ? '$' + targetOp.value.toString(16) : '?')} expanded (PC=$${(pc-4).toString(16)}, target=$${targetAddr !== null && targetAddr !== undefined ? targetAddr.toString(16) : '?'}, offset=${offset})`, 'debug');
-                                continue;
-                            }
                         }
                     }
 

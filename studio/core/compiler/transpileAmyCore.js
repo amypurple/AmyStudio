@@ -1664,6 +1664,7 @@ export function transpileAmyCore(sourceText, deps) {
   const labelAsmSymbols = new Map();
   const userVarAsmSymbols = new Map();
   const userAsmNames = new Set();
+  const inlineAsmSymbols = new Set();
   const dataLengths = new Map();
   let inAsm = false;
   let inData = null;
@@ -2285,6 +2286,7 @@ export function transpileAmyCore(sourceText, deps) {
     labelAsmSymbols,
     userVarAsmSymbols,
     userAsmNames,
+    inlineAsmSymbols,
     sourceTypeAliases
   });
 
@@ -5172,10 +5174,12 @@ export function transpileAmyCore(sourceText, deps) {
           set cartridgeMeta(value) { cartridgeMeta = value; },
           get hasRamOverlay() { return overlayDefinitions.size > 0; },
           get detachedAsmData() { return romData; },
+          get insideRoutine() { return Boolean(currentFunction || (currentProc && lowerName(currentProc) !== "start")); },
           get sourceLineNumber() { return sourceLineNumber + 1; },
           resolveAsmInclude: (includePath) => resolveStaticAbiInclude?.(includePath),
           rewriteUserSymbolsInExpression,
           rewriteUserSymbolsInAsmLine,
+          registerInlineAsmSymbol: (name) => inlineAsmSymbols.add(lowerName(name)),
           describeGlobalNameCollision
         },
         parseBitmapLine,
@@ -5949,7 +5953,7 @@ export function transpileAmyCore(sourceText, deps) {
         line,
         rawLine,
         normalizeExpression,
-        tryEvaluateConstantExpression,
+        tryEvaluateConstantExpression: tryEvaluateCompileTimeNumericExpression,
         resolveAddressSymbol,
         emitLoadVramAddressIntoHL,
         emitLoadVramAddressIntoDE,
@@ -6138,6 +6142,20 @@ export function transpileAmyCore(sourceText, deps) {
             ok: false,
             asmBody: "",
             log: `BCD ${formulaAssignment.op} u16 requires a bounded binary-to-BCD conversion that is not implemented; use a literal, u8, or a BCD value no wider than the target: ${rawLine}`
+          };
+        }
+        const bareDataAddress = formulaAssignment.op === "="
+          ? String(formulaAssignment.value).trim().match(/^([A-Za-z_][A-Za-z0-9_]*)$/)
+          : null;
+        if (bareDataAddress && (
+          mapHasInsensitive(dataBlocks, bareDataAddress[1])
+          || mapHasInsensitive(dataLengths, bareDataAddress[1])
+          || mapHasInsensitive(dataWordTables, bareDataAddress[1])
+        )) {
+          return {
+            ok: false,
+            asmBody: "",
+            log: `ROM data label '${bareDataAddress[1]}' is an address; use '${formulaAssignment.target} = @${bareDataAddress[1]}': ${rawLine}`
           };
         }
         return { ok: false, asmBody: "", log: `Invalid runtime assignment: ${rawLine}` };

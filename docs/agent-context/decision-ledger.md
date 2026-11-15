@@ -1632,3 +1632,14 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - `tools/test-fuzz-r11-byte-regressions.mjs` now verifies exact RAM results for all A-K families across all five profiles and waits for an explicit program completion marker. No A-K family remains open.
 - Evidence source: `Codex-r11-fuzz.zip`, `codex-bugs/fuzz-r11-bugs.md` and its minimized A-K repros.
 
+# 2026-11-15: verified r15 compiler and assembler fixes promoted
+
+- Promoted the verified r15 compiler/assembler set from Alexis-Z80 as one atomic change rather than
+  mixing individual modules. This includes dependency-ordered `EQU` evaluation, correct per-line
+  `$`, hexadecimal-literal dependency handling, historical last-definition-wins duplicate `EQU`
+  behavior, flag-preserving far `DJNZ` trampolines, inline-ASM symbol handling, ROM-label address
+  diagnostics, and constant copy-bound validation.
+- `tools/test-claude-r15-equ-regressions.mjs` and `tools/test-label-address-assignment.mjs` pass all
+  five optimization profiles with the real OS7. `node tools/amy-qa.mjs quick` also passes in the
+  clean repository.
+

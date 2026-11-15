@@ -1489,6 +1489,46 @@ export function finalizeAmyTranspile({
 
   const sourceMarkerPlan = extractSourceMarkerPlan(body);
 
+  function shieldUserAsmRegions(lines) {
+    const protectedBlocks = [];
+    const shielded = [];
+    let block = null;
+    for (const rawLine of lines) {
+      const line = String(rawLine || "");
+      if (block) {
+        block.push(rawLine);
+        if (/^AMY_OPTIMIZER_TIMING_END_USER_ASM_\d+:\s*$/i.test(line.trim())) {
+          protectedBlocks.push(block);
+          shielded.push(`AMY_COMPILER_PROTECTED_USER_ASM_${protectedBlocks.length - 1}:`);
+          block = null;
+        }
+        continue;
+      }
+      if (/^AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_\d+:\s*$/i.test(line.trim())) {
+        block = [rawLine];
+        continue;
+      }
+      shielded.push(rawLine);
+    }
+    if (block) shielded.push(...block);
+    return { shielded, protectedBlocks };
+  }
+
+  function restoreUserAsmRegions(lines, protectedBlocks) {
+    const restored = [];
+    for (const rawLine of lines) {
+      const match = String(rawLine || "").trim().match(/^AMY_COMPILER_PROTECTED_USER_ASM_(\d+):$/i);
+      if (!match) {
+        restored.push(rawLine);
+        continue;
+      }
+      restored.push(...(protectedBlocks[Number(match[1])] || [rawLine]));
+    }
+    return restored;
+  }
+
+  const userAsmPlan = shieldUserAsmRegions(sourceMarkerPlan.clean);
+
   function consolidateU8Formatters(lines) {
     const usesOne = lines.some((line) => /\bcall AMY_U8_TO_ASCII1_MOD\b/.test(String(line)));
     const usesTwo = lines.some((line) => /\bcall AMY_U8_TO_ASCII2_MOD\b/.test(String(line)));
@@ -1518,7 +1558,7 @@ export function finalizeAmyTranspile({
                 optimizeRepeatedArrayReadComparisons(
                   optimizeSharedAdjacentArrayIndex(
                     optimizeSharedRecordPutCharLoads(
-                      optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(consolidateU8Formatters(sourceMarkerPlan.clean)))
+                      optimizeTransientDrawCoordinateTemps(optimizeRepeatedBitTestLoads(consolidateU8Formatters(userAsmPlan.shielded)))
                     )
                   )
                 )
@@ -1533,10 +1573,17 @@ export function finalizeAmyTranspile({
   // External ASM includes can legally call AMY_UPROC_* labels. The compiler
   // cannot see those references before assembly-time include expansion, so
   // user-procedure inlining must stay off to preserve exported labels.
-  const generatedBody = hasExternalAsmInclude ? preInlineBody : inlineSingleCallUserProcedures(preInlineBody);
+  // Let procedure analysis see calls made by user ASM, while refusing to inline
+  // routines that themselves contain an opaque ASM region. Shield the regions
+  // again before later generated-code transforms inspect individual lines.
+  const restoredPreInlineBody = restoreUserAsmRegions(preInlineBody, userAsmPlan.protectedBlocks);
+  const generatedBody = hasExternalAsmInclude
+    ? restoredPreInlineBody
+    : inlineSingleCallUserProcedures(restoredPreInlineBody);
+  const generatedUserAsmPlan = shieldUserAsmRegions(generatedBody);
   const runtimeInitCallIndexes = [];
-  for (let index = 0; index < generatedBody.length; index += 1) {
-    if (/^\s*call\s+AMY_INIT_RAM\s*$/i.test(String(generatedBody[index] || ""))) {
+  for (let index = 0; index < generatedUserAsmPlan.shielded.length; index += 1) {
+    if (/^\s*call\s+AMY_INIT_RAM\s*$/i.test(String(generatedUserAsmPlan.shielded[index] || ""))) {
       runtimeInitCallIndexes.push(index);
     }
   }
@@ -1545,12 +1592,12 @@ export function finalizeAmyTranspile({
     runtimeInitCallIndexes.length === 1;
   const generatedBodyWithInit = inlineGeneratedRuntimeInit
     ? [
-        ...generatedBody.slice(0, runtimeInitCallIndexes[0]),
+        ...generatedUserAsmPlan.shielded.slice(0, runtimeInitCallIndexes[0]),
         ...runtimeInitLines,
         ...runtimeInit,
-        ...generatedBody.slice(runtimeInitCallIndexes[0] + 1)
+        ...generatedUserAsmPlan.shielded.slice(runtimeInitCallIndexes[0] + 1)
       ]
-    : generatedBody;
+    : generatedUserAsmPlan.shielded;
   const reachableBody = removeUnreachableAfterTerminators(generatedBodyWithInit);
   // Run memory-load tracking once, after control-flow rewrites. Reapplying it
   // to its own output can discard the load that originally invalidated A.
@@ -1563,12 +1610,13 @@ export function finalizeAmyTranspile({
         )
       )
     );
-  const optimizedBody = optimizeGeneratedMemoryLoads(
+  const optimizedGeneratedBody = optimizeGeneratedMemoryLoads(
     bodyBeforeMemoryLoads,
     hasExternalAsmInclude || /(^|\n)\s*asm\s*\{/i.test(String(activeSourceText || ""))
       ? null
       : inferGeneratedUserRoutineClobbers(bodyBeforeMemoryLoads)
   );
+  const optimizedBody = restoreUserAsmRegions(optimizedGeneratedBody, generatedUserAsmPlan.protectedBlocks);
   const needsFrameCounter = optimizedBody.some((line) => /\bAMY_FRAME_COUNTER\b/.test(String(line || "")));
   const needsMode2ThirdsHelper = optimizedBody.some((line) => /\bAMY_DEFINE_MODE2_THIRDS\b/.test(String(line || "")));
   const mode2ThirdsHelperBlock = needsMode2ThirdsHelper ? [
