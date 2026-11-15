@@ -596,22 +596,23 @@ current bitmap codecs.
 
 ## Next measurement suite
 
-The comparison becomes stronger as equivalent game behaviors are implemented eight times. Current
+The comparison becomes stronger as equivalent game behaviors are implemented across eight
+high-level toolchains plus the Pure ASM diagnostic baseline. Current
 status and order:
 
-1. **Controller snapshot: complete.** Seven toolchains pass injected neutral, keypad, direction,
-   fire, and release states; ugBASIC's VDP R7 update remains the documented exception.
-2. **Sprite/metasprite stress: complete.** Eight toolchains build and boot the shared fixture.
+1. **Controller snapshot: complete.** All nine principal ROMs pass injected neutral, keypad,
+   direction, fire, release, and held-input states.
+2. **Sprite/metasprite stress: complete.** All nine implementations pass the shared dynamic oracle.
    Amy's native metasprite path is runtime-equivalent, uses zero permanent RAM, preserves explicit
    layer priority, and is smaller than the manual renderer in all five profiles.
-3. **Tile animation: complete.** Eight ROMs animate shared patterns and 3x2 Name Table frames;
+3. **Tile animation: complete.** Nine ROMs animate shared patterns and 3x2 Name Table frames;
    GearColeco verifies every pattern, color, tile position, animation phase, and final state.
-4. **State update: complete.** Eight ROMs run the same actor array, collision checks, timers, and
+4. **State update: complete.** Nine ROMs run the same actor array, collision checks, timers, and
    state dispatch oracle.
 5. **Sound and voice: functional and still evolving.** BIOS commands and Tiny Sound sequences can
    be inspected, auditioned, edited, imported, and written back. VoxPCM WAV conversion and preview,
    plus SP0256 Lundy/EVE commands and emulation, are integrated; UX and hardware-parity QA continue.
-6. **Compression: payload and cycle suites complete.** Fifteen codecs have exact VRAM proof;
+6. **Compression: payload and cycle suites complete.** Sixteen codecs have exact VRAM proof;
    representative streams now include linked decoder bytes and GearColeco cycle measurements.
 7. **Visible Hello: complete.** Keep it separate from the minimal runtime fixture so font/text
    costs remain explicit.
@@ -620,15 +621,20 @@ All six Amy listings are available in Amy Studio under **Benchmarks**. The evide
 the matching source and loadable ROM for every tool. Measurements use occupied bytes rather than
 padding, and a smaller result counts only when the shared runtime oracle passes.
 
-## Ranked Amy gap plan
+## Amy Studio: next work
 
-| Rank | Open work | Status | Value | Effort | Risk |
-|---:|---|---|---|---|---|
-| 1 | Extend the completed declared-output MegaCart model with relocatable monolithic bank sections and parameter/return ABI | 64 KB-1 MB packaging, fixed trampolines, data access, bank-qualified maps, breakpoints, trace, rewind, and profiling are verified | Medium for ports that cannot separate bank files | Large | High |
-| 2 | Extend native EOS programs beyond the resident `$C800-$DFFF` window | Native/hybrid DSK/DDP, EOS APIs, files, ADAMnet, serial, and modem paths are runtime verified | High for larger ADAM software | Large | High |
-| 3 | Add optional EOS services to otherwise stock OS7 cartridges | Requires safe detection, low-RAM trampoline, MIOC restoration, and stock-console fallback | High for saves and shared releases | Large | High |
-| 4 | Close sound-editor and hardware-fidelity workflow gaps | Active | High | Medium | Medium |
-| 5 | Add a small explicit runtime animation service | Implementation study; editors already support animation data | High | Large | Medium-high |
+The earlier gap list has largely been completed: metasprites and protected-priority flicker,
+MegaCart packaging and debugging, native and hybrid ADAM disk projects, sixteen direct-to-VRAM
+codecs, sound inspection and conversion, VoxPCM/SP0256 support, and the expanded runtime regression
+suite are shipping capabilities. The remaining plan is deliberately narrower:
+
+| Priority | Next work | Current boundary | Acceptance gate |
+|---:|---|---|---|
+| 1 | Keep converting real programs into small executable regression tests | The large game corpus finds combinations that isolated syntax tests miss | Focused RAM/VRAM/audio oracles across all five profiles, then bounded corpus rebuilds |
+| 2 | Improve hot-loop code generation without broad risky peepholes | Variable 16-bit division/modulo, wide shifts, expression-width inference, and some aggregate accesses remain expensive | Exact result tests, cycle measurements, ROM-size proof, and no benchmark/runtime regression |
+| 3 | Finish sound and animation authoring ergonomics | Playback, Tiny Sound, VoxPCM, SP0256, editors, import, and previews work; hardware-parity QA and reusable runtime animation helpers remain uneven | Real OS7-compatible playback, timing evidence, human-playability checks, and editable examples |
+| 4 | Make the AI/toolbox workflow easier to discover and keep synchronized | The skills, cookbook, bots, CRT-safe rules, repacker, CLI and VS Code extension exist, but duplicated guidance can become stale | One versioned compiler/toolbox contract and a small curated set of representative projects |
+| 5 | Consider larger architectural extensions only for demonstrated projects | Separate-bank MegaCart projects and resident-window EOS programs work; monolithic relocatable banks and larger native EOS layouts do not | A real game that needs the feature, explicit ABI design, mapper/EOS runtime proof, and debugger coverage |
 
 MegaCart's image, mapper, linker, and debugger gates pass at 64, 128, 256, 512, and 1,024 KB.
 Repeated logical addresses retain physical-bank identity through fixed-bank calls, source maps,
@@ -636,26 +642,14 @@ breakpoints, trace, rewind, profiling, and capacity diagnostics. The remaining o
 is a relocatable-object ABI for monolithic `bank n` sections and richer parameter/return calls;
 declared independent bank outputs do not depend on that extension.
 
-The codec study starts from the verified `libcv` RLE+Huffman path in PkK's devkit without copying its format into Amy.
-It will test a compact canonical or fixed shared codebook plus project-level escape analysis across
-all 42 pictures. Adoption requires exact JavaScript round trips, direct-to-VRAM Z80 proof, measured
-decoder bytes, CPU RAM, GearColeco cycles, and a first-use ROM win over Amy's existing codecs.
+### Completed foundations
 
-### Completed gaps and next concrete work
+Completed foundations include exact nine-tool metasprite, state-update, and tile-animation runtime
+oracles; native metasprites and protected-priority flicker; complete 2D arrays and record/overlay
+fields; and sixteen direct-to-VRAM codecs measured for size, cycles, RAM, and 42-picture ranks.
 
-Completed and runtime-guarded:
-
-- exact nine-tool metasprite, state-update, and tile-animation runtime oracles, plus native
-  metasprites, protected-priority flicker, and editable graphics;
-- complete 2D arrays and record/overlay fields with bounds diagnostics and five-profile proof;
-- sixteen direct-to-VRAM codecs with round trips, decoder cost, cycles, RAM, and 42-picture ranks;
-- corrected indexed `put frame`, sound inspection/editing, playback, undo, import, and Web MIDI;
-- adaptive VoxPCM conversion, preview, reusable-word playback, Space Taxi/Solar System demos, and
-  SP0256-AL2 Lundy/EVE commands, timing, queues, and debugger emulation;
-- GearColeco 1.7.0 with F18A/ADAM emulation and browser-local OS7/EOS/WP firmware; native EOS and
-  OS7+EOS hybrid DSK/DDP targets now have runtime-tested graphics, input, sound, compression,
-  filesystem, ADAMnet, printer, serial, and modem paths;
-- `.rom`/`.col` drag-and-drop and universal graphics editors with TMS9918 priority and scanline
-  preview, tilemaps, frames, and tile/sprite composites;
-- 155 five-profile display tests; adaptive `u8` saves 212 corpus bytes without ROM growth, while
-  explicit Amy digits match hand-written Z80 at 498 bytes and 1,905 cycles.
+The shipping tools also cover indexed graphics, sound inspection and editing, VoxPCM and SP0256,
+Web MIDI, GearColeco 1.7.0 with F18A/ADAM support, native and hybrid EOS disk targets, and universal
+ROM graphics editors. A 155-case five-profile display suite guards these paths; adaptive `u8` saves
+212 corpus bytes without ROM growth, while explicit Amy digits match hand-written Z80 at 498 bytes
+and 1,905 cycles.
