@@ -3834,7 +3834,7 @@ export const exampleManifest = [
   {
     "id": "amy-chess-v1.4",
     "label": "Amy Chess v1.4",
-    "detail": "Official Amy Chess v1.4 with Human/CPU play, BLITZ, NORMAL and STRONG levels, a compact handwritten Z80 alpha-beta kernel, complete modern draw rules, ZX0 graphics and VoxPCM personality in a 28,958-byte cartridge build.",
+    "detail": "Official Amy Chess v1.4 with Human/CPU play, BLITZ, NORMAL and STRONG levels, a compact handwritten Z80 alpha-beta kernel, complete modern draw rules, ZX0 graphics and VoxPCM personality in a 28,959-byte cartridge build.",
     "projectName": "Amy Chess v1.4",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
