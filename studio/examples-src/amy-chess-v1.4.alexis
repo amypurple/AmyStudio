@@ -2,7 +2,7 @@
 ' Amy Chess v1.4 - official single-file source
 ' Built from Amy Chess v1.3 (G49 engine) by replacing the search with a
 ' hand-written Z80 alpha-beta kernel (asm block at the end of this file).
-' Validated with the clean-repository Amy Studio compiler at every published play level.
+' Validated with the current Amy Studio compiler at every published play level.
 ' Assets (zx0 pictures, cursor sprite, voxpcm voices) are unchanged from v1.3
 ' and must sit in assets/ next to this file (--project-dir).
 ' Build: node tools/amyc.mjs amy-chess-v1.4.alexis --project-dir . --opt aggressive --output amy-chess-v1.4.rom
@@ -204,6 +204,7 @@ u8 BlinkTimer = 0
 u8 BlinkHide = 0
 u8 HintRequested = 0
 u8 ThinkLevel = 1
+u8 MoveSoundPending = 0
 ' ---- v1.4 search kernel state (see kernel asm) ----
 u16 KNodes = 0
 u16 KHard = 300
@@ -703,6 +704,12 @@ sub ChessDeselect:
 sub ChessRunCpuTurn:
   ChessClaimDrawIfUseful
   if GameReady = 0 then return
+  ' The longest move effect is 14 frames. Let OS7 finish before KThink
+  ' disables NMI, otherwise the current note is held throughout the search.
+  if MoveSoundPending = 1 then
+    wait 20 frames
+    MoveSoundPending = 0
+  end if
   for I = 0 to 31
     put char 0 at I,1
   next
@@ -887,12 +894,15 @@ sub ChessAnnounceCheck:
   ChessIsSquareAttacked
   if AttackResult = 1 then
     put char 172 at MoveNotationColumn,22
+    MoveSoundPending = 1
     play sound 3
     return
   end if
   if GameMoveCapture <> 0 then
+    MoveSoundPending = 1
     play sound 2
   else
+    MoveSoundPending = 1
     play sound 1
   end if
   return
