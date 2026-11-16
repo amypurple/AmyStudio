@@ -1,3 +1,5 @@
+import { validateTms9918Snapshot } from "./tms9918StateValidator.js";
+
 const DEFAULT_MODULE_URL = new URL(
   "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261115-vdp-slots1",
   import.meta.url
@@ -283,6 +285,13 @@ export class GearcolecoTestCore {
     return { ...framebuffer, pixels: framebuffer.pixels.slice() };
   }
 
+  validateVdpState() {
+    return validateTms9918Snapshot({
+      registers: this.getVdpRegisters(),
+      vram: this.readVram(0, 0x4000)
+    });
+  }
+
   loadAdamFirmware({ os7, eos, smartwriter }) {
     const images = [
       requireBytes(os7, "ADAM OS-7"),
@@ -550,6 +559,33 @@ export class GearcolecoTestCore {
   getSp() {
     this.assertAlive();
     return this.module._gcw_get_sp() & 0xFFFF;
+  }
+
+  beginStackWatermark() {
+    this.assertAlive();
+    if (typeof this.module._gcw_stack_watermark_begin !== "function" ||
+        this.module._gcw_stack_watermark_begin() !== 1) {
+      throw new Error("GearColeco stack watermark is unavailable.");
+    }
+  }
+
+  endStackWatermark() {
+    this.assertAlive();
+    if (typeof this.module._gcw_stack_watermark_end !== "function" ||
+        this.module._gcw_stack_watermark_end() !== 1) {
+      throw new Error("GearColeco stack watermark is unavailable.");
+    }
+  }
+
+  getStackWatermark() {
+    this.assertAlive();
+    if (typeof this.module._gcw_stack_watermark_start !== "function" ||
+        typeof this.module._gcw_stack_watermark_minimum !== "function") {
+      throw new Error("GearColeco stack watermark is unavailable.");
+    }
+    const start = this.module._gcw_stack_watermark_start() & 0xFFFF;
+    const minimum = this.module._gcw_stack_watermark_minimum() & 0xFFFF;
+    return { start, minimum, bytes: (start - minimum) & 0xFFFF };
   }
 
   

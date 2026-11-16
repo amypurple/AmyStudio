@@ -1,3 +1,122 @@
+diff --git a/studio/vendor/Gearcoleco-main/src/Processor.cpp b/studio/vendor/Gearcoleco-main/src/Processor.cpp
+index a659fb0fb..1679b56a1 100644
+--- a/studio/vendor/Gearcoleco-main/src/Processor.cpp
++++ b/studio/vendor/Gearcoleco-main/src/Processor.cpp
+@@ -50,6 +50,9 @@ Processor::Processor(Memory* pMemory)
+     m_bPrefixedCBOpcode = false;
+     m_PrefixedCBValue = 0;
+     m_bInputLastCycle = false;
++    m_stack_watermark_active = false;
++    m_stack_watermark_start = SP.GetValue();
++    m_stack_watermark_minimum = SP.GetValue();
+     m_breakpoints_enabled = false;
+     m_breakpoints_irq_enabled = false;
+     m_cpu_breakpoint_hit = false;
+@@ -142,6 +145,9 @@ void Processor::Reset(bool cold)
+     m_bPrefixedCBOpcode = false;
+     m_PrefixedCBValue = 0;
+     m_bInputLastCycle = false;
++    m_stack_watermark_active = false;
++    m_stack_watermark_start = SP.GetValue();
++    m_stack_watermark_minimum = SP.GetValue();
+     m_breakpoints_enabled = false;
+     m_breakpoints_irq_enabled = false;
+     m_cpu_breakpoint_hit = false;
+@@ -186,6 +192,7 @@ unsigned int Processor::RunFor(unsigned int tstates)
+                 u16 pc = PC.GetValue();
+ #endif
+                 StackPush(&PC);
++                SampleStackWatermark();
+                 PC.SetValue(0x0066);
+                 m_iTStates += 11;
+                 IncreaseR();
+@@ -221,6 +228,7 @@ unsigned int Processor::RunFor(unsigned int tstates)
+                 }
+ 
+                 StackPush(&PC);
++                SampleStackWatermark();
+                 PC.SetValue(interrupt_vector);
+                 m_iTStates += interrupt_tstates;
+                 IncreaseR();
+@@ -244,6 +252,7 @@ unsigned int Processor::RunFor(unsigned int tstates)
+             ExecuteInputLastCycle();
+         else
+             ExecuteOPCode();
++        SampleStackWatermark();
+         DisassembleNextOPCode();
+ 
+         executed += m_iTStates;
+@@ -258,6 +267,37 @@ unsigned int Processor::RunFor(unsigned int tstates)
+     return executed;
+ }
+ 
++void Processor::BeginStackWatermark()
++{
++    m_stack_watermark_active = true;
++    m_stack_watermark_start = SP.GetValue();
++    m_stack_watermark_minimum = m_stack_watermark_start;
++}
++
++void Processor::EndStackWatermark()
++{
++    m_stack_watermark_active = false;
++}
++
++u16 Processor::GetStackWatermarkStart() const
++{
++    return m_stack_watermark_start;
++}
++
++u16 Processor::GetStackWatermarkMinimum() const
++{
++    return m_stack_watermark_minimum;
++}
++
++void Processor::SampleStackWatermark()
++{
++    if (!m_stack_watermark_active)
++        return;
++    const u16 current = SP.GetValue();
++    if (current < m_stack_watermark_minimum)
++        m_stack_watermark_minimum = current;
++}
++
+ void Processor::LogInstructionEvent(u16 pc)
+ {
+ #if !defined(GEARCOLECO_DISABLE_DISASSEMBLER)
+diff --git a/studio/vendor/Gearcoleco-main/src/Processor.h b/studio/vendor/Gearcoleco-main/src/Processor.h
+index fd9e748e8..7ab79e9e2 100644
+--- a/studio/vendor/Gearcoleco-main/src/Processor.h
++++ b/studio/vendor/Gearcoleco-main/src/Processor.h
+@@ -100,6 +100,10 @@ public:
+     void SaveState(std::ostream& stream);
+     void LoadState(std::istream& stream, int version);
+     ProcessorState* GetState();
++    void BeginStackWatermark();
++    void EndStackWatermark();
++    u16 GetStackWatermarkStart() const;
++    u16 GetStackWatermarkMinimum() const;
+     void SetDisassemblerSyntax(GC_Disassembler_Syntax syntax);
+     GC_Disassembler_Syntax GetDisassemblerSyntax() const;
+     void DisassembleNextOPCode();
+@@ -174,6 +178,9 @@ private:
+     bool m_bPrefixedCBOpcode;
+     u8 m_PrefixedCBValue;
+     bool m_bInputLastCycle;
++    bool m_stack_watermark_active;
++    u16 m_stack_watermark_start;
++    u16 m_stack_watermark_minimum;
+     bool m_breakpoints_enabled;
+     bool m_breakpoints_irq_enabled;
+     bool m_cpu_breakpoint_hit;
+@@ -192,6 +199,7 @@ private:
+     u16 FetchArg16();
+     void ExecuteOPCode();
+     void ExecuteInputLastCycle();
++    void SampleStackWatermark();
+     void LeaveHalt();
+     void ClearAllFlags();
+     void ToggleZeroFlagFromResult(u16 result);
 diff --git a/studio/vendor/Gearcoleco-main/src/TMS9918A.cpp b/studio/vendor/Gearcoleco-main/src/TMS9918A.cpp
 index e6bafa232..86bd253a6 100644
 --- a/studio/vendor/Gearcoleco-main/src/TMS9918A.cpp

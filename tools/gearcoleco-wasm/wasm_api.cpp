@@ -785,6 +785,36 @@ extern "C"
         return g_core->GetProcessor()->GetState()->SP->GetValue();
     }
 
+    GCW_EXPORT int gcw_stack_watermark_begin()
+    {
+        if (!IsReady())
+            return 0;
+        g_core->GetProcessor()->BeginStackWatermark();
+        return 1;
+    }
+
+    GCW_EXPORT int gcw_stack_watermark_end()
+    {
+        if (!IsReady())
+            return 0;
+        g_core->GetProcessor()->EndStackWatermark();
+        return 1;
+    }
+
+    GCW_EXPORT u16 gcw_stack_watermark_start()
+    {
+        if (!IsReady())
+            return 0;
+        return g_core->GetProcessor()->GetStackWatermarkStart();
+    }
+
+    GCW_EXPORT u16 gcw_stack_watermark_minimum()
+    {
+        if (!IsReady())
+            return 0;
+        return g_core->GetProcessor()->GetStackWatermarkMinimum();
+    }
+
 
     GCW_EXPORT u32 gcw_get_cpu_state(u16* output, u32 size)
     {
