@@ -113,6 +113,9 @@ $exported = @(
     "_gcw_reset",
     "_gcw_set_video_chip",
     "_gcw_get_video_chip",
+    "_gcw_set_accurate_vdp_timing",
+    "_gcw_get_accurate_vdp_timing",
+    "_gcw_get_dropped_vram_accesses",
     "_gcw_set_sp0256_enabled",
     "_gcw_set_voice_module_type",
     "_gcw_run_frame",
@@ -200,6 +203,7 @@ $versionFile = Join-Path $OutputDir "BUILD.txt"
     "sp0256_core=rom_microsequencer_lpc12"
     "sp0256_voice_modules=lundy_43_44_45,eve_48_49_4a_4b"
     "video_chips=tms9918a,f18a_v1.9"
+    "tms9918a_vram_timing=compatible,realistic_access_slots_single_pending_request"
     "adam=firmware,adamnet,keyboard,ddp,disk,media_export,printer,64k_expansion_ram"
     "adam_reset=eos_computer,os7_cartridge_on_adam_hardware"
     "adam_serial=adamlink,eve_orphanware,microinnovations,offline,loopback,hayes,scripted_rx,tx_capture,debug_inspector,selectable_8n1_timing,scn2651_txrdy_txemt,savestate_v112"

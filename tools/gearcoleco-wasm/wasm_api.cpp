@@ -833,6 +833,24 @@ extern "C"
         return IsReady() ? static_cast<int>(g_core->GetVideoChip()) : -1;
     }
 
+    GCW_EXPORT int gcw_set_accurate_vdp_timing(int enabled)
+    {
+        if (!IsReady())
+            return 0;
+        g_core->GetVideo()->SetAccurateVramTiming(enabled != 0);
+        return 1;
+    }
+
+    GCW_EXPORT int gcw_get_accurate_vdp_timing()
+    {
+        return IsReady() && g_core->GetVideo()->GetAccurateVramTiming() ? 1 : 0;
+    }
+
+    GCW_EXPORT u32 gcw_get_dropped_vram_accesses()
+    {
+        return IsReady() ? g_core->GetVideo()->GetDroppedVramAccessCount() : 0;
+    }
+
     GCW_EXPORT int gcw_set_voice_module_type(int type)
     {
         if (!IsReady() || type < 0 || type > 2)

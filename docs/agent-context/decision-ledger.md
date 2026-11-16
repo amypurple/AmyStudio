@@ -1650,3 +1650,19 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Published `downloads/amy-studio-vscode-0.1.18.vsix` and updated `vscode.html`; the previous public
   page still pointed to 0.1.15 even though 0.1.17 existed only in the internal build directory.
 
+## 2026-11-16 - Realistic TMS9918A timing remains opt-in
+
+- The GearColeco panel now offers `Compatible` and `Realistic TMS9918A` VDP
+  timing. Realistic mode models access slots, one pending VRAM request, replaced
+  requests, and address changes before completion; the frame indicator reports
+  replacements as `VDP n`.
+- Claude's 48-case ROM proves the mode changes emulation rather than merely
+  reporting it. The current core reports 105 replacements versus 64 in Claude's
+  checker and 65 in openMSX, so it is a useful interactive detector but not yet
+  the release oracle.
+- Optimizer EX/EXX pairs are timing barriers. Full sprite uploads use 31-T paced
+  writes, and the partial uploader now uses 32-T spacing. Claude independently
+  measured zero drops for the corrected runtime paths and nine VDP-safe games.
+- Final hardware-safety evidence still requires the access-trace checker or
+  openMSX until instruction-level GearColeco phase calibration is complete.
+

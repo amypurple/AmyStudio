@@ -50,8 +50,11 @@ AMY_UPDATE_SPRITES:
     ld hl,AMY_SPRITE_TABLE
 AMY_UPDATE_SPRITES_LOOP:
     outi
+    jr $+2
     outi
+    jr $+2
     outi
+    jr $+2
     ld a,(hl)
     and $8F
     out (c),a
@@ -174,8 +177,11 @@ AMY_UPDATE_SPRITES_FLICKER_WRITE_B:
     add hl,de
     ld c,VDP_DATA_PORT
     outi
+    jr $+2
     outi
+    jr $+2
     outi
+    jr $+2
     ld a,(hl)
     and $8F
     out (c),a

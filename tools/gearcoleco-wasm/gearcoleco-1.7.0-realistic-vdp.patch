@@ -1,0 +1,233 @@
+diff --git a/studio/vendor/Gearcoleco-main/src/TMS9918A.cpp b/studio/vendor/Gearcoleco-main/src/TMS9918A.cpp
+index e6bafa232..86bd253a6 100644
+--- a/studio/vendor/Gearcoleco-main/src/TMS9918A.cpp
++++ b/studio/vendor/Gearcoleco-main/src/TMS9918A.cpp
+@@ -47,6 +47,12 @@ TMS9918A::TMS9918A(Memory* pMemory, Processor* pProcessor)
+     m_bDisplayEnabled = false;
+     m_bSpriteOvrRequest = false;
+     m_bNoSpriteLimit = false;
++    m_bAccurateVramTiming = false;
++    m_bPendingVramAccess = false;
++    m_bPendingVramRead = false;
++    m_PendingVramData = 0;
++    m_iPendingVramCycles = 0;
++    m_iDroppedVramAccesses = 0;
+     m_Overscan = OverscanDisabled;
+
+     for (int i = 0; i < 48; i++)
+@@ -178,6 +184,9 @@ void TMS9918A::Reset(bool bPAL)
+     m_bDisplayEnabled = false;
+     m_bSpriteOvrRequest = false;
+     m_iMode = 0;
++    m_bPendingVramAccess = false;
++    m_iPendingVramCycles = 0;
++    m_iDroppedVramAccesses = 0;
+
+     m_LineEvents.vint = false;
+     m_LineEvents.display = false;
+@@ -203,6 +212,7 @@ bool TMS9918A::Tick(unsigned int clockCycles)
+ {
+     bool return_vblank = false;
+
++    AdvancePendingVramAccess(clockCycles);
+     m_iCycleCounter += clockCycles;
+
+     ///// VINT /////
+@@ -263,6 +273,11 @@ u8 TMS9918A::GetDataPort()
+     m_bFirstByteInSequence = true;
+     u8 ret = m_VdpBuffer;
+     TraceVDPEvent(TRACE_VDP_DATA_READ);
++    if (m_bAccurateVramTiming)
++    {
++        QueueVramAccess(true);
++        return ret;
++    }
+     m_VdpBuffer = m_pVdpVRAM[m_VdpAddress];
+ #if !defined(GEARCOLECO_DISABLE_DISASSEMBLER)
+     m_pProcessor->CheckMemoryBreakpoints(Processor::GC_BREAKPOINT_TYPE_VRAM, m_VdpAddress, true);
+@@ -285,6 +300,11 @@ void TMS9918A::WriteData(u8 data)
+     m_bFirstByteInSequence = true;
+     TraceVDPEvent(TRACE_VDP_DATA_WRITE, 0xFF, data);
+     m_VdpBuffer = data;
++    if (m_bAccurateVramTiming)
++    {
++        QueueVramAccess(false, data);
++        return;
++    }
+     m_pVdpVRAM[m_VdpAddress] = data;
+ #if !defined(GEARCOLECO_DISABLE_DISASSEMBLER)
+     m_pProcessor->CheckMemoryBreakpoints(Processor::GC_BREAKPOINT_TYPE_VRAM, m_VdpAddress, false);
+@@ -309,6 +329,11 @@ void TMS9918A::WriteControl(u8 control)
+         {
+             case 0x00:
+             {
++                if (m_bAccurateVramTiming)
++                {
++                    QueueVramAccess(true);
++                    break;
++                }
+                 m_VdpBuffer = m_pVdpVRAM[m_VdpAddress];
+                 m_VdpAddress = (m_VdpAddress + 1) & 0x3FFF;
+                 break;
+@@ -343,6 +368,88 @@ void TMS9918A::WriteControl(u8 control)
+     }
+ }
+
++void TMS9918A::SetAccurateVramTiming(bool enabled)
++{
++    m_bAccurateVramTiming = enabled;
++    m_bPendingVramAccess = false;
++    m_iPendingVramCycles = 0;
++    m_iDroppedVramAccesses = 0;
++}
++
++bool TMS9918A::GetAccurateVramTiming() const
++{
++    return m_bAccurateVramTiming;
++}
++
++u32 TMS9918A::GetDroppedVramAccessCount() const
++{
++    return m_iDroppedVramAccesses;
++}
++
++void TMS9918A::QueueVramAccess(bool read, u8 data)
++{
++    // The TMS99x8 has one pending VRAM request. A new request arriving before
++    // the next free slot replaces the old one; the address advances only when
++    // the surviving request executes.
++    if (m_bPendingVramAccess)
++        m_iDroppedVramAccesses++;
++    m_bPendingVramAccess = true;
++    m_bPendingVramRead = read;
++    m_PendingVramData = data;
++    m_iPendingVramCycles = VramAccessWaitCycles();
++}
++
++void TMS9918A::AdvancePendingVramAccess(unsigned int clockCycles)
++{
++    if (!m_bAccurateVramTiming || !m_bPendingVramAccess)
++        return;
++    m_iPendingVramCycles -= static_cast<int>(clockCycles);
++    if (m_iPendingVramCycles <= 0)
++        ExecutePendingVramAccess();
++}
++
++void TMS9918A::ExecutePendingVramAccess()
++{
++    const u16 address = m_VdpAddress & 0x3FFF;
++    if (m_bPendingVramRead)
++        m_VdpBuffer = m_pVdpVRAM[address];
++    else
++        m_pVdpVRAM[address] = m_PendingVramData;
++#if !defined(GEARCOLECO_DISABLE_DISASSEMBLER)
++    m_pProcessor->CheckMemoryBreakpoints(Processor::GC_BREAKPOINT_TYPE_VRAM, address, m_bPendingVramRead);
++#endif
++    m_VdpAddress = (address + 1) & 0x3FFF;
++    m_bPendingVramAccess = false;
++    m_iPendingVramCycles = 0;
++}
++
++int TMS9918A::VramAccessWaitCycles() const
++{
++    // Slot positions are TMS99x8 ticks (6 ticks per Z80 T-state). These
++    // measured tables are shared with the independent Claude/openMSX checker.
++    static const short off[] = {4,12,20,28,36,44,52,60,68,76,84,92,100,108,116,124,132,140,148,156,164,172,180,188,196,204,220,236,252,268,284,300,316,332,348,364,380,396,412,428,444,460,476,492,508,524,540,556,572,588,604,620,636,652,668,684,700,716,732,748,764,780,796,812,828,844,860,876,892,908,924,940,956,972,988,1004,1020,1036,1052,1068,1084,1100,1116,1132,1148,1164,1180,1196,1212,1228,1236,1244,1252,1260,1268,1276,1284,1292,1300,1308,1316,1324,1332,1340,1348,1356,1364};
++    static const short g12[] = {4,12,20,28,116,124,132,140,220,348,476,604,732,860,988,1116,1236,1244,1364};
++    static const short g3[] = {4,12,20,28,116,124,132,140,220,228,260,292,324,348,356,388,420,452,476,484,516,548,580,604,612,644,676,708,732,740,772,804,836,860,868,900,932,964,988,996,1028,1060,1092,1116,1124,1156,1188,1220,1236,1244,1364};
++    static const short text[] = {4,12,20,28,36,44,52,60,68,76,84,92,100,108,116,124,132,140,148,156,164,172,180,188,196,204,212,220,228,244,268,292,316,340,364,388,412,436,460,484,508,532,556,580,604,628,652,676,700,724,748,772,796,820,844,868,892,916,940,964,988,1012,1036,1060,1084,1108,1132,1156,1180,1196,1204,1212,1220,1228,1236,1244,1252,1260,1268,1276,1284,1292,1300,1308,1316,1324,1332,1340,1348,1356,1364};
++    const short* slots = off;
++    size_t count = sizeof(off) / sizeof(off[0]);
++    const bool active = m_bDisplayEnabled && m_iRenderLine < GC_RESOLUTION_HEIGHT;
++    if (active && (m_VdpRegister[1] & 0x10)) { slots = text; count = sizeof(text) / sizeof(text[0]); }
++    else if (active && (m_VdpRegister[1] & 0x08)) { slots = g3; count = sizeof(g3) / sizeof(g3[0]); }
++    else if (active) { slots = g12; count = sizeof(g12) / sizeof(g12[0]); }
++    // GearColeco raises F at CPU cycle 220 on line 192; the measured TMS slot
++    // tables place the same event at tick 202. The 250-tick phase aligns both
++    // beam origins: (220 * 6 + 250) mod 1368 == 202.
++    const int tick = (m_iCycleCounter * 6 + 250) % 1368;
++    const int earliest = tick + 28;
++    int slot = -1;
++    for (size_t i = 0; i < count; ++i)
++        if (slots[i] >= earliest) { slot = slots[i]; break; }
++    if (slot < 0)
++        slot = slots[0] + 1368;
++    return (slot - tick + 5) / 6;
++}
++
+ bool TMS9918A::IsPAL()
+ {
+     return m_bPAL;
+@@ -954,6 +1061,11 @@ void TMS9918A::LoadState(std::istream& stream, u32 version)
+     stream.read(reinterpret_cast<char*> (&m_Timing), sizeof(m_Timing));
+     stream.read(reinterpret_cast<char*> (&m_bDisplayEnabled), sizeof(m_bDisplayEnabled));
+     stream.read(reinterpret_cast<char*> (&m_bSpriteOvrRequest), sizeof(m_bSpriteOvrRequest));
++    // The timing mode is an emulator setting, not part of legacy GearColeco
++    // save states. Frame-boundary recorder states normally have no request in
++    // flight; discard one rather than replaying a request from the old state.
++    m_bPendingVramAccess = false;
++    m_iPendingVramCycles = 0;
+ }
+
+ bool TMS9918A::IsF18AHardware() const
+diff --git a/studio/vendor/Gearcoleco-main/src/TMS9918A.h b/studio/vendor/Gearcoleco-main/src/TMS9918A.h
+index 0aff2b86b..3f3165b4b 100644
+--- a/studio/vendor/Gearcoleco-main/src/TMS9918A.h
++++ b/studio/vendor/Gearcoleco-main/src/TMS9918A.h
+@@ -60,6 +60,9 @@ public:
+     bool GetLatch();
+     void SetTraceLogger(TraceLogger* pTraceLogger);
+     bool IsF18AHardware() const;
++    void SetAccurateVramTiming(bool enabled);
++    bool GetAccurateVramTiming() const;
++    u32 GetDroppedVramAccessCount() const;
+     int GetScreenWidth() const;
+     int GetScreenHeight() const;
+
+@@ -72,6 +75,10 @@ private:
+     void RenderBackground(int line);
+     void RenderSprites(int line);
+     void InitPalettes();
++    void QueueVramAccess(bool read, u8 data = 0);
++    void AdvancePendingVramAccess(unsigned int clockCycles);
++    void ExecutePendingVramAccess();
++    int VramAccessWaitCycles() const;
+
+ private:
+     Memory* m_pMemory;
+@@ -113,6 +120,12 @@ private:
+     bool m_bDisplayEnabled;
+     bool m_bSpriteOvrRequest;
+     bool m_bNoSpriteLimit;
++    bool m_bAccurateVramTiming;
++    bool m_bPendingVramAccess;
++    bool m_bPendingVramRead;
++    u8 m_PendingVramData;
++    int m_iPendingVramCycles;
++    u32 m_iDroppedVramAccesses;
+
+     u16 m_palette_565_rgb[16];
+     u16 m_palette_555_rgb[16];
+diff --git a/studio/vendor/Gearcoleco-main/src/Video.h b/studio/vendor/Gearcoleco-main/src/Video.h
+index 542124fb0..a9bb08847 100644
+--- a/studio/vendor/Gearcoleco-main/src/Video.h
++++ b/studio/vendor/Gearcoleco-main/src/Video.h
+@@ -72,6 +72,18 @@ public:
+     virtual bool GetLatch() = 0;
+     virtual void SetTraceLogger(TraceLogger* trace_logger) = 0;
+     virtual bool IsF18AHardware() const = 0;
++    virtual void SetAccurateVramTiming(bool enabled)
++    {
++        UNUSED(enabled);
++    }
++    virtual bool GetAccurateVramTiming() const
++    {
++        return false;
++    }
++    virtual u32 GetDroppedVramAccessCount() const
++    {
++        return 0;
++    }
+     virtual bool IsF18AUnlocked() const
+     {
+         return false;

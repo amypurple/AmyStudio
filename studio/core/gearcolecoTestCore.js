@@ -1,5 +1,5 @@
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261007-adam-dual-reset1",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261115-vdp-slots1",
   import.meta.url
 );
 
@@ -368,6 +368,23 @@ export class GearcolecoTestCore {
     if (this.module._gcw_set_video_chip(value) !== 1) {
       throw new Error("GearColeco could not select the video chip.");
     }
+  }
+
+  setAccurateVdpTiming(enabled) {
+    this.assertAlive();
+    if (this.module._gcw_set_accurate_vdp_timing(enabled ? 1 : 0) !== 1) {
+      throw new Error("GearColeco could not configure realistic VDP timing.");
+    }
+  }
+
+  getAccurateVdpTiming() {
+    this.assertAlive();
+    return this.module._gcw_get_accurate_vdp_timing() === 1;
+  }
+
+  getDroppedVramAccesses() {
+    this.assertAlive();
+    return this.module._gcw_get_dropped_vram_accesses() >>> 0;
   }
 
   setAdamSerialProfile(profile) {

@@ -5,7 +5,7 @@ import {
   GEARCOLECO_MACHINE,
   GEARCOLECO_TEST_INPUT,
   GEARCOLECO_TEST_REGION
-} from "./gearcolecoTestCore.js?v=20261006-megacart-active-bank1";
+} from "./gearcolecoTestCore.js?v=20261115-vdp-slots1";
 import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAdamFirmware, saveAdamFirmwareToBrowser } from "./adamFirmwareStorage.js?v=20260925-adam-local-firmware2";
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
@@ -426,6 +426,7 @@ function buildDialog() {
           <label>Pad<select data-field="controller"><option value="0" selected>P1</option><option value="1">P2</option></select></label>
           <label>Keys<select data-field="keyboardTarget" title="Route the computer keyboard to the ADAM keyboard or a joystick port"><option value="adam" selected>ADAM</option><option value="joy1">JOY P1</option><option value="joy2">JOY P2</option></select></label>
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
+          <label>VDP timing<select data-field="vdpTiming" title="Model real TMS9918A VRAM access slots and expose unsafe transfers"><option value="compatible" selected>Compatible</option><option value="realistic">Realistic TMS9918A</option></select></label>
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
           <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
           <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="adamlink-hayes">AdamLink Hayes modem</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="eve-hayes">Eve Hayes modem</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option><option value="micro-hayes">MicroInnovations Hayes modem</option></select></label>
@@ -963,6 +964,7 @@ export function createRomTestRecorderUi({
       environment: {
         region: field("region").value,
         videoChip: field("videoChip").value,
+        vdpTiming: field("vdpTiming").value,
         voiceModule: field("voiceModule").value,
         adamSound: field("adamSound").value,
         adamSerial: field("adamSerial").value
@@ -1355,7 +1357,11 @@ export function createRomTestRecorderUi({
     slider.min = String(timeline.firstAvailableFrame);
     slider.max = String(timeline.latestFrame);
     slider.value = String(timeline.frame);
-    field("frame").textContent = `F ${timeline.frame}`;
+    const vdpDrops = core.getAccurateVdpTiming() ? core.getDroppedVramAccesses() : 0;
+    field("frame").textContent = vdpDrops ? `F ${timeline.frame} · VDP ${vdpDrops}` : `F ${timeline.frame}`;
+    field("frame").title = vdpDrops
+      ? `${vdpDrops} VRAM request${vdpDrops === 1 ? "" : "s"} replaced before a free TMS9918A access slot`
+      : "Recorded frame";
     action("play").innerHTML = playing ? "&#x23F8;" : "&#x25B6;";
     action("play").title = playing ? "Pause" : "Play";
     action("play").setAttribute("aria-label", playing ? "Pause" : "Play");
@@ -1751,6 +1757,7 @@ export function createRomTestRecorderUi({
     loadedRom = rom;
     loadedAdamMedia = adam ? adamMediaBytes : null;
     core.setVideoChip(field("videoChip").value);
+    core.setAccurateVdpTiming(field("vdpTiming").value === "realistic");
     const serialSetting = field("adamSerial").value;
     core.setAdamSoundExpansion(field("adamSound").value);
     const serialProfile = serialSetting.split("-")[0];
@@ -2076,6 +2083,16 @@ export function createRomTestRecorderUi({
       try {
         await startCore();
         setRecorderStatus(`Video hardware is ${chip}; recording restarted.`);
+      } catch (error) {
+        setRecorderStatus(error.message || String(error));
+      }
+    });
+    field("vdpTiming").addEventListener("change", async () => {
+      const timing = field("vdpTiming").selectedOptions[0]?.textContent || field("vdpTiming").value;
+      setRecorderStatus(`Restarting with VDP timing: ${timing}...`);
+      try {
+        await startCore();
+        setRecorderStatus(`VDP timing is ${timing}; recording restarted.`);
       } catch (error) {
         setRecorderStatus(error.message || String(error));
       }
@@ -2429,6 +2446,7 @@ export function createRomTestRecorderUi({
         core = await GearcolecoTestCore.create({ seed: testCase.environment?.seed >>> 0 });
         loadedRom = rom;
         core.setVideoChip(testCase.environment?.videoChip || field("videoChip").value);
+        core.setAccurateVdpTiming((testCase.environment?.vdpTiming || field("vdpTiming").value) === "realistic");
         core.loadBios(bios);
         const replayRegion = testCase.environment?.region === "pal" ? GEARCOLECO_TEST_REGION.PAL : GEARCOLECO_TEST_REGION.NTSC;
         field("region").value = String(replayRegion);

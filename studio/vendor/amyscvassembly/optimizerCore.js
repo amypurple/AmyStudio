@@ -6582,71 +6582,9 @@ export class Z80Optimizer {
                         continue;
                     }
 
-                    // ========================================
-                    // Phase 1.8: Double EX Cancellation
-                    // ========================================
-                    if ((mnem === 'ex' || mnem === 'exx') && i + 1 < tokens.length) {
-                        const next = tokens[i + 1];
-                        if (next instanceof Instruction && !next.label) {
-                            const nextMnem = next.mnemonic.toLowerCase();
-                            if (nextMnem === mnem) {
-                                const sameOps = mnem === 'exx' ||
-                                    (token.operands.length === 2 && next.operands.length === 2 &&
-                                     token.operands[0].value.toLowerCase() === next.operands[0].value.toLowerCase() &&
-                                     token.operands[1].value.toLowerCase() === next.operands[1].value.toLowerCase());
-                                if (sameOps && !token.label) {
-                                    i++;
-                                    this.stats.peepholeOpts++;
-                                    this.stats.bytesSaved += 2;
-                                    optimizerLog(`  Double EX cancelled at line ${token.lineNumber}`, 'debug');
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-
-                    // ========================================
-                    // Phase 1.8a: Short-range EX ... EX cancellation
-                    // ========================================
-                    if (mnem === 'ex' &&
-                        token.operands.length === 2 &&
-                        !token.label) {
-                        const buffered = [];
-                        let cancelIndex = -1;
-                        const exchangeTouchesAf = token.operands.some((operand) =>
-                            String(operand.value).replace(/[()']/g, '').toLowerCase() === 'af'
-                        );
-                        for (let j = i + 1; j < tokens.length && j <= i + 4; j++) {
-                            const midTok = tokens[j];
-                            if (!(midTok instanceof Instruction) || midTok.label) break;
-                            const midMnem = midTok.mnemonic.toLowerCase();
-                            if (midMnem === 'ex' &&
-                                midTok.operands.length === 2 &&
-                                String(midTok.operands[0].value).toLowerCase() === String(token.operands[0].value).toLowerCase() &&
-                                String(midTok.operands[1].value).toLowerCase() === String(token.operands[1].value).toLowerCase()) {
-                                cancelIndex = j;
-                                break;
-                            }
-                            if (midMnem === 'exx' ||
-                                isUnconditionalFlowStop(midTok) ||
-                                ['call', 'rst', 'reti', 'retn', 'jp', 'jr', 'djnz'].includes(midMnem) ||
-                                (exchangeTouchesAf && instructionCanClobberRegister(midTok, 'af')) ||
-                                instructionCanClobberRegister(midTok, 'de') ||
-                                instructionCanClobberRegister(midTok, 'hl')) {
-                                break;
-                            }
-                            buffered.push(midTok);
-                        }
-
-                        if (cancelIndex !== -1 && buffered.length > 0) {
-                            for (const midTok of buffered) optimized.push(midTok);
-                            i = cancelIndex;
-                            this.stats.peepholeOpts++;
-                            this.stats.bytesSaved += 2;
-                            optimizerLog(`  Cancelled short-range EX pair around inert instructions at line ${token.lineNumber}`, 'debug');
-                            continue;
-                        }
-                    }
+                    // EX/EXX pairs are timing barriers. Hand-written VDP and PSG code can use a
+                    // semantically cancelling pair as deliberate cycle padding, so the optimizer
+                    // must not infer that removing it is behavior-preserving.
 
                     // ========================================
                     // Phase 1.9: Duplicate Flag Instructions

@@ -16,16 +16,20 @@ AMY_UPDATE_SPRITES_PARTIAL:
 AMY_UPDATE_SPRITES_PARTIAL_LOOP:
     ld a,(hl)
     out (VDP_DATA_PORT),a
+    nop
     inc hl
     ld a,(hl)
     out (VDP_DATA_PORT),a
+    nop
     inc hl
     ld a,(hl)
     out (VDP_DATA_PORT),a
+    nop
     inc hl
     ld a,(hl)
     and $8F
     out (VDP_DATA_PORT),a
+    nop
     inc hl
     djnz AMY_UPDATE_SPRITES_PARTIAL_LOOP
 AMY_UPDATE_SPRITES_PARTIAL_TERMINATOR:
