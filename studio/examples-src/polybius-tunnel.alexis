@@ -1,0 +1,3033 @@
+cartridge "POLYBIUS/PRESENTS SINNESLOSCHEN'S/1982"
+
+' =========================================================================
+' POLYBIUS - VERSION A "LE TUNNEL"
+' An arcade reconstruction of the 1981 Portland urban legend, published
+' by the fictional SINNESLOSCHEN, with a tribute to the forward-thrust
+' tunnel and speed gates of Jeff Minter's Polybius (Llamasoft, 2017).
+' Original graphics, names and music: nothing is copied from Llamasoft.
+'
+' Design and direction: Amy.  Programming: Claude, with Amy Studio.
+'
+' PSEUDO-3D TECHNIQUE
+' -------------------
+' The tunnel never gets redrawn.  tools/gen_tunnel.py precomputes eight
+' name-table pages per tube shape.  Each page is one perspective phase of
+' rings spaced uniformly in depth; after eight phases the ring set repeats.
+' Graphics II runs with masked tables (R3=$9F, R4=$00): the three screen
+' thirds share one 256-tile PATTERN table at $0000 and one COLOR table at
+' $2000, which frees 12 KB of VRAM for name pages:
+'   page 0..5 : $0800 $0C00 $1000 $1400 $1800 $1C00   (R2 = 2..7)
+'   page 6..7 : $2800 $2C00                           (R2 = 10, 11)
+'   menu page : $3000                                 (R2 = 12)
+'   sprite attributes $1B00 (slack of page 4), sprite patterns $3800.
+' Forward motion is ONE register write (R2) per frame, done inside the
+' VBlank hook.  Speed only changes how fast the phase accumulator moves.
+'
+' VRAM BUDGET (writes per frame, see report)
+' ------------------------------------------
+' Everything below happens right after WAIT, inside vertical blanking:
+'   R2 page switch ......................... 2 control bytes (NMI hook)
+'   sprite attribute table ................. 4 x active sprites + 1
+'   far-object overlay (restore + draw) .... up to 3 accesses per cell
+'   one secondary job: HUD element OR spoke colour step
+' Hand-written VDP loops below keep at least 29 Z80 cycles between data
+' accesses (TMS9918A 8 microsecond rule) so an overrun past VBlank never
+' loses a write on real hardware.  Only the Amy sprite upload uses fast
+' OUTI and it is always issued first.
+' =========================================================================
+
+' ------------------------------------------------------------ constants
+const MenuReg = 12
+const MenuPageHi = $30
+const CoreCol0 = 14
+const CoreCol1 = 17
+const CoreRow0 = 10
+const CoreRow1 = 13
+const MaxOv = 20
+const MaxEn = 6
+const MaxShots = 3
+const MaxGates = 2
+const SpawnD = 600
+const TileD = 280
+const HiddenD = 520
+const GatesPerLevel = 8
+const SprShip = 0
+const SprEye = 1
+const SprShot0 = 2
+const SprEn0 = 5
+const SprGate0 = 11
+const SprBoom = 13
+const SprWave = 14
+const SprCount = 15
+const ColShip = 15
+const ColShipSafe = 14
+const ColEye = 13
+const ColShot = 15
+const ColTri = 9
+const ColDia = 3
+const ColSpi = 10
+const ColGate = 11
+const ColBoom = 11
+' --- sound constants (written by tools/gen_sound.py) ---
+const SndTit1 = 1
+const SndTit2 = 2
+const SndTit3 = 3
+const SndTit4 = 4
+const SndG0a = 5
+const SndG0b = 6
+const SndG0c = 7
+const SndG1a = 8
+const SndG1b = 9
+const SndG1c = 10
+const SndG2a = 11
+const SndG2b = 12
+const SndG2c = 13
+const SndShot = 14
+const SndBoomN = 15
+const SndHitT = 16
+const SndHitN = 17
+const SndWaveN = 18
+const SndWaveT2 = 19
+const SndGate1 = 20
+const SndGate2 = 21
+const SndGateN = 22
+const SndMiss = 23
+const SndLevel1 = 24
+const SndLevel2 = 25
+const SndLife = 26
+const SndOver1 = 27
+const SndOver2 = 28
+const SndOverN = 29
+const SndData = 30
+' --- end sound constants ---
+
+' ------------------------------------------------------------ variables
+' Tunnel and level state
+u8 Shape = 0
+u8 Level = 1
+u8 LaneCount = 8
+u8 SpokeCount = 8
+u8 TileCount = 132
+u8 RingCol = 7
+u8 ShowPage = 0
+u8 ShowReg = 12
+u8 LastReg = 12
+u8 PhaseAcc = 0
+u8 SpeedLvl = 0
+u8 SpeedQ = 4
+u8 BaseSpeed = 0
+u16 PtrH = 0
+u16 PtrMX = 0
+u16 PtrMY = 0
+u16 PtrSG = 0
+u16 PtrFR = 0
+u16 PtrSpk = 0
+u16 PtrSpkIx = 0
+
+' Player
+u8 PLane = 0
+u8 PFrom = 0
+u8 PGlide = 0
+u8 PX = 0
+u8 PY = 0
+u8 PFrame = 0
+u8 PDead = 0
+u8 PSafe = 0
+u8 Lives = 3
+u8 WaveOk = 1
+u8 RepeatT = 0
+u8 FireT = 0
+u8 Mult = 1
+u8 GatesDone = 0
+bcd digits 6 Score = 0
+bcd digits 6 HiScore = 0
+u8 ScoreBuf[6]
+
+' Objects
+u8 EnType[6]
+u8 EnLane[6]
+u16 EnD[6]
+u8 EnTick[6]
+u8 EnRim[6]
+u8 EnX[6]
+u16 RndSeed = $ACE1
+u8 RndOut = 0
+u8 EnTX[6]
+u8 EnTY[6]
+u8 EnGrab[6]
+u8 EnY[6]
+u8 CrawlRate = 30
+u8 ShotOn[3]
+u8 ShotLane[3]
+u16 ShotD[3]
+u8 GateOn[2]
+u8 GateLane[2]
+u16 GateD[2]
+u8 SpawnT = 60
+u8 GateT = 90
+u8 BoomT = 0
+u8 BoomX = 0
+u8 BoomY = 0
+u8 WaveT = 0
+u8 EyeT = 0
+u8 MsgT = 0
+u8 SubT = 0
+u8 SubWord = 0
+u16 SubWait = 1500
+
+' Overlay lists (far objects and short messages drawn as tiles)
+u8 OvN = 0
+u8 OvLo[20]
+u8 OvHi[20]
+u8 OvT[20]
+u8 OldN = 0
+u8 OldLo[20]
+u8 OldHi[20]
+u8 OldS[20]
+
+' Spoke colour animation
+u8 SpkHi = 0
+u8 RotT = 0
+u8 RotPeriod = 0
+u8 SpkQN = 0
+u8 SpkQ[8]
+u8 SpkQC[8]
+u8 SweepK = 0
+u8 HudDirty = 0
+
+' Options, flow, demo
+bool FlashFx = false
+bool DemoMode = false
+u8 Choice = 1
+u8 IdleT = 0
+u8 IdleS = 0
+u16 DemoT = 0
+u8 MusicFast = 0
+u8 MusicOn = 0
+u16 QaLoops = 0
+u8 LogoCur = 0
+u8 LogoFlashT = 0
+u8 LogoWait = 0
+u8 LogoDid = 0
+
+' Scratch (never kept across calls to other subs)
+u8 I = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 W = 0
+u8 H = 0
+u8 M = 0
+u8 X = 0
+u8 Y = 0
+u8 T = 0
+u16 Off = 0
+u16 CD = 0
+u8 CV = 0
+u8 CW = 0
+u8 Hx = 0
+bool DemoQuit = false
+u8 AttractN = 0
+u16 P = 0
+u16 D = 0
+u8 Pad = 0
+u8 OldPad = 0
+u8 Edge = 0
+
+on vblank VblankTick
+
+' =========================================================================
+' BOOT
+' =========================================================================
+  set sound table SndTable areas 7
+  VideoInit
+  if defined QA_SFX
+    ' sound QA build: every effect alone, then over the in-game pulse
+    screen on
+    wait 30 frames
+    play sound SndShot
+    wait 60 frames
+    play sound SndBoomN
+    wait 60 frames
+    play sounds SndHitT, SndHitN
+    wait 120 frames
+    play sounds SndWaveN, SndWaveT2
+    wait 90 frames
+    play sounds SndGate1, SndGate2, SndGateN
+    wait 60 frames
+    play sound SndMiss
+    wait 60 frames
+    play sounds SndLevel1, SndLevel2
+    wait 90 frames
+    play sounds SndLife, SndLevel2
+    wait 120 frames
+    play sounds SndOver1, SndOver2, SndOverN
+    wait 180 frames
+    play sound SndData
+    wait 90 frames
+    for K = 0 to 2
+      SpeedLvl = K * 3
+      StartMusic
+      wait 120 frames
+      play sound SndShot
+      wait 20 frames
+      play sound SndShot
+      wait 40 frames
+      play sound SndBoomN
+      wait 60 frames
+      play sounds SndGate1, SndGate2, SndGateN
+      wait 60 frames
+      play sound SndMiss
+      wait 60 frames
+      play sounds SndWaveN, SndWaveT2
+      wait 120 frames
+    next
+    ' back down to the slow pulse: tone 2 must fall silent
+    SpeedLvl = 0
+    GameMusic
+    wait 240 frames
+    StopAllSound
+    wait 60 frames
+  end defined
+  HiScore = 0
+  goto TitleScreen
+
+' =========================================================================
+' TITLE SCREEN AND ATTRACT LOOP
+' Title runs over the octagon tunnel, drifting slowly forward, with the
+' SINNESLOSCHEN eye and an orbiting ship.  After 15 seconds of inactivity
+' the attract demo plays, then the high-score page, then the title again.
+' =========================================================================
+TitleScreen:
+  DemoMode = false
+  Level = 1
+  LoadShape(0)
+  DrawTitleText
+  RotPeriod = 10
+  SpeedLvl = 0
+  Choice = 1
+  DrawCursor(0)
+  SpeedQ = 3
+  IdleT = 0
+  IdleS = 0
+  StartTitleMusic
+  play sound SndData
+  clear sprites
+  set sprite count SprCount
+  K = 0
+  screen on
+
+TitleLoop:
+  wait
+  nmi off
+  call asm PB_SAT_UPLOAD
+  call asm PB_OVERLAY_FLUSH
+  ' logo colour only when it changes; otherwise the spoke job
+  LogoColorJob
+  if LogoDid = 0 then SpokeJob
+  nmi on
+  sleep after 120 seconds
+  ' tunnel drift and decoration
+  PhaseAcc += SpeedQ
+  ShowPage = (PhaseAcc >> 4) & 7
+  ShowReg = PageRegs[ShowPage]
+  OvN = 0
+  inc K
+  TitleSprites
+  RotateSpokes
+  ' menu input (edge-triggered, either controller)
+  ReadPad
+  if Edge != 0 then AttractN = 0
+  if (Edge & 1) != 0 then
+    if Choice > 1 then
+      DrawCursor(1)
+      dec Choice
+      DrawCursor(0)
+    end if
+    IdleT = 0
+    IdleS = 0
+  end if
+  if (Edge & 4) != 0 then
+    if Choice < 4 then
+      DrawCursor(1)
+      inc Choice
+      DrawCursor(0)
+    end if
+    IdleT = 0
+    IdleS = 0
+  end if
+  if (Edge & $C0) != 0 then
+    StopAllSound
+    if Choice = 1 then goto NewGame
+    if Choice = 2 then goto HowToPlay
+    if Choice = 3 then goto Options
+    goto Credits
+  end if
+  inc IdleT
+  if IdleT >= 60 then
+    IdleT = 0
+    inc IdleS
+    if defined QA_STRESS
+      IdleS = 15
+    end defined
+    if IdleS >= 15 then
+      ' after four demo cycles the title stays put and the display sleeps
+      if AttractN < 4 then goto AttractDemo
+    end if
+  end if
+  goto TitleLoop
+
+AttractDemo:
+  DemoMode = true
+  DemoQuit = false
+  inc AttractN
+  StartGameState
+  DemoT = 0
+  goto GameStart
+
+' =========================================================================
+' NEW GAME
+' =========================================================================
+NewGame:
+  DemoMode = false
+  StartGameState
+GameStart:
+  LoadShape(Shape)
+  RestoreWords
+  DrawHudAll
+  BeginLife
+  StartMusic
+  screen on
+
+' =========================================================================
+' MAIN GAME LOOP - one logic pass per video frame
+' =========================================================================
+GameLoop:
+  wait
+  ' ---------- VBlank: all VRAM work, fast sprite upload first ----------
+  nmi off
+  call asm PB_SAT_UPLOAD
+  call asm PB_OVERLAY_FLUSH
+  if OvN + OldN <= 24 then SecondaryJob
+  nmi on
+  ' ---------- logic (CPU only, prepares next frame) ----------
+  if defined QA_COUNT
+    inc QaLoops
+  end defined
+  OvN = 0
+  if DemoMode then
+    DemoInput
+    if DemoQuit then
+      StopAllSound
+      wait no fire
+      goto TitleScreen
+    end if
+    inc DemoT
+    if DemoT >= 1800 then goto DemoEnd
+  else
+    ReadPad
+  end if
+  if PDead = 0 then
+    PlayerControl
+  else
+    dec PDead
+    if PDead = 0 then
+      if Lives = 0 then goto GameOver
+      BeginLife
+    end if
+  end if
+  AdvanceTunnel
+  MoveShots
+  MoveEnemies
+  MoveGates
+  Spawner
+  Effects
+  BuildPlayerSprite
+  if GatesDone >= GatesPerLevel then LevelUp
+  goto GameLoop
+
+DemoEnd:
+  StopAllSound
+  goto HiScorePage
+
+' =========================================================================
+' GAME OVER: one press returns to the title; display sleeps when idle
+' =========================================================================
+GameOver:
+  StopAllSound
+  if DemoMode then goto HiScorePage
+  play sounds SndOver1, SndOver2, SndOverN
+  if Score > HiScore then HiScore = Score
+  PutTextAll(0, 11, 15)
+  for K = 0 to 40
+    wait
+    nmi off
+    call asm PB_SAT_UPLOAD
+    call asm PB_OVERLAY_FLUSH
+    nmi on
+    OvN = 0
+    AdvanceTunnel
+  next
+  pause until press and release sleep after 10 seconds
+  goto TitleScreen
+
+HiScorePage:
+  MenuPage
+  print centered at 4, "SINNESLOSCHEN"
+  RuleRow(6)
+  print centered at 9, "HIGH SCORE"
+  format HiScore into ScoreBuf
+  put ScoreBuf count 6 at 13,11
+  print centered at 14, "LAST SCORE"
+  format Score into ScoreBuf
+  put ScoreBuf count 6 at 13,16
+  RuleRow(19)
+  print centered at 21, "PRESS FIRE"
+  screen on
+  wait 240 frames or press
+  goto TitleScreen
+
+' =========================================================================
+' MENUS ON THE STATIC TEXT PAGE
+' =========================================================================
+HowToPlay:
+  MenuPage
+  print centered at 2, "HOW TO PLAY"
+  RuleRow(3)
+  print at 2,5, "JOYSTICK  ROTATE AROUND"
+  print at 12,6, "THE TUBE"
+  print at 2,8, "LEFT BTN  FIRE TO CENTRE"
+  print at 2,10, "RIGHT BTN ONE WAVE A LIFE"
+  print at 12,11, "CLEARS THE TUBE"
+  print at 2,14, "FLY THROUGH THE GATES:"
+  print at 4,16, "SPEED UP AND RAISE"
+  print at 4,17, "THE MULTIPLIER"
+  print at 2,19, "MISS A GATE OR GET HIT:"
+  print at 4,20, "YOU SLOW DOWN"
+  print centered at 22, "FIRE: NEXT"
+  set sprite count 6
+  set sprite 0 to 111,222,SPGATE2,ColGate
+  set sprite 1 to 39,222,SPSHIP0,ColShip
+  set sprite 2 to 63,222,SPSHOT1,ColShot
+  set sprite 3 to 79,222,SPWAVE,7
+  set sprite 4 to 207,0,0,0
+  set sprite 5 to 207,0,0,0
+  update sprites
+  screen on
+  pause until press and release sleep after 30 seconds
+  MenuPage
+  print centered at 2, "HOW TO PLAY"
+  RuleRow(3)
+  print at 6,6, "TRIANGLE     10 PTS"
+  print at 6,9, "DIAMOND      20 PTS"
+  print at 6,12, "SPIRAL       30 PTS"
+  print at 3,15, "POINTS X MULTIPLIER"
+  print at 3,17, "8 GATES: NEXT LEVEL"
+  print at 3,18, "THE TUBE CHANGES SHAPE"
+  print at 3,19, "AND STARTS TO TURN"
+  print centered at 22, "FIRE: TITLE"
+  set sprite count 6
+  set sprite 0 to 39,24,SPTRI2,ColTri
+  set sprite 1 to 63,24,SPDIA2,ColDia
+  set sprite 2 to 87,24,SPSPA2,ColSpi
+  set sprite 3 to 207,0,0,0
+  set sprite 4 to 207,0,0,0
+  set sprite 5 to 207,0,0,0
+  update sprites
+  screen on
+  pause until press and release sleep after 30 seconds
+  goto TitleScreen
+
+' Credits preserve the 1981 Portland legend in-game. The cartridge header says
+' 1982 because no ColecoVision cartridge could predate the console itself.
+Credits:
+  MenuPage
+  print centered at 2, "CREDITS"
+  RuleRow(3)
+  print centered at 5, "POLYBIUS"
+  put char TCOPYR at 6,7
+  print at 8,7, "1981 SINNESL"
+  put char TOUML at 20,7
+  print at 21,7, "SCHEN"
+  print centered at 10, "PORTLAND  OREGON"
+  print centered at 12, "NO CABINET WAS EVER FOUND."
+  print centered at 14, "THE MACHINE AND COMPANY"
+  print centered at 16, "BELONG TO AN URBAN LEGEND"
+  print centered at 18, "FIRST TOLD ONLINE IN 2000."
+  print centered at 22, "FIRE: NEXT"
+  set sprite count 2
+  set sprite 0 to 8,224,SPEYE0,ColEye
+  set sprite 1 to 207,0,0,0
+  update sprites
+  screen on
+  CreditsEyeWait
+  MenuPage
+  print centered at 2, "THE URBAN LEGEND"
+  RuleRow(3)
+  print centered at 5, "ARCADES NEAR PORTLAND"
+  print centered at 7, "RECEIVED A STRANGE GAME"
+  print centered at 9, "PLAYERS REPORTED BAD DREAMS"
+  print centered at 11, "MEMORY LOSS AND NIGHTMARES"
+  print centered at 14, "MEN IN BLACK TOOK NOTES"
+  print centered at 16, "THEN THE CABINET VANISHED"
+  print centered at 18, "NO MACHINE WAS EVER FOUND"
+  print centered at 22, "FIRE: NEXT"
+  set sprite count 2
+  set sprite 0 to 8,224,SPEYE0,ColEye
+  set sprite 1 to 207,0,0,0
+  update sprites
+  screen on
+  CreditsEyeWait
+  MenuPage
+  print centered at 2, "THIS VERSION"
+  RuleRow(3)
+  print centered at 5, "VERSION A - THE TUNNEL"
+  print centered at 8, "DESIGN   AMY"
+  print centered at 10, "CODE   CLAUDE"
+  print centered at 12, "MADE WITH AMY STUDIO"
+  print centered at 15, "TUNNEL AND SPEED GATES"
+  print centered at 17, "INSPIRED BY POLYBIUS"
+  print centered at 19, "MINTER / LLAMASOFT 2017"
+  print centered at 22, "FIRE: TITLE"
+  set sprite count 2
+  set sprite 0 to 8,224,SPEYE0,ColEye
+  set sprite 1 to 207,0,0,0
+  update sprites
+  screen on
+  CreditsEyeWait
+  goto TitleScreen
+
+Options:
+  MenuPage
+  print centered at 3, "OPTIONS"
+  RuleRow(4)
+  DrawOptionLine
+  print at 10,12, "BACK"
+  print centered at 21, "FIRE: SELECT"
+  set sprite count 1
+  set sprite 0 to 207,0,0,0
+  update sprites
+  screen on
+  Choice = 1
+OptionsMenu:
+  choose menu 1 to 2 into Choice cursor TCURSOR at 4,9 step 3 sleep after 30 seconds
+  if Choice = 2 then goto TitleScreen
+  if FlashFx then
+    FlashFx = false
+    SetWordColors
+    DrawOptionLine
+    goto OptionsMenu
+  end if
+  ' Turning flashing effects ON always shows the warning first.
+  MenuPage
+  print centered at 2, "WARNING"
+  RuleRow(3)
+  print at 3,5, "PHOTOSENSITIVE EPILEPSY"
+  print at 3,7, "FLASHING EFFECTS SHOW"
+  print at 3,8, "FLASHES AND RAPID"
+  print at 3,9, "CHANGES IN BRIGHTNESS."
+  print at 3,12, "STOP PLAYING AT ONCE IF"
+  print at 3,13, "YOU FEEL DIZZY, UNWELL"
+  print at 3,14, "OR YOUR VISION CHANGES."
+  print at 8,17, "CANCEL"
+  print at 8,19, "TURN ON"
+  screen on
+  Choice = 1
+  choose menu 1 to 2 into Choice cursor TCURSOR at 6,17 step 2 sleep after 30 seconds
+  if Choice = 2 then
+    FlashFx = true
+    SetWordColors
+  end if
+  goto Options
+
+' =========================================================================
+' GAME STATE
+' =========================================================================
+sub StartGameState:
+  Score = 0
+  Lives = 3
+  Level = 1
+  Shape = 0
+  GatesDone = 0
+  BaseSpeed = 0
+  if defined QA_STRESS
+    ' QA build only: start on level 6 (star tube, rotating) at high speed
+    Level = 6
+    Shape = 2
+    BaseSpeed = 6
+    Lives = 9
+  end defined
+  if defined QA_L2
+    ' QA build only: start on level 2 (cross tube, rim crawlers)
+    Level = 2
+    Shape = 1
+    BaseSpeed = 1
+  end defined
+  return
+end sub
+
+sub BeginLife:
+  PLane = LaneCount / 2
+  PFrom = PLane
+  PGlide = 0
+  PDead = 0
+  PSafe = 90
+  WaveOk = 1
+  SpeedLvl = BaseSpeed
+  Mult = 1
+  for I = 0 to 5
+    EnType[I] = 0
+    EnRim[I] = 0
+  next
+  ' lane steps get faster with the level: 40 frames at level 2, min 20
+  V = Level * 3
+  CrawlRate = 46 - min(V, 26)
+  for I = 0 to 2
+    ShotOn[I] = 0
+  next
+  GateOn[0] = 0
+  GateOn[1] = 0
+  SpawnT = 60
+  GateT = 100
+  HudDirty = $0F
+  return
+end sub
+
+sub LevelUp:
+  inc Level
+  GatesDone = 0
+  if Lives < 5 then
+    inc Lives
+    play sounds SndLife, SndLevel2
+  else
+    play sounds SndLevel1, SndLevel2
+  end if
+  if BaseSpeed < 4 then inc BaseSpeed
+  Shape = (Level - 1) % 3
+  screen off
+  LoadShape(Shape)
+  DrawHudAll
+  BeginLife
+  PSafe = 60
+  MsgT = 90
+  screen on
+  return
+end sub
+
+' =========================================================================
+' VIDEO SETUP
+' =========================================================================
+sub VideoInit:
+  screen off
+  mode 2 screen
+  sprites 16x16
+  asm {
+    ld bc,$039F        ; R3 = $9F : COLOR at $2000, thirds share 2 KB
+    call WRITE_REGISTER
+    ld bc,$0400        ; R4 = $00 : PATTERN at $0000, thirds share 2 KB
+    call WRITE_REGISTER
+    ld bc,$0536        ; R5 = $36 : sprite attributes at $1B00
+    call WRITE_REGISTER
+    ld bc,$0607        ; R6 = $07 : sprite patterns at $3800
+    call WRITE_REGISTER
+    ld bc,$020C        ; R2 = $0C : name table $3000 (menu page)
+    call WRITE_REGISTER
+    ld bc,$0701        ; R7 : black backdrop
+    call WRITE_REGISTER
+    ld hl,$3000        ; OS7 name-table shadow used by PRINT/PUT/CLS
+    ld ($73F6),hl
+  }
+  ShowReg = MenuReg
+  fill 0 count 2048 to vram.pattern
+  load default ascii
+  ' 8x8 adaptation of the Polybius 1981 display font. The generated
+  ' patterns replace printable ASCII 32..95 while preserving Amy's
+  ' standard character codes and all game-specific tiles below slot 32.
+  copy PolybiusFont count 512 to vram.pattern + 256
+  fill $F0 count 2048 to vram.color
+  ' small HUD / far-object tiles in slots 1..31
+  restore SmallTiles
+  for I = 1 to SmallTileCount
+    read K
+    Off = K
+    Off <<= 3
+    for J = 0 to 7
+      read V
+      vpoke vram.pattern + Off + J, V
+    next
+    read V
+    fill V count 8 to vram.color + Off
+  next
+  RestoreWords
+  copy SpritePat count 1248 to vram.spr_pat
+  backdrop black
+  return
+end sub
+
+' Static text page.  NMI stays off until the caller's SCREEN ON, so the
+' BIOS fills below can never be cut by the VBlank register write.
+sub MenuPage:
+  screen off
+  clear sprites
+  set sprite count 1
+  update sprites
+  SetViewReg(MenuReg)
+  poke($73F6, 0)
+  poke($73F7, MenuPageHi)
+  cls
+  return
+end sub
+
+sub RuleRow(u8 Row):
+  fill TRULE count 26 at 3,Row
+  return
+end sub
+
+sub DrawOptionLine:
+  if FlashFx then
+    print at 6,9, "FLASHING EFFECTS: ON "
+  else
+    print at 6,9, "FLASHING EFFECTS: OFF"
+  end if
+  return
+end sub
+
+' Subliminal word letters (copies of BIOS glyphs) in slots 14..25.  The
+' title logo borrows these slots, so a new game rebuilds them.
+sub RestoreWords:
+  for I = 0 to 11
+    Off = WordLetters[I]
+    Off <<= 3
+    D = I + 14
+    D <<= 3
+    copy vram.pattern + Off count 8 to vram.pattern + D
+  next
+  SetWordColors
+  return
+end sub
+
+sub SetWordColors:
+  ' Subliminal words stay dim and slow unless flashing effects are on.
+  V = $40
+  if FlashFx then V = $F0
+  fill V count 96 to vram.color + 112
+  return
+end sub
+
+' Load one tube shape: patterns, eight name pages, ring/spoke colours and
+' lane geometry pointers.  Called with the display off.
+sub LoadShape(u8 S):
+  screen off
+  clear sprites
+  set sprite count 1
+  update sprites
+  Shape = S
+  OldN = 0
+  OvN = 0
+  decompress zx0 PatTabs[S] to vram.pattern + 728
+  decompress zx0 PagesA[S] to vram.pattern + $0800
+  decompress zx0 PagesB[S] to vram.pattern + $2800
+  LaneCount = LaneCounts[S]
+  SpokeCount = SpokeCounts[S]
+  TileCount = TileCounts[S]
+  PtrH = HTabs[S]
+  PtrMX = MXTabs[S]
+  PtrMY = MYTabs[S]
+  PtrSG = SGTabs[S]
+  PtrFR = FRTabs[S]
+  PtrSpk = SpkTabs[S]
+  PtrSpkIx = SpkIxTabs[S]
+  V = (Level - 1) % 6
+  RingCol = RingColors[V]
+  ' Whole tunnel range 91..255 (constant count: a u16 variable count
+  ' loses the destination address, see bug report)
+  V = RingCol << 4
+  fill V count 1320 to vram.color + 728
+  for I = 0 to SpokeCount - 1
+    SetSpoke(I, 4)
+  next
+  SpkQN = 0
+  SweepK = 0
+  SpkHi = 0
+  RotT = 0
+  RotPeriod = 0
+  if Level > 1 then
+    V = Level * 3
+    RotPeriod = 30 - min(V, 22)
+  end if
+  ShowPage = 0
+  PhaseAcc = 0
+  SetViewReg(2)
+  clear sprites
+  set sprite count SprCount
+  return
+end sub
+
+' Direct R2 write, only while NMI is off (loading and menu set-up).
+sub SetViewReg(u8 R):
+  ShowReg = R
+  LastReg = R
+  asm {
+    ld a,(ShowReg)
+    ld c,a
+    ld b,2
+    call WRITE_REGISTER
+  }
+  return
+end sub
+
+' Writes the colour rows of every tile of one spoke: rows holding ring
+' pixels keep the ring colour, pure spoke rows take colour C.
+sub SetSpoke(u8 Sp, u8 C):
+  P = PtrSpkIx + Sp
+  K = peek(P)
+  V = peek(P + 1)
+  V = V - K
+  if V = 0 then return
+  Off = K
+  P = PtrSpk + Off + Off
+  call asm PB_SPOKE_COLOR with hl = P, b = V, d = RingCol, e = C
+  return
+end sub
+
+' =========================================================================
+' TITLE DECORATION
+' =========================================================================
+sub DrawTitleText:
+  ' big angular POLYBIUS logo: 3 tile rows x 24 columns (rows 2-4,
+  ' columns 4-27, inside the CRT-safe area).  Its tiles use the free slots
+  ' listed in LogoSlots (see tools/gen_sprites.py).
+  nmi off
+  P = address of LogoPat
+  Off = address of LogoSlots
+  call asm PB_SLOT_PATTERNS with hl = P, de = Off, b = LogoTiles
+  for I = 0 to 71
+    V = LogoMap[I]
+    if V != 0 then
+      J = I / 24
+      K = I % 24
+      Off = J + 2
+      Off <<= 5
+      W = K + 4
+      Off += W
+      call asm PB_POKE_ALL with hl = Off, a = V
+    end if
+  next
+  LogoCur = 0
+  LogoFlashT = 20
+  if FlashFx then LogoFlashT = 32
+  LogoWait = 0
+  LogoColorJob
+  nmi on
+  PutTextAll(1, 5, 6)
+  PutTextAll(2, 8, 7)
+  PutTextAll(3, 11, 15)
+  PutTextAll(4, 11, 16)
+  PutTextAll(5, 11, 17)
+  PutTextAll(6, 11, 18)
+  PutTextAll(7, 8, 21)
+  return
+end sub
+
+' Blue logo.  On each arrival at the title it gives ONE short flash
+' (white, then cyan, then blue) and stays blue.  With flashing effects ON
+' it also repeats an arcade flash burst (white/blue) every 4 seconds.
+' The 26 logo tiles are contiguous, so one call recolours them all.
+sub LogoColorJob:
+  LogoDid = 0
+  V = $50
+  if LogoFlashT > 0 then
+    dec LogoFlashT
+    if FlashFx then
+      if (LogoFlashT & 4) != 0 then V = $F0
+    else
+      if LogoFlashT >= 10 then
+        V = $F0
+      elseif LogoFlashT >= 5 then
+        V = $70
+      end if
+    end if
+  elseif FlashFx then
+    inc LogoWait
+    if LogoWait >= 240 then
+      LogoWait = 0
+      LogoFlashT = 32
+    end if
+  end if
+  if V = LogoCur then return
+  LogoCur = V
+  Off = address of LogoSlots
+  call asm PB_SLOT_COLORS with de = Off, b = LogoTiles, c = V
+  LogoDid = 1
+  return
+end sub
+
+sub DrawCursor(u8 Erase):
+  Off = Choice + 14
+  Off <<= 5
+  Off += 9
+  V = TCURSOR
+  if Erase != 0 then V = 0
+  nmi off
+  call asm PB_POKE_ALL with hl = Off, a = V
+  nmi on
+  return
+end sub
+
+' Writes a zero-terminated text from the Texts table into all 8 pages.
+sub PutTextAll(u8 Id, u8 Col, u8 Row):
+  P = Texts[Id]
+  Off = Row
+  Off <<= 5
+  Off += Col
+  nmi off
+  do
+    V = peek(P)
+    if V = 0 then exit do
+    ' spaces become blank tile 0 so no ring or spoke shows inside words
+    if V = 32 then V = 0
+    call asm PB_POKE_ALL with hl = Off, a = V
+    P += 1
+    Off += 1
+  loop
+  nmi on
+  return
+end sub
+
+sub TitleSprites:
+  ' ship orbiting the rim, eye in the centre, a gate drifting outward
+  V = K >> 3
+  PLane = V % LaneCount
+  CalcPos(PLane, 0)
+  PFrame = peek(PtrFR + PLane)
+  set sprite SprShip to Y - 9,X - 8,PFrame << 2,ColShip
+  ' the ship passes behind the logo instead of covering it
+  if Y < 48 then hide sprite SprShip
+  EyeSprite
+  for I = 2 to SprCount - 1
+    set sprite I to 207,0,0,0
+  next
+  V = K & 127
+  D = 127 - V
+  D <<= 2
+  W = (K >> 7) % LaneCount
+  if D < TileD then
+    CalcPos(W, D)
+    set sprite SprGate0 to Y - 9,X - 8,SPGATE0 + GateSize(D),ColGate
+  end if
+  return
+end sub
+
+sub EyeSprite:
+  inc EyeT
+  V = SPEYE0
+  if EyeT >= 170 then V = SPEYE1
+  if EyeT >= 180 then EyeT = 0
+  set sprite SprEye to 87,120,V,ColEye
+  return
+end sub
+
+' Credits use the same slow blink as the tunnel eye while retaining the
+' familiar press-and-release navigation and 30-second idle timeout.
+sub CreditsEyeWait:
+  EyeT = 0
+  OldPad = 0
+  DemoT = 0
+  wait no fire
+  do
+    wait
+    inc EyeT
+    V = SPEYE0
+    if EyeT >= 170 then V = SPEYE1
+    if EyeT >= 180 then EyeT = 0
+    set sprite 0 to 8,224,V,ColEye
+    update sprites
+    ReadPad
+    if (Edge & $C0) != 0 then exit do
+    DemoT += 1
+  loop while DemoT < 1800
+  wait no fire
+  return
+end sub
+
+' =========================================================================
+' INPUT
+' Pad bits: 1 up, 2 right, 4 down, 8 left, $40 left button, $80 right
+' button.  Edge holds the bits that became pressed this frame.
+' =========================================================================
+sub ReadPad:
+  Pad = 0
+  if joypad(1).up | joypad(2).up then Pad |= 1
+  if joypad(1).right | joypad(2).right then Pad |= 2
+  if joypad(1).down | joypad(2).down then Pad |= 4
+  if joypad(1).left | joypad(2).left then Pad |= 8
+  if joypad(1).button1 | joypad(2).button1 then Pad |= $40
+  if joypad(1).button2 | joypad(2).button2 then Pad |= $80
+  Edge = Pad & (OldPad ^ $FF)
+  OldPad = Pad
+  return
+end sub
+
+' Attract-mode pilot: chases near gates, fires steadily, presses the
+' wave when the tube is crowded.  Any real button ends the demo.
+sub DemoInput:
+  if joypad(1).fire | joypad(2).fire then
+    DemoQuit = true
+    return
+  end if
+  Pad = $40
+  if (DemoT & 15) > 8 then Pad = 0
+  W = 255
+  for I = 0 to 1
+    if GateOn[I] != 0 then
+      if GateD[I] < 360 then W = GateLane[I]
+    end if
+  next
+  if W != 255 then
+    if W != PLane then
+      V = W - PLane
+      if V >= 128 then V = V + LaneCount
+      if V < LaneCount / 2 then
+        Pad |= 8
+      else
+        Pad |= 2
+      end if
+    end if
+  end if
+  if WaveOk != 0 then
+    V = 0
+    for I = 0 to 5
+      if EnType[I] != 0 then inc V
+    next
+    if V >= 5 then Pad |= $80
+  end if
+  Edge = Pad & (OldPad ^ $FF)
+  OldPad = Pad
+  return
+end sub
+
+' =========================================================================
+' PLAYER
+' =========================================================================
+sub PlayerControl:
+  ' rotation: RIGHT turns counter-clockwise (rightward at the bottom),
+  ' LEFT turns clockwise.  Hold repeats after 8 frames, then every 5.
+  V = Pad & $0A
+  if V = 0 then
+    RepeatT = 0
+  else
+    if RepeatT = 0 then
+      MoveLane
+      RepeatT = 8
+    else
+      dec RepeatT
+      if RepeatT = 0 then
+        MoveLane
+        RepeatT = 5
+      end if
+    end if
+  end if
+  if PGlide > 0 then dec PGlide
+  ' left button: shot toward the centre (held = autofire)
+  if FireT > 0 then dec FireT
+  if (Pad & $40) != 0 then
+    if FireT = 0 then FireShot
+  end if
+  ' right button: one wave per life
+  if (Edge & $80) != 0 then
+    if WaveOk != 0 then FireWave
+  end if
+  if PSafe > 0 then dec PSafe
+  return
+end sub
+
+sub MoveLane:
+  PFrom = PLane
+  if (Pad & 2) != 0 then
+    if PLane = 0 then PLane = LaneCount
+    dec PLane
+  else
+    inc PLane
+    if PLane >= LaneCount then PLane = 0
+  end if
+  PGlide = 4
+  return
+end sub
+
+sub FireShot:
+  for I = 0 to 2
+    if ShotOn[I] = 0 then
+      ShotOn[I] = 1
+      ShotLane[I] = PLane
+      ShotD[I] = 8
+      FireT = 7
+      play sound SndShot
+      return
+    end if
+  next
+  return
+end sub
+
+sub FireWave:
+  WaveOk = 0
+  WaveT = 24
+  play sounds SndWaveN, SndWaveT2
+  for I = 0 to 5
+    if EnType[I] != 0 then
+      if EnD[I] < HiddenD then
+        EnType[I] = 0
+        Score += 10
+      end if
+    end if
+  next
+  SweepK = SpokeCount * 2
+  HudDirty |= 3
+  return
+end sub
+
+sub BuildPlayerSprite:
+  if PDead != 0 then
+    hide sprite SprShip
+    return
+  end if
+  CalcPos(PLane, 0)
+  if PGlide > 0 then
+    ' glide between the previous lane and the new lane
+    T = X
+    J = Y
+    CalcPos(PFrom, 0)
+    X = Lerp4(X, T, PGlide)
+    Y = Lerp4(Y, J, PGlide)
+  end if
+  PX = X
+  PY = Y
+  PFrame = peek(PtrFR + PLane)
+  V = ColShip
+  if PSafe > 0 then V = ColShipSafe
+  set sprite SprShip to PY - 9,PX - 8,PFrame << 2,V
+  EyeSprite
+  return
+end sub
+
+sub KillPlayer:
+  if PSafe > 0 then return
+  play sounds SndHitT, SndHitN
+  BoomX = PX
+  BoomY = PY
+  BoomT = 18
+  PDead = 70
+  dec Lives
+  SpeedLvl = BaseSpeed
+  Mult = 1
+  HudDirty |= $0F
+  return
+end sub
+
+' =========================================================================
+' TUNNEL MOTION
+' =========================================================================
+sub AdvanceTunnel:
+  SpeedQ = SpeedTab[SpeedLvl]
+  PhaseAcc += SpeedQ
+  ShowPage = (PhaseAcc >> 4) & 7
+  ShowReg = PageRegs[ShowPage]
+  RotateSpokes
+  ' the in-game pulse follows the tunnel speed: three tempi
+  V = 0
+  if SpeedLvl >= 3 then V = 1
+  if SpeedLvl >= 5 then V = 2
+  if V != MusicFast then
+    if PDead = 0 then GameMusic
+  end if
+  return
+end sub
+
+sub RotateSpokes:
+  if defined QA_NOROT
+    return
+  end defined
+  if RotPeriod = 0 then return
+  inc RotT
+  if RotT < RotPeriod then return
+  RotT = 0
+  if SpkQN > 4 then return
+  ' dim the trailing spoke, brighten the new one, mid on the old one
+  V = SpkHi
+  if (Level & 1) != 0 then
+    inc SpkHi
+    if SpkHi >= SpokeCount then SpkHi = 0
+  else
+    if SpkHi = 0 then SpkHi = SpokeCount
+    dec SpkHi
+  end if
+  QueueSpoke(V, 5)
+  QueueSpoke(SpkHi, 15)
+  ' the spoke two steps behind the highlight returns to dark blue
+  if (Level & 1) != 0 then
+    W = V + SpokeCount - 1
+  else
+    W = V + 1
+  end if
+  W = W % SpokeCount
+  QueueSpoke(W, 4)
+  return
+end sub
+
+sub QueueSpoke(u8 Sp, u8 C):
+  if SpkQN >= 8 then return
+  SpkQ[SpkQN] = Sp
+  SpkQC[SpkQN] = C
+  inc SpkQN
+  return
+end sub
+
+' One secondary VRAM job per frame (budget): HUD first, then spokes.
+sub SecondaryJob:
+  if HudDirty != 0 then
+    HudJob
+    return
+  end if
+  SpokeJob
+  return
+end sub
+
+sub SpokeJob:
+  if SweepK > 0 then
+    ' wave effect: a bright sweep around every spoke
+    dec SweepK
+    V = SweepK % SpokeCount
+    if SweepK >= SpokeCount then
+      SetSpoke(V, 15)
+    else
+      SetSpoke(V, 4)
+    end if
+    return
+  end if
+  if SpkQN = 0 then return
+  SetSpoke(SpkQ[0], SpkQC[0])
+  dec SpkQN
+  for I = 0 to 6
+    SpkQ[I] = SpkQ[I + 1]
+    SpkQC[I] = SpkQC[I + 1]
+  next
+  return
+end sub
+
+' Screen position of lane L at depth Dd (0 = rim).  Result in X,Y.
+' h = t/2 from the perspective table, lane offsets are small multiples.
+sub CalcPos(u8 L, u16 Dd):
+  ' private scratch CD/CV/CW so callers may keep V, W and D
+  CD = Dd >> 3
+  if CD > 127 then CD = 127
+  H = peek(PtrH + CD)
+  M = peek(PtrMX + L)
+  CV = M * H
+  CW = peek(PtrSG + L)
+  if (CW & 1) != 0 then
+    X = 128 - CV
+  else
+    X = 128 + CV
+  end if
+  M = peek(PtrMY + L)
+  CV = M * H
+  if (CW & 2) != 0 then
+    Y = 96 - CV
+  else
+    Y = 96 + CV
+  end if
+  return
+end sub
+
+' Moves from B toward A: result = B + (A - B) * G / 4, G = 0..4
+function Lerp4(u8 A, u8 B, u8 G) as u8
+  if A >= B then return B + ((A - B) >> 2) * G
+  return B - ((B - A) >> 2) * G
+
+function GateSize(u16 Dd) as u8
+  if Dd < 90 then return 8
+  if Dd < 180 then return 4
+  return 0
+
+function EnSize(u16 Dd) as u8
+  if Dd < 90 then return 2
+  if Dd < 180 then return 1
+  return 0
+
+' Adds a far-object tile at the cell under X,Y in the page shown next.
+sub AddOverlay(u8 Tl):
+  if OvN >= MaxOv then return
+  J = X >> 3
+  K = Y >> 3
+  if J >= CoreCol0 then
+    if J <= CoreCol1 then
+      if K >= CoreRow0 then
+        if K <= CoreRow1 then return
+      end if
+    end if
+  end if
+  Off = K
+  Off <<= 5
+  Off += J
+  OvLo[OvN] = lowbyte(Off)
+  OvHi[OvN] = highbyte(Off) + PageHi[ShowPage]
+  OvT[OvN] = Tl
+  inc OvN
+  return
+end sub
+
+' =========================================================================
+' SHOTS, ENEMIES, GATES
+' =========================================================================
+sub MoveShots:
+  for I = 0 to 2
+    V = SprShot0 + I
+    if ShotOn[I] != 0 then
+      ShotD[I] += 22
+      if ShotD[I] >= TileD then
+        ShotOn[I] = 0
+        hide sprite V
+      else
+        CalcPos(ShotLane[I], ShotD[I])
+        W = SPSHOT1
+        if ShotD[I] > 140 then W = SPSHOT0
+        set sprite V to Y - 9,X - 8,W,ColShot
+      end if
+    else
+      hide sprite V
+    end if
+  next
+  return
+end sub
+
+sub MoveEnemies:
+  for I = 0 to 5
+    V = SprEn0 + I
+    T = EnType[I]
+    if T = 0 then
+      hide sprite V
+      continue for
+    end if
+    ' rim crawler (from level 2): an enemy that reaches the rim crawls
+    ' along it toward the ship, gliding smoothly 2 px per frame.  When it
+    ' lands in the ship's lane it turns white and grabs after 24 frames:
+    ' shoot it (it is in your lane) or move away.
+    if EnRim[I] > 0 then
+      dec EnRim[I]
+      if EnRim[I] = 0 then
+        EnType[I] = 0
+        hide sprite V
+        continue for
+      end if
+      ' target position is cached (EnTX/EnTY) and only recomputed on a step
+      EnX[I] = Approach(EnX[I], EnTX[I])
+      EnY[I] = Approach(EnY[I], EnTY[I])
+      W = EnCol[T]
+      if EnLane[I] = PLane then
+        ' grabbing: a shot in this lane close to the rim destroys it
+        W = 15
+        if EnGrab[I] = 0 then
+          EnGrab[I] = 1
+          EnTick[I] = 0
+        end if
+        for J = 0 to 2
+          if ShotOn[J] != 0 then
+            if ShotLane[J] = PLane then
+              if ShotD[J] < 70 then
+                ShotOn[J] = 0
+                EnD[I] = 0
+                KillEnemy
+                exit for
+              end if
+            end if
+          end if
+        next
+        if EnType[I] = 0 then continue for
+        inc EnTick[I]
+        if EnTick[I] >= 24 then
+          if PDead = 0 then KillPlayer
+          EnType[I] = 0
+          hide sprite V
+          continue for
+        end if
+      else
+        if EnGrab[I] != 0 then
+          EnGrab[I] = 0
+          EnTick[I] = 0
+        end if
+        inc EnTick[I]
+        if EnTick[I] >= CrawlRate then
+          EnTick[I] = 0
+          StepTowardPlayer
+          CalcPos(EnLane[I], 0)
+          EnTX[I] = X
+          EnTY[I] = Y
+        end if
+      end if
+      set sprite V to EnY[I] - 9,EnX[I] - 8,EnBase[T] + 8,W
+      continue for
+    end if
+    ' approach: tunnel speed plus own speed
+    W = SpeedQ + EnSpeed[T]
+    if Level < 3 then W = SpeedQ + 1
+    if EnD[I] <= W then
+      ' reached the rim
+      if EnLane[I] = PLane then
+        if PDead = 0 then KillPlayer
+        EnType[I] = 0
+        hide sprite V
+        continue for
+      end if
+      if Level >= 2 then
+        if CountCrawlers() < 2 then
+          EnD[I] = 0
+          EnRim[I] = 150
+          EnTick[I] = 0
+          EnGrab[I] = 0
+          CalcPos(EnLane[I], 0)
+          EnX[I] = X
+          EnY[I] = Y
+          EnTX[I] = X
+          EnTY[I] = Y
+          continue for
+        end if
+      end if
+      EnType[I] = 0
+      hide sprite V
+      continue for
+    end if
+    EnD[I] -= W
+    ' lane changes
+    inc EnTick[I]
+    ' no lane change on the final approach: the last 0.5 s is readable
+    M = T
+    if EnD[I] < 200 then M = 1
+    if M = 2 then
+      if (EnTick[I] & 31) = 0 then
+        if (EnTick[I] & 32) != 0 then
+          inc EnLane[I]
+          if EnLane[I] >= LaneCount then EnLane[I] = 0
+        else
+          if EnLane[I] = 0 then EnLane[I] = LaneCount
+          dec EnLane[I]
+        end if
+      end if
+    end if
+    if M = 3 then
+      if (EnTick[I] & 15) = 0 then
+        inc EnLane[I]
+        if EnLane[I] >= LaneCount then EnLane[I] = 0
+      end if
+    end if
+    ' shot collisions (same lane, depths overlap)
+    for J = 0 to 2
+      if ShotOn[J] != 0 then
+        if ShotLane[J] = EnLane[I] then
+          D = ShotD[J] + 30
+          if EnD[I] < D then
+            ShotOn[J] = 0
+            KillEnemy
+            exit for
+          end if
+        end if
+      end if
+    next
+    if EnType[I] = 0 then continue for
+    ' draw: hidden deep in the core, far as a tile, near as a sprite
+    D = EnD[I]
+    if D >= HiddenD then
+      hide sprite V
+    elseif D >= TileD then
+      hide sprite V
+      CalcPos(EnLane[I], D)
+      AddOverlay(EnTile[T])
+    else
+      CalcPos(EnLane[I], D)
+      W = EnBase[T] + EnSize(D) * 4
+      if T = 3 then
+        ' spiral frames are interleaved A0,B0,A1,B1,A2,B2: 8 per size
+        W = EnBase[T] + EnSize(D) * 8
+        if (EnTick[I] & 4) != 0 then W += 4
+      end if
+      set sprite V to Y - 9,X - 8,W,EnCol[T]
+    end if
+  next
+  return
+end sub
+
+' Moves enemy I one lane along the shortest way toward the ship.
+' Moves a coordinate toward its target by at most 2 pixels.
+function Approach(u8 Cur, u8 Tgt) as u8
+  if Cur + 2 < Tgt then return Cur + 2
+  if Tgt + 2 < Cur then return Cur - 2
+  return Tgt
+' Crawlers currently on the rim (at most two at a time).
+function CountCrawlers as u8
+  K = 0
+  for J = 0 to 5
+    if EnRim[J] > 0 then
+      if EnType[J] != 0 then inc K
+    end if
+  next
+  return K
+
+' Fast xorshift PRNG (PB_RAND).  The BIOS-based random(a, b) re-draws
+' until the value fits the range; with 12 lanes it cost a frame now and then.
+function Rand8 as u8
+  call asm PB_RAND
+  return RndOut
+function RandLane as u8
+  K = Rand8() & 15
+  if K >= LaneCount then K = K - LaneCount
+  if K >= LaneCount then K = K & 7
+  return K
+
+sub StepTowardPlayer:
+  K = PLane + LaneCount - EnLane[I]
+  K = K % LaneCount
+  if K = 0 then return
+  if K <= LaneCount / 2 then
+    inc EnLane[I]
+    if EnLane[I] >= LaneCount then EnLane[I] = 0
+  else
+    if EnLane[I] = 0 then EnLane[I] = LaneCount
+    dec EnLane[I]
+  end if
+  return
+end sub
+
+sub KillEnemy:
+  play sound SndBoomN
+  CalcPos(EnLane[I], EnD[I])
+  BoomX = X
+  BoomY = Y
+  BoomT = 9
+  T = EnType[I]
+  EnType[I] = 0
+  hide sprite SprEn0 + I
+  for K = 1 to Mult
+    if T = 1 then Score += 10
+    if T = 2 then Score += 20
+    if T = 3 then Score += 30
+  next
+  HudDirty |= 1
+  return
+end sub
+
+sub MoveGates:
+  for I = 0 to 1
+    V = SprGate0 + I
+    if GateOn[I] = 0 then
+      hide sprite V
+      continue for
+    end if
+    if GateD[I] <= SpeedQ then
+      GateOn[I] = 0
+      hide sprite V
+      if PDead = 0 then
+        if GateLane[I] = PLane then
+          PassGate
+        else
+          MissGate
+        end if
+      end if
+      continue for
+    end if
+    GateD[I] -= SpeedQ
+    D = GateD[I]
+    if D >= HiddenD then
+      hide sprite V
+    elseif D >= TileD then
+      hide sprite V
+      CalcPos(GateLane[I], D)
+      AddOverlay(TFARGATE)
+    else
+      CalcPos(GateLane[I], D)
+      set sprite V to Y - 9,X - 8,SPGATE0 + GateSize(D),ColGate
+    end if
+  next
+  return
+end sub
+
+sub PassGate:
+  play sounds SndGate1, SndGate2, SndGateN
+  if SpeedLvl < 7 then inc SpeedLvl
+  if Mult < 8 then inc Mult
+  inc GatesDone
+  for K = 1 to Mult
+    Score += 50
+  next
+  HudDirty |= $0D
+  if FlashFx then WaveT = 6
+  return
+end sub
+
+sub MissGate:
+  play sound SndMiss
+  if SpeedLvl > BaseSpeed then dec SpeedLvl
+  if Mult > 1 then dec Mult
+  HudDirty |= $0C
+  return
+end sub
+
+sub Spawner:
+  if PDead != 0 then return
+  dec SpawnT
+  if SpawnT = 0 then
+    V = Level * 5
+    SpawnT = 66 - min(V, 44) + (Rand8() & 15)
+    for I = 0 to 5
+      if EnType[I] = 0 then
+        T = 1
+        if Level >= 2 then T = 1 + (Rand8() & 1)
+        if Level >= 3 then
+          T = Rand8() & 3
+          if T = 0 then T = 1 + (Rand8() & 1)
+        end if
+        EnType[I] = T
+        EnLane[I] = RandLane()
+        EnD[I] = SpawnD
+        EnTick[I] = 0
+        EnRim[I] = 0
+        exit for
+      end if
+    next
+  end if
+  dec GateT
+  if GateT = 0 then
+    GateT = 110 + (Rand8() & 31)
+    for I = 0 to 1
+      if GateOn[I] = 0 then
+        GateOn[I] = 1
+        GateLane[I] = RandLane()
+        GateD[I] = SpawnD
+        exit for
+      end if
+    next
+  end if
+  return
+end sub
+
+' Explosion sprite, wave ring, level message, subliminal words
+sub Effects:
+  if BoomT > 0 then
+    dec BoomT
+    V = SPBOOM0 + ((8 - min(BoomT, 8)) / 3) * 4
+    set sprite SprBoom to BoomY - 9,BoomX - 8,V,ColBoom
+  else
+    hide sprite SprBoom
+  end if
+  if WaveT > 0 then
+    dec WaveT
+    set sprite SprWave to 87,120,SPWAVE,7
+    nmi off
+    if FlashFx then
+      if (WaveT & 2) != 0 then
+        backdrop white
+      else
+        backdrop black
+      end if
+    end if
+    if WaveT = 0 then backdrop black
+    nmi on
+  else
+    hide sprite SprWave
+  end if
+  if MsgT > 0 then
+    dec MsgT
+    ' "LV n" in the centre of the tube for 1.5 seconds
+    X = 108
+    Y = 128
+    AddOverlay(76)
+    X = 116
+    AddOverlay(86)
+    X = 132
+    AddOverlay(48 + (Level % 10))
+    if Level >= 10 then
+      X = 124
+      AddOverlay(48 + Level / 10)
+    end if
+  end if
+  ' discreet subliminal word, every 25 to 50 seconds
+  if SubT > 0 then
+    dec SubT
+    P = WordTab[SubWord]
+    X = peek(P)
+    Y = 136
+    P += 1
+    do
+      V = peek(P)
+      if V = 0 then exit do
+      if V != 32 then AddOverlay(V)
+      X += 8
+      P += 1
+    loop
+  else
+    if DemoMode = false then
+      dec SubWait
+      if SubWait = 0 then
+        ' (u16 = random(0, 1500) crashes the compiler: see bug report)
+        V = Rand8()
+        SubWait = V
+        SubWait <<= 3
+        SubWait += 1500
+        SubWord = Rand8() & 7
+        if SubWord >= 7 then SubWord = 0
+        SubT = 6
+        if FlashFx then SubT = 2
+      end if
+    end if
+  end if
+  return
+end sub
+
+' =========================================================================
+' HUD (icons and colours; written into all eight pages)
+' HudDirty bits: 1 score, 2 lives+wave, 4 speed bar, 8 multiplier pips
+' =========================================================================
+sub DrawHudAll:
+  nmi off
+  for I = 0 to 1
+    Off = 56 + I
+    V = 76
+    if I != 0 then V = 86
+    call asm PB_POKE_ALL with hl = Off, a = V
+  next
+  W = 48 + (Level % 10)
+  Off = 59
+  call asm PB_POKE_ALL with hl = Off, a = W
+  W = 0
+  if Level >= 10 then W = 48 + Level / 10
+  Off = 58
+  call asm PB_POKE_ALL with hl = Off, a = W
+  nmi on
+  HudDirty = $0F
+  for I = 0 to 3
+    HudJob
+  next
+  return
+end sub
+
+sub HudJob:
+  nmi off
+  if (HudDirty & 1) != 0 then
+    HudDirty &= $FE
+    format Score into ScoreBuf
+    for Hx = 0 to 5
+      Off = 34 + Hx
+      V = ScoreBuf[Hx]
+      call asm PB_POKE_ALL with hl = Off, a = V
+    next
+  elseif (HudDirty & 2) != 0 then
+    HudDirty &= $FD
+    for Hx = 0 to 4
+      Off = 706 + Hx
+      V = 0
+      if Hx < Lives then V = TLIFE
+      call asm PB_POKE_ALL with hl = Off, a = V
+    next
+    Off = 712
+    V = TWAVEOFF
+    if WaveOk != 0 then V = TWAVEON
+    call asm PB_POKE_ALL with hl = Off, a = V
+  elseif (HudDirty & 4) != 0 then
+    HudDirty &= $FB
+    ' speed bar: 4 cells, each empty, half or full (8 steps)
+    for Hx = 0 to 3
+      Off = 694 + Hx
+      V = SpeedLvl + 1
+      W = Hx * 2
+      if V >= W + 2 then
+        T = TBAR2
+      elseif V = W + 1 then
+        T = TBAR1
+      else
+        T = TBAR0
+      end if
+      call asm PB_POKE_ALL with hl = Off, a = T
+    next
+  else
+    HudDirty = 0
+    for Hx = 0 to 7
+      Off = 726 + Hx
+      V = TPIPOFF
+      if Hx < Mult then V = TPIPON
+      call asm PB_POKE_ALL with hl = Off, a = V
+    next
+  end if
+  nmi on
+  return
+end sub
+
+' =========================================================================
+' MUSIC
+' Title: 4-voice theme (32 s loop).  In game: a 3-voice pulse (tone 2,
+' noise bass/drums, muted tone-3 pitch) in three tempi that follow the
+' tunnel speed; tone 1 stays free for the shots.  Effects use the four
+' areas after the music, so a tempo change never cuts an effect.
+' =========================================================================
+' OS7 has no per-area stop: reinstalling the table frees every area.
+sub StopAllSound:
+  set sound table SndTable areas 7
+  mute all
+  return
+end sub
+
+' all voices of a tune are started inside one NMI-free batch so that
+' they begin on the same frame and stay in step for ever
+sub StartTitleMusic:
+  StopAllSound
+  nmi off
+  play sounds SndTit1, SndTit2, SndTit3, SndTit4
+  nmi on
+  return
+end sub
+
+sub StartMusic:
+  StopAllSound
+  MusicFast = 255
+  GameMusic
+  return
+end sub
+
+' (re)start the in-game pulse for the current speed, effects untouched
+sub GameMusic:
+  V = 0
+  if SpeedLvl >= 3 then V = 1
+  if SpeedLvl >= 5 then V = 2
+  MusicFast = V
+  nmi off
+  if V = 0 then play sounds SndG0a, SndG0b, SndG0c
+  if V = 1 then play sounds SndG1a, SndG1b, SndG1c
+  if V = 2 then play sounds SndG2a, SndG2b, SndG2c
+  nmi on
+  return
+end sub
+
+sub VblankTick:
+  ' The only per-frame register write of the tunnel: name-table base R2.
+  ' Written only when it changes, so static screens never see a VDP
+  ' control write from the interrupt.
+  asm {
+    ld a,(ShowReg)
+    ld hl,LastReg
+    cp (hl)
+    jr z,PB_VBL_SAME
+    ld (hl),a
+    ld c,a
+    ld b,2
+    call WRITE_REGISTER
+PB_VBL_SAME:
+  }
+  return
+end sub
+' =========================================================================
+' TABLES
+' =========================================================================
+' Printable ASCII 32..95, rasterized as a ColecoVision-safe 8x8 font from
+' the supplied Polybius 1981 display face. The source TTF is not required
+' at runtime and is intentionally not embedded in the cartridge project.
+data PolybiusFont bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$C0,$C0,$00
+  $D8,$D8,$D8,$00,$00,$00,$00,$00,$68,$68,$FC,$68,$FC,$68,$68,$00
+  $20,$20,$F8,$C0,$F8,$18,$18,$18,$08,$E8,$A8,$E8,$08,$0B,$0A,$0B
+  $F0,$D0,$D0,$60,$D8,$D0,$E8,$00,$C0,$C0,$C0,$00,$00,$00,$00,$00
+  $20,$60,$C0,$80,$C0,$60,$20,$00,$80,$C0,$60,$20,$60,$C0,$80,$00
+  $E0,$40,$A0,$00,$00,$00,$00,$00,$40,$E0,$40,$00,$00,$00,$00,$00
+  $C0,$C0,$40,$00,$00,$00,$00,$00,$E0,$00,$00,$00,$00,$00,$00,$00
+  $C0,$C0,$00,$00,$00,$00,$00,$00,$20,$20,$40,$40,$40,$80,$80,$00
+  $F8,$C8,$C8,$C8,$C8,$F8,$F8,$00,$3C,$6C,$CC,$0C,$0C,$0C,$0C,$00
+  $F8,$08,$F8,$C0,$C0,$C0,$F8,$00,$F8,$18,$F8,$18,$18,$18,$F8,$00
+  $C8,$C8,$C8,$F8,$08,$08,$08,$00,$F8,$80,$F8,$18,$18,$18,$F8,$00
+  $F8,$80,$80,$F8,$98,$98,$F8,$00,$F8,$18,$18,$18,$18,$18,$18,$00
+  $F8,$C8,$C8,$70,$C8,$C8,$F8,$00,$F8,$C8,$C8,$F8,$08,$08,$F8,$00
+  $C0,$C0,$00,$00,$00,$C0,$C0,$00,$C0,$C0,$00,$00,$C0,$C0,$40,$00
+  $20,$40,$80,$40,$20,$00,$00,$00,$E0,$00,$E0,$00,$00,$00,$00,$00
+  $80,$40,$20,$40,$80,$00,$00,$00,$C0,$60,$60,$C0,$00,$C0,$C0,$00
+  $FE,$82,$BA,$AA,$BE,$82,$FE,$00,$F8,$C8,$C8,$F8,$C8,$C8,$C8,$00
+  $F0,$C8,$C8,$F0,$C8,$C8,$F0,$00,$F8,$C0,$C0,$C0,$C0,$C0,$F8,$00
+  $F0,$C8,$C8,$C8,$C8,$C8,$F8,$00,$F8,$C0,$F8,$C0,$C0,$C0,$F8,$00
+  $F8,$C0,$C0,$F8,$C0,$C0,$C0,$00,$F8,$C0,$C0,$C8,$C8,$F8,$F8,$00
+  $98,$98,$98,$F8,$98,$98,$98,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00
+  $18,$18,$18,$18,$18,$98,$F8,$00,$C8,$C8,$D0,$E0,$D0,$C8,$C8,$00
+  $C0,$C0,$C0,$C0,$C0,$C0,$F8,$00,$FC,$FC,$D4,$D4,$D4,$D4,$D4,$00
+  $F8,$C8,$C8,$C8,$C8,$C8,$C8,$00,$F8,$C8,$C8,$C8,$C8,$F8,$F8,$00
+  $F8,$F8,$C8,$C8,$F8,$C0,$C0,$00,$F8,$F8,$C8,$C8,$D8,$D8,$F8,$00
+  $F8,$C8,$C8,$F8,$D0,$C8,$C8,$00,$F8,$C0,$F8,$18,$18,$18,$F8,$00
+  $F8,$F8,$20,$20,$20,$20,$20,$00,$C8,$C8,$C8,$C8,$C8,$C8,$F8,$00
+  $C8,$C8,$C8,$C8,$C8,$50,$20,$00,$AC,$AC,$AC,$AC,$AC,$FC,$FC,$00
+  $D8,$D8,$70,$20,$70,$D8,$D8,$00,$98,$98,$98,$F8,$18,$18,$F8,$00
+  $FC,$1C,$38,$70,$E0,$C0,$FC,$00,$C0,$80,$80,$80,$80,$80,$C0,$00
+  $80,$80,$40,$40,$40,$20,$20,$00,$C0,$40,$40,$40,$40,$40,$C0,$00
+  $40,$A0,$00,$00,$00,$00,$00,$00,$FC,$00,$00,$00,$00,$00,$00,$00
+end data
+
+' name-table pages: VDP R2 value and VRAM high byte of each page base
+data PageRegs bytes 2,3,4,5,6,7,10,11
+data PageHi bytes $08,$0C,$10,$14,$18,$1C,$28,$2C
+
+' tunnel speed in 1/16 page per frame (16 = one page per frame)
+data SpeedTab bytes 4,5,7,9,11,14,17,21
+
+' ring colours by level (cyan, light green, magenta, light blue, white, yellow)
+data RingColors bytes 7,3,13,5,15,11
+
+' enemy types 1 triangle, 2 diamond, 3 spiral (index 0 unused)
+data EnSpeed bytes 0,2,2,1
+data EnTile bytes 0,9,10,11
+data EnCol bytes 0,9,3,10
+data EnBase bytes 0,64,76,88
+
+' subliminal letters copied from the BIOS font into slots 14..25
+data WordLetters bytes 79,66,69,89,78,84,72,85,71,67,83,77
+data Word0 bytes 112,14,15,16,17,0
+data Word1 bytes 88,18,14,32,19,20,14,21,22,20,19,0
+data Word2 bytes 100,23,14,18,24,21,25,16,0
+data Word3 bytes 80,19,20,16,17,32,24,16,16,32,17,14,21,0
+data Word4 bytes 92,17,14,21,32,23,20,14,24,16,0
+data Word5 bytes 64,14,15,16,17,32,19,20,16,32,25,14,23,20,18,16,0
+data Word6 bytes 76,17,14,21,32,25,21,24,19,32,14,15,16,17,0
+data WordTab words = @Word0, @Word1, @Word2, @Word3, @Word4, @Word5, @Word6
+
+' texts written into the tunnel pages
+data Txt0 chars "GAME OVER{0}"
+data Txt1 chars "{30} 1981  SINNESL{26}SCHEN{0}"
+data Txt2 chars "PORTLAND  OREGON{0}"
+data Txt3 chars "1 PLAYER START{0}"
+data Txt4 chars "HOW TO PLAY{0}"
+data Txt5 chars "OPTIONS{0}"
+data Txt6 chars "CREDITS{0}"
+data Txt7 chars "PUSH FIRE BUTTON{0}"
+data Texts words = @Txt0, @Txt1, @Txt2, @Txt3, @Txt4, @Txt5, @Txt6, @Txt7
+
+' per-shape compressed assets and tables
+asset Shape0Pat from "@project/assets/polybius-tunnel/shape0.pat.zx0" codec zx0
+asset Shape1Pat from "@project/assets/polybius-tunnel/shape1.pat.zx0" codec zx0
+asset Shape2Pat from "@project/assets/polybius-tunnel/shape2.pat.zx0" codec zx0
+asset Shape0PagesA from "@project/assets/polybius-tunnel/shape0.pagesA.zx0" codec zx0
+asset Shape1PagesA from "@project/assets/polybius-tunnel/shape1.pagesA.zx0" codec zx0
+asset Shape2PagesA from "@project/assets/polybius-tunnel/shape2.pagesA.zx0" codec zx0
+asset Shape0PagesB from "@project/assets/polybius-tunnel/shape0.pagesB.zx0" codec zx0
+asset Shape1PagesB from "@project/assets/polybius-tunnel/shape1.pagesB.zx0" codec zx0
+asset Shape2PagesB from "@project/assets/polybius-tunnel/shape2.pagesB.zx0" codec zx0
+data PatTabs words = @Shape0Pat, @Shape1Pat, @Shape2Pat
+data PagesA words = @Shape0PagesA, @Shape1PagesA, @Shape2PagesA
+data PagesB words = @Shape0PagesB, @Shape1PagesB, @Shape2PagesB
+data HTabs words = @HTab0, @HTab1, @HTab2
+data MXTabs words = @LaneMX0, @LaneMX1, @LaneMX2
+data MYTabs words = @LaneMY0, @LaneMY1, @LaneMY2
+data SGTabs words = @LaneSG0, @LaneSG1, @LaneSG2
+data FRTabs words = @LaneFR0, @LaneFR1, @LaneFR2
+data SpkTabs words = @SpokeTiles0, @SpokeTiles1, @SpokeTiles2
+data SpkIxTabs words = @SpokeIndex0, @SpokeIndex1, @SpokeIndex2
+data LaneCounts bytes = LaneCount0, LaneCount1, LaneCount2
+data SpokeCounts bytes = SpokeCount0, SpokeCount1, SpokeCount2
+data TileCounts bytes = TileCount0, TileCount1, TileCount2
+' ---- GENERATED BY tools/gen_tunnel.py - DO NOT EDIT BY HAND ----
+' OCTAGON: 132 tiles (132 main + 0 spare), 8 spokes
+const TileCount0 = 132
+const SpokeCount0 = 8
+data SpokeTiles0 bytes
+  $5C,$00,$5E,$00,$60,$00,$73,$18,$74,$E0,$7F,$F8,$AE,$80,$B1,$7F
+  $C4,$01,$C6,$80,$C8,$87,$D4,$07,$D6,$FF,$66,$00,$69,$00,$6A,$00
+  $6D,$01,$6E,$FE,$7B,$E0,$80,$FF,$A9,$07,$AA,$F8,$B4,$7F,$B5,$80
+  $CA,$87,$D8,$FF,$85,$7F,$86,$FF,$8E,$07,$8F,$00,$96,$00,$9C,$00
+  $9E,$80,$B8,$FE,$B9,$01,$C1,$E0,$C2,$1F,$CC,$E1,$DA,$FF,$8C,$1F
+  $94,$18,$95,$07,$9A,$00,$A3,$00,$A4,$00,$BB,$FE,$BE,$01,$CE,$E1
+  $D0,$01,$D2,$80,$DC,$FF,$DE,$E0,$8A,$1F,$91,$07,$92,$18,$99,$00
+  $A1,$00,$A2,$00,$BA,$FE,$BC,$01,$CD,$E1,$CF,$01,$D1,$80,$DB,$FF
+  $DD,$E0,$83,$FF,$84,$7F,$87,$00,$88,$07,$90,$00,$97,$00,$9D,$80
+  $B6,$01,$B7,$FE,$BF,$1F,$C0,$E0,$CB,$E1,$D9,$FF,$61,$00,$67,$00
+  $68,$00,$6B,$FE,$6C,$01,$7A,$E0,$7C,$FF,$A7,$F8,$A8,$07,$B2,$80
+  $B3,$7F,$C9,$87,$D7,$FF,$5B,$00,$5D,$00,$5F,$00,$70,$E0,$71,$18
+  $7D,$F8,$AC,$80,$B0,$7F,$C3,$01,$C5,$80,$C7,$87,$D3,$07,$D5,$FF
+end data
+data SpokeIndex0 bytes
+  $00,$0D,$1A,$27,$34,$41,$4E,$5B,$68
+end data
+' CROSS: 156 tiles (156 main + 0 spare), 12 spokes
+const TileCount1 = 156
+const SpokeCount1 = 12
+data SpokeTiles1 bytes
+  $5C,$00,$5E,$00,$60,$00,$75,$F8,$78,$FF,$7A,$FF,$81,$FF,$BE,$80
+  $D4,$F8,$D6,$FF,$D8,$80,$DA,$FF,$E8,$FF,$EA,$FF,$65,$00,$6F,$3F
+  $82,$03,$B7,$0F,$C2,$FF,$66,$00,$69,$00,$6A,$00,$70,$20,$71,$E0
+  $83,$02,$84,$02,$85,$FE,$87,$E2,$B8,$08,$B9,$08,$BA,$F8,$C3,$80
+  $DC,$88,$EC,$E8,$8C,$47,$8D,$7F,$95,$40,$96,$40,$A1,$00,$A2,$00
+  $A3,$00,$AF,$04,$B0,$07,$C8,$01,$D0,$10,$D1,$10,$D2,$1F,$DE,$11
+  $EE,$17,$94,$C0,$A0,$00,$AE,$FC,$C7,$FF,$CF,$F0,$93,$FF,$9E,$1F
+  $9F,$FF,$A5,$FF,$A7,$00,$AD,$00,$B2,$00,$CA,$01,$E0,$FF,$E2,$01
+  $E4,$FF,$E6,$1F,$F0,$FF,$F2,$FF,$91,$FF,$9B,$FF,$9C,$1F,$A4,$FF
+  $A6,$00,$AC,$00,$B1,$00,$C9,$01,$DF,$FF,$E1,$01,$E3,$FF,$E5,$1F
+  $EF,$FF,$F1,$FF,$90,$C0,$9A,$00,$AB,$FC,$C6,$FF,$CE,$F0,$8A,$7F
+  $8B,$47,$8E,$40,$8F,$40,$97,$00,$98,$00,$99,$00,$A8,$07,$A9,$04
+  $C4,$01,$CB,$1F,$CC,$10,$CD,$10,$DD,$11,$ED,$17,$61,$00,$67,$00
+  $68,$00,$6B,$E0,$6C,$20,$7B,$FE,$7C,$02,$7D,$02,$86,$E2,$B3,$F8
+  $B4,$08,$B5,$08,$C0,$80,$DB,$88,$EB,$E8,$62,$00,$6E,$3F,$7E,$03
+  $B6,$0F,$C1,$FF,$5B,$00,$5D,$00,$5F,$00,$73,$F8,$77,$FF,$79,$FF
+  $7F,$FF,$BC,$80,$D3,$F8,$D5,$FF,$D7,$80,$D9,$FF,$E7,$FF,$E9,$FF
+end data
+data SpokeIndex1 bytes
+  $00,$0E,$13,$22,$31,$36,$44,$52,$57,$66,$75,$7A,$88
+end data
+' STAR: 119 tiles (119 main + 0 spare), 8 spokes
+const TileCount2 = 119
+const SpokeCount2 = 8
+data SpokeTiles2 bytes
+  $5D,$00,$68,$80,$6A,$7F,$72,$FE,$76,$7F,$AC,$01,$B7,$F8,$B9,$87
+  $C0,$07,$C2,$E0,$C3,$1F,$65,$00,$6F,$80,$78,$F8,$84,$FE,$85,$7F
+  $86,$00,$87,$FE,$88,$01,$89,$E0,$8A,$1F,$B0,$80,$BC,$E1,$CA,$F8
+  $CB,$07,$99,$1F,$9C,$00,$A1,$01,$97,$FE,$9B,$7F,$A0,$00,$A3,$FE
+  $A4,$01,$B6,$80,$BE,$E1,$BF,$1F,$C1,$E0,$D0,$F8,$D1,$07,$95,$1F
+  $9A,$00,$9E,$01,$7D,$00,$7E,$1F,$7F,$E0,$80,$01,$81,$FE,$82,$7F
+  $83,$FE,$AF,$80,$BB,$E1,$C8,$07,$C9,$F8,$64,$00,$6D,$80,$73,$F8
+end data
+data SpokeIndex2 bytes
+  $00,$0B,$0E,$19,$1C,$27,$2A,$35,$38
+end data
+' ---- GENERATED BY tools/gen_sprites.py - DO NOT EDIT BY HAND ----
+' 39 sprite patterns (16x16), 1248 bytes
+const SPSHIP0 = 0
+const SPSHIP1 = 4
+const SPSHIP2 = 8
+const SPSHIP3 = 12
+const SPSHIP4 = 16
+const SPSHIP5 = 20
+const SPSHIP6 = 24
+const SPSHIP7 = 28
+const SPSHIP8 = 32
+const SPSHIP9 = 36
+const SPSHIP10 = 40
+const SPSHIP11 = 44
+const SPSHIP12 = 48
+const SPSHIP13 = 52
+const SPSHIP14 = 56
+const SPSHIP15 = 60
+const SPTRI0 = 64
+const SPTRI1 = 68
+const SPTRI2 = 72
+const SPDIA0 = 76
+const SPDIA1 = 80
+const SPDIA2 = 84
+const SPSPA0 = 88
+const SPSPB0 = 92
+const SPSPA1 = 96
+const SPSPB1 = 100
+const SPSPA2 = 104
+const SPSPB2 = 108
+const SPGATE0 = 112
+const SPGATE1 = 116
+const SPGATE2 = 120
+const SPSHOT0 = 124
+const SPSHOT1 = 128
+const SPBOOM0 = 132
+const SPBOOM1 = 136
+const SPBOOM2 = 140
+const SPEYE0 = 144
+const SPEYE1 = 148
+const SPWAVE = 152
+data SpritePat bytes
+  $00,$00,$01,$01,$02,$04,$08,$08,$10,$10,$22,$25,$38,$60,$40,$00
+  $00,$80,$40,$40,$20,$20,$10,$10,$08,$08,$24,$54,$8C,$06,$02,$00
+  $00,$00,$00,$01,$02,$0C,$10,$20,$40,$4C,$F4,$83,$02,$00,$00,$00
+  $00,$20,$E0,$20,$20,$20,$10,$10,$10,$10,$10,$90,$50,$50,$30,$30
+  $00,$00,$00,$00,$01,$1E,$60,$C0,$38,$08,$08,$0F,$01,$01,$00,$00
+  $00,$00,$00,$18,$E8,$08,$10,$10,$10,$10,$20,$20,$20,$40,$C0,$80
+  $00,$00,$00,$00,$FF,$C0,$30,$08,$10,$18,$06,$02,$04,$04,$07,$0C
+  $00,$00,$00,$00,$C0,$3E,$04,$04,$08,$10,$20,$20,$40,$80,$00,$00
+  $00,$30,$1C,$13,$08,$08,$04,$18,$20,$18,$04,$08,$13,$1C,$30,$00
+  $00,$00,$00,$00,$C0,$20,$10,$0C,$02,$0C,$30,$C0,$00,$00,$00,$00
+  $0C,$07,$04,$04,$02,$06,$18,$08,$08,$30,$C0,$FF,$00,$00,$00,$00
+  $00,$00,$80,$40,$20,$20,$10,$08,$04,$04,$3E,$C0,$00,$00,$00,$00
+  $00,$00,$01,$01,$0F,$08,$08,$38,$C0,$60,$1C,$03,$00,$00,$00,$00
+  $80,$C0,$40,$20,$20,$20,$20,$10,$10,$10,$10,$C8,$38,$00,$00,$00
+  $00,$00,$00,$03,$82,$F4,$4C,$40,$20,$10,$0C,$02,$01,$00,$00,$00
+  $30,$30,$50,$50,$90,$10,$10,$10,$10,$10,$20,$20,$20,$E0,$20,$00
+  $00,$00,$41,$71,$2E,$22,$10,$10,$08,$08,$04,$02,$01,$01,$00,$00
+  $00,$02,$06,$8C,$54,$24,$08,$08,$10,$10,$20,$20,$40,$40,$80,$00
+  $0C,$0C,$0A,$0A,$09,$08,$08,$08,$08,$08,$04,$04,$04,$07,$04,$00
+  $00,$00,$00,$40,$C1,$2F,$32,$02,$04,$08,$30,$40,$80,$00,$00,$00
+  $01,$03,$02,$04,$04,$04,$08,$08,$08,$08,$10,$17,$18,$00,$00,$00
+  $00,$00,$80,$80,$F0,$10,$10,$1C,$03,$06,$78,$80,$00,$00,$00,$00
+  $00,$00,$01,$02,$04,$04,$08,$10,$20,$20,$7C,$03,$00,$00,$00,$00
+  $30,$E0,$20,$20,$40,$60,$18,$08,$10,$0C,$03,$FF,$00,$00,$00,$00
+  $00,$00,$00,$00,$03,$04,$08,$30,$40,$30,$0C,$03,$00,$00,$00,$00
+  $00,$06,$3C,$C8,$10,$20,$10,$08,$10,$10,$20,$10,$C8,$3C,$06,$00
+  $00,$00,$00,$00,$03,$7C,$20,$20,$10,$08,$04,$04,$02,$01,$00,$00
+  $00,$00,$00,$00,$FF,$03,$0C,$10,$10,$18,$60,$40,$20,$20,$E0,$30
+  $00,$00,$00,$1C,$13,$08,$08,$08,$08,$04,$04,$04,$04,$02,$03,$01
+  $00,$00,$00,$00,$C0,$38,$06,$03,$1C,$10,$10,$F0,$80,$80,$00,$00
+  $00,$04,$07,$04,$04,$04,$08,$08,$08,$08,$08,$09,$0A,$0A,$0C,$0C
+  $00,$00,$00,$80,$40,$30,$08,$04,$02,$32,$2F,$41,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$02,$02,$07,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$40,$40,$E0,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$01,$02,$02,$04,$04,$0F,$00,$00,$00,$00,$00
+  $00,$00,$00,$80,$80,$40,$40,$20,$20,$10,$F0,$00,$00,$00,$00,$00
+  $00,$01,$01,$02,$04,$04,$08,$08,$10,$20,$20,$7F,$00,$00,$00,$00
+  $80,$40,$40,$20,$20,$10,$10,$08,$08,$04,$04,$FE,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$01,$02,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$40,$40,$40,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$02,$02,$04,$08,$04,$02,$01,$00,$00,$00,$00
+  $00,$00,$00,$80,$40,$40,$20,$20,$10,$20,$20,$40,$80,$00,$00,$00
+  $00,$01,$02,$02,$04,$08,$10,$10,$20,$10,$08,$04,$02,$01,$00,$00
+  $80,$40,$40,$20,$20,$10,$08,$08,$04,$08,$10,$10,$20,$40,$80,$00
+  $00,$00,$00,$00,$01,$01,$01,$06,$0F,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$80,$C0,$E0,$80,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$06,$03,$03,$02,$07,$04,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$20,$E0,$40,$C0,$C0,$60,$00,$00,$00,$00,$00
+  $00,$00,$01,$01,$03,$04,$08,$10,$3F,$08,$04,$03,$00,$00,$00,$00
+  $00,$00,$00,$80,$40,$A0,$90,$80,$F8,$90,$A0,$C0,$80,$00,$00,$00
+  $00,$00,$00,$00,$0F,$04,$0A,$09,$08,$0B,$0C,$0B,$00,$00,$00,$00
+  $00,$00,$00,$00,$D0,$30,$50,$50,$90,$50,$20,$F0,$00,$00,$00,$00
+  $01,$01,$01,$03,$04,$08,$30,$40,$FF,$10,$08,$04,$02,$02,$01,$00
+  $00,$80,$40,$40,$A0,$90,$88,$80,$FF,$86,$88,$B0,$C0,$80,$80,$80
+  $00,$00,$3E,$11,$08,$14,$12,$11,$10,$21,$26,$28,$37,$20,$00,$00
+  $00,$00,$04,$EC,$14,$24,$24,$48,$88,$48,$28,$10,$88,$7C,$00,$00
+  $00,$00,$00,$00,$00,$01,$02,$05,$07,$02,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$C0,$A0,$A0,$40,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$0C,$13,$14,$14,$14,$14,$0B,$08,$07,$00,$00,$00
+  $00,$00,$00,$E0,$10,$D0,$28,$28,$28,$28,$C8,$30,$C0,$00,$00,$00
+  $01,$06,$09,$16,$28,$50,$50,$A0,$A0,$50,$50,$28,$17,$08,$07,$00
+  $80,$60,$90,$68,$14,$0A,$0A,$0A,$0A,$0A,$0A,$14,$E8,$10,$E0,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$01,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$C0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$01,$06,$02,$05,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$A0,$40,$60,$80,$40,$00,$00,$00,$00,$00
+  $00,$00,$00,$04,$04,$02,$02,$1E,$00,$07,$19,$01,$01,$00,$00,$00
+  $00,$00,$00,$80,$80,$98,$E0,$00,$78,$40,$40,$20,$20,$00,$00,$00
+  $00,$10,$08,$04,$04,$02,$E0,$1C,$00,$04,$19,$21,$41,$02,$02,$02
+  $40,$40,$40,$82,$84,$98,$20,$00,$38,$07,$40,$20,$20,$10,$08,$00
+  $00,$00,$00,$03,$0C,$11,$26,$45,$85,$64,$13,$08,$07,$00,$00,$00
+  $00,$00,$00,$C0,$30,$C8,$24,$A4,$A2,$64,$88,$10,$E0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$1F,$21,$E3,$1F,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$F8,$84,$C6,$F8,$80,$00,$00,$00,$00,$00
+  $01,$0E,$31,$42,$4C,$50,$50,$A0,$A0,$50,$48,$48,$27,$20,$1E,$01
+  $80,$78,$84,$64,$12,$12,$0A,$0A,$09,$0A,$0A,$32,$C2,$0C,$70,$80
+end data
+' Small tiles: slot, 8 pattern bytes, colour
+const TLIFE = 1
+const TWAVEON = 2
+const TWAVEOFF = 3
+const TBAR0 = 4
+const TBAR1 = 5
+const TBAR2 = 6
+const TPIPON = 7
+const TPIPOFF = 8
+const TFARTRI = 9
+const TFARDIA = 10
+const TFARSPI = 11
+const TFARGATE = 12
+const TBARR = 13
+const TOUML = 26
+const TEYESYM = 27
+const TRULE = 28
+const TCURSOR = 29
+const TCOPYR = 30
+const SmallTileCount = 18
+data SmallTiles bytes
+  $01,$10,$10,$38,$28,$6C,$C6,$82,$00,$B0
+  $02,$3C,$42,$99,$A5,$A5,$99,$42,$3C,$70
+  $03,$3C,$42,$81,$81,$81,$81,$42,$3C,$40
+  $04,$FF,$00,$00,$00,$00,$00,$FF,$00,$40
+  $05,$FF,$F0,$F0,$F0,$F0,$F0,$FF,$00,$30
+  $06,$FF,$FE,$FE,$FE,$FE,$FE,$FF,$00,$30
+  $07,$00,$38,$7C,$7C,$7C,$38,$00,$00,$B0
+  $08,$00,$38,$44,$44,$44,$38,$00,$00,$40
+  $09,$00,$00,$10,$28,$38,$00,$00,$00,$90
+  $0A,$00,$10,$28,$44,$28,$10,$00,$00,$30
+  $0B,$00,$20,$18,$30,$08,$00,$00,$00,$D0
+  $0C,$00,$38,$44,$44,$44,$38,$00,$00,$B0
+  $0D,$FF,$80,$80,$80,$80,$80,$FF,$00,$40
+  $1A,$44,$00,$7C,$82,$82,$82,$7C,$00,$F0
+  $1B,$00,$3C,$5A,$BD,$5A,$3C,$00,$00,$D0
+  $1C,$00,$00,$00,$FF,$00,$00,$00,$00,$50
+  $1D,$00,$40,$60,$70,$70,$60,$40,$00,$B0
+  $1E,$3C,$42,$99,$A1,$A1,$99,$42,$3C,$F0
+end data
+' big logo: 59 tiles
+const LogoTiles = 59
+data LogoPat bytes
+  $0F,$0F,$0F,$0F,$0F,$1F,$1F,$1E,$FF,$FF,$FF,$FF,$00,$00,$00,$00
+  $E0,$F0,$F8,$F8,$3C,$1E,$1F,$1F,$00,$00,$00,$01,$07,$0F,$1F,$1F
+  $3F,$7F,$FF,$FF,$FF,$C0,$80,$00,$E0,$F0,$F8,$F8,$FC,$7E,$3F,$1F
+  $0F,$0F,$0F,$0F,$1F,$1F,$1F,$1F,$C0,$C0,$C0,$C0,$80,$80,$80,$80
+  $0F,$0F,$0F,$0F,$0F,$1F,$1F,$1F,$C0,$C0,$C0,$80,$80,$80,$80,$C0
+  $1F,$1F,$1F,$1F,$3F,$3F,$3F,$7F,$8F,$8F,$8F,$8F,$0F,$1F,$1F,$1E
+  $E0,$F0,$F8,$F8,$7C,$3E,$1F,$1F,$03,$03,$03,$07,$07,$00,$00,$00
+  $FF,$FF,$FF,$FF,$FF,$1F,$1F,$1F,$FE,$FE,$FC,$FC,$FC,$80,$80,$80
+  $C0,$C0,$C0,$80,$80,$80,$80,$80,$1F,$1F,$1F,$3F,$3F,$3F,$3F,$3F
+  $80,$80,$80,$01,$07,$0F,$1F,$1F,$3F,$7F,$FF,$FF,$FF,$C0,$80,$80
+  $FF,$FF,$FF,$FF,$FF,$00,$00,$00,$1E,$1E,$1F,$1F,$1F,$3F,$3F,$3F
+  $00,$00,$FF,$FF,$FF,$FF,$00,$00,$1E,$7E,$FE,$FC,$F8,$F0,$00,$00
+  $1F,$1F,$3E,$3E,$3E,$3E,$3E,$3C,$1F,$1E,$3E,$3E,$3E,$3E,$3E,$7C
+  $1F,$1F,$3F,$3F,$3F,$3F,$3F,$3F,$80,$80,$00,$00,$00,$00,$00,$00
+  $1F,$0F,$07,$03,$01,$00,$00,$00,$C1,$FF,$FF,$FF,$FF,$FF,$7F,$7F
+  $FF,$FE,$F8,$F0,$E0,$80,$00,$00,$1E,$1E,$1F,$1F,$1F,$3E,$3E,$3E
+  $00,$00,$FF,$FF,$FF,$00,$00,$00,$3F,$7E,$F8,$F0,$F8,$7C,$3E,$3E
+  $1F,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$1F,$1F,$3F,$3F,$3F,$3F,$3F,$3E
+  $80,$00,$00,$00,$00,$00,$00,$00,$3F,$7E,$7E,$7E,$7E,$7E,$7E,$FC
+  $1F,$3F,$3F,$1F,$07,$03,$01,$00,$80,$80,$FF,$FF,$FF,$FF,$FF,$00
+  $00,$00,$C0,$E0,$F0,$FC,$FE,$FE,$3F,$3F,$3F,$3E,$3E,$7E,$7E,$7E
+  $7C,$7C,$7E,$3F,$1F,$0F,$07,$03,$00,$00,$00,$01,$FF,$FF,$FF,$FF
+  $7C,$7C,$FC,$F8,$F0,$E0,$C0,$80,$7E,$7E,$7E,$3F,$1F,$0F,$07,$03
+  $00,$00,$00,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$FC,$FC,$FC,$FC,$FC
+  $7F,$7F,$7F,$7E,$FE,$FE,$FE,$FE,$3E,$3C,$3C,$3C,$3C,$7F,$7F,$7F
+  $00,$00,$00,$00,$01,$FF,$FF,$FF,$7C,$7C,$7C,$F8,$F0,$E0,$C0,$80
+  $00,$00,$00,$00,$1F,$1F,$1F,$1F,$3E,$7E,$7E,$7E,$FF,$FF,$FF,$FF
+  $00,$00,$00,$00,$F0,$F0,$F0,$F0,$7E,$7E,$7F,$3F,$1F,$0F,$07,$03
+  $00,$00,$01,$FF,$FF,$FF,$FF,$FF,$FC,$FC,$FC,$F8,$F0,$E0,$C0,$80
+  $00,$00,$00,$00,$7F,$7F,$7F,$7F
+end data
+data LogoSlots bytes
+  $DF,$E0,$E1,$E2,$E3,$E4,$E5,$E6,$E7,$E8,$E9,$EA,$EB,$EC,$ED,$EE
+  $EF,$F0,$F1,$F2,$F3,$F4,$F5,$F6,$F7,$F8,$F9,$FA,$FB,$FC,$FD,$FE
+  $FF,$21,$22,$23,$24,$25,$26,$28,$29,$2A,$2B,$2F,$3B,$3C,$3D,$3E
+  $3F,$40,$0E,$0F,$10,$11,$12,$13,$14,$15,$16
+end data
+data LogoMap bytes
+  $DF,$E0,$E1,$E2,$E3,$E4,$E5,$E6,$00,$E7,$E8,$E9,$EA,$E0,$EB,$EC,$ED,$EE,$E5,$EF,$F0,$F1,$F2,$F3
+  $F4,$F5,$F6,$F7,$00,$F8,$F9,$FA,$00,$FB,$FC,$FD,$FE,$FF,$21,$00,$22,$00,$23,$24,$25,$26,$28,$29
+  $2A,$00,$00,$2B,$2F,$3B,$3C,$3D,$3E,$00,$3F,$00,$40,$0E,$0F,$10,$11,$12,$13,$14,$15,$16,$2F,$3B
+end data
+' OCTAGON: 8 lanes [(0, -4), (3, -3), (4, 0), (3, 3), (0, 4), (-3, 3), (-4, 0), (-3, -3)]
+const LaneCount0 = 8
+data LaneMX0 bytes
+  $00,$03,$04,$03,$00,$03,$04,$03
+end data
+data LaneMY0 bytes
+  $04,$03,$00,$03,$04,$03,$00,$03
+end data
+data LaneSG0 bytes
+  $02,$02,$00,$00,$00,$01,$01,$03
+end data
+data LaneFR0 bytes
+  $08,$0A,$0C,$0E,$00,$02,$04,$06
+end data
+data HTab0 bytes
+  $14,$13,$12,$11,$10,$0F,$0F,$0E,$0D,$0D,$0C,$0C,$0B,$0B,$0B,$0A
+  $0A,$0A,$09,$09,$09,$09,$08,$08,$08,$08,$08,$07,$07,$07,$07,$07
+  $07,$07,$06,$06,$06,$06,$06,$06,$06,$06,$06,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05,$04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03
+  $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+end data
+' CROSS: 12 lanes [(0, -4), (2, -3), (3, -2), (4, 0), (3, 2), (2, 3), (0, 4), (-2, 3), (-3, 2), (-4, 0), (-3, -2), (-2, -3)]
+const LaneCount1 = 12
+data LaneMX1 bytes
+  $00,$02,$03,$04,$03,$02,$00,$02,$03,$04,$03,$02
+end data
+data LaneMY1 bytes
+  $04,$03,$02,$00,$02,$03,$04,$03,$02,$00,$02,$03
+end data
+data LaneSG1 bytes
+  $02,$02,$02,$00,$00,$00,$00,$01,$01,$01,$03,$03
+end data
+data LaneFR1 bytes
+  $08,$09,$0B,$0C,$0D,$0F,$00,$01,$03,$04,$05,$07
+end data
+data HTab1 bytes
+  $14,$13,$12,$11,$10,$0F,$0F,$0E,$0D,$0D,$0C,$0C,$0B,$0B,$0B,$0A
+  $0A,$0A,$09,$09,$09,$09,$08,$08,$08,$08,$08,$07,$07,$07,$07,$07
+  $07,$07,$06,$06,$06,$06,$06,$06,$06,$06,$06,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$05,$05,$05,$05,$04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03
+  $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+end data
+' STAR: 16 lanes [(1, -5), (3, -4), (4, -3), (5, -1), (5, 1), (4, 3), (3, 4), (1, 5), (-1, 5), (-3, 4), (-4, 3), (-5, 1), (-5, -1), (-4, -3), (-3, -4), (-1, -5)]
+const LaneCount2 = 16
+data LaneMX2 bytes
+  $01,$03,$04,$05,$05,$04,$03,$01,$01,$03,$04,$05,$05,$04,$03,$01
+end data
+data LaneMY2 bytes
+  $05,$04,$03,$01,$01,$03,$04,$05,$05,$04,$03,$01,$01,$03,$04,$05
+end data
+data LaneSG2 bytes
+  $02,$02,$02,$02,$00,$00,$00,$00,$01,$01,$01,$01,$03,$03,$03,$03
+end data
+data LaneFR2 bytes
+  $09,$0A,$0A,$0B,$0D,$0E,$0E,$0F,$01,$02,$02,$03,$05,$06,$06,$07
+end data
+data HTab2 bytes
+  $0E,$0E,$0D,$0C,$0C,$0B,$0B,$0A,$0A,$09,$09,$09,$08,$08,$08,$07
+  $07,$07,$07,$07,$06,$06,$06,$06,$06,$06,$06,$05,$05,$05,$05,$05
+  $05,$05,$05,$05,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04,$04
+  $04,$04,$04,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03
+  $03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$03,$02,$02,$02
+  $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+  $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+  $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
+end data
+' =========================================================================
+' VDP HELPERS (Z80)
+' All three run inside an Amy "nmi off" batch, right after WAIT.
+' Data-port accesses are spaced by at least 29 cycles (8 us), so a batch
+' that runs past VBlank still never drops a write on a real TMS9918A.
+' VDP ports: $BE data, $BF control.
+' =========================================================================
+asm {
+; -------------------------------------------------------------------------
+; PB_POKE_ALL: write one tile into the same cell of all 8 tunnel pages.
+; In : HL = cell offset (0..767), A = tile
+; Out: -           Clobbers: AF, BC, DE
+; Cost: 8 x (2 control + 1 data) port writes, about 80 cycles per page.
+PB_POKE_ALL:
+    ld e,a
+    ld bc,PageHi
+    ld d,8
+PB_POKE_ALL_LOOP:
+    ld a,l
+    out ($BF),a
+    ld a,(bc)
+    add a,h
+    or $40
+    out ($BF),a
+    ld a,e
+    out ($BE),a
+    inc bc
+    dec d
+    jr nz,PB_POKE_ALL_LOOP
+    ret
+
+; -------------------------------------------------------------------------
+; PB_TILE_COLORS: give B consecutive tiles (from tile A) the same 8 colour
+; rows taken from the buffer at HL.  Used for the title logo gradient.
+; Clobbers: AF, BC, DE, HL.  30+ cycles between data writes.
+PB_TILE_COLORS:
+    ld e,a
+PB_TC_TILE:
+    push bc
+    push hl
+    ld l,e
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60
+    out ($BF),a
+    pop hl
+    push hl
+    ld b,8
+PB_TC_ROW:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    nop
+    djnz PB_TC_ROW
+    pop hl
+    pop bc
+    inc e
+    djnz PB_TC_TILE
+    ret
+
+; -------------------------------------------------------------------------
+; PB_SLOT_PATTERNS: upload B tiles of 8 pattern bytes (HL) into the
+; pattern slots listed at DE.   Clobbers: AF, BC, DE, HL.
+PB_SLOT_PATTERNS:
+    push bc
+    push hl
+    ld a,(de)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $40
+    out ($BF),a
+    pop hl
+    ld b,8
+PB_SP_ROW:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    nop
+    djnz PB_SP_ROW
+    pop bc
+    inc de
+    djnz PB_SLOT_PATTERNS
+    ret
+
+; -------------------------------------------------------------------------
+; PB_SLOT_COLORS: give the B tiles listed at DE the colour byte C on all
+; 8 rows.   Clobbers: AF, B, DE, HL.
+PB_SLOT_COLORS:
+    push bc
+    ld a,(de)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60
+    out ($BF),a
+    ld b,8
+PB_SC_ROW:
+    ld a,c
+    out ($BE),a
+    ex (sp),hl
+    ex (sp),hl
+    djnz PB_SC_ROW
+    pop bc
+    inc de
+    djnz PB_SLOT_COLORS
+    ret
+
+; -------------------------------------------------------------------------
+; PB_RAND: 16-bit xorshift, result byte in RndOut.  Clobbers AF, HL.
+PB_RAND:
+    ld hl,(RndSeed)
+    ld a,r
+    xor l
+    ld l,a
+    ld a,h
+    rra
+    ld a,l
+    rra
+    xor h
+    ld h,a
+    ld a,l
+    rra
+    ld a,h
+    rra
+    xor l
+    ld l,a
+    xor h
+    ld h,a
+    ld (RndSeed),hl
+    ld (RndOut),a
+    ret
+
+; -------------------------------------------------------------------------
+; PB_SAT_UPLOAD: slow-safe copy of the Amy sprite shadow table to $1B00.
+; Same result as UPDATE SPRITES (colour byte masked with $8F, $D0
+; terminator) but with about 40 cycles between data writes, so it stays
+; correct even if a late frame starts it after VBlank.  openMSX found one
+; lost write in the OUTI uploader during a 120 s stress run.
+; Clobbers: AF, BC, HL.
+PB_SAT_UPLOAD:
+    xor a
+    out ($BF),a
+    ld a,$5B
+    out ($BF),a
+    ld a,(AMY_SPRITE_COUNT)
+    or a
+    jr z,PB_SAT_END
+    ld b,a
+    ld hl,AMY_SPRITE_TABLE
+PB_SAT_LOOP:
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    nop
+    nop
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    nop
+    nop
+    ld a,(hl)
+    out ($BE),a
+    inc hl
+    nop
+    nop
+    ld a,(hl)
+    and $8F
+    out ($BE),a
+    inc hl
+    djnz PB_SAT_LOOP
+PB_SAT_END:
+    nop
+    nop
+    ld a,$D0
+    out ($BE),a
+    ret
+
+; -------------------------------------------------------------------------
+; PB_OVERLAY_FLUSH: restore the cells drawn last frame (reverse order, so
+; stacked cells unwind correctly), then draw this frame's far objects and
+; remember the tiles underneath.
+; Lists (Amy globals): OldN/OldLo/OldHi/OldS and OvN/OvLo/OvHi/OvT.
+; Clobbers: AF, BC, DE, HL.
+; Cost: old N x 3 port writes, new N x (3 writes + 1 read + 3 writes).
+PB_OVERLAY_FLUSH:
+    ld a,(OldN)
+    or a
+    jr z,PB_OVF_NEW
+    ld b,a
+PB_OVF_REST:
+    ld e,b
+    dec e
+    ld d,0
+    ld hl,OldLo
+    add hl,de
+    ld a,(hl)
+    out ($BF),a
+    ld hl,OldHi
+    add hl,de
+    ld a,(hl)
+    or $40
+    out ($BF),a
+    ld hl,OldS
+    add hl,de
+    ld a,(hl)
+    out ($BE),a
+    djnz PB_OVF_REST
+PB_OVF_NEW:
+    ld a,(OvN)
+    ld (OldN),a
+    or a
+    ret z
+    ld b,a
+    ld de,0
+PB_OVF_DRAW:
+    ld hl,OvLo
+    add hl,de
+    ld a,(hl)
+    ld hl,OldLo
+    add hl,de
+    ld (hl),a
+    out ($BF),a
+    ld hl,OvHi
+    add hl,de
+    ld a,(hl)
+    ld hl,OldHi
+    add hl,de
+    ld (hl),a
+    and $3F
+    out ($BF),a             ; read set-up: the VDP fetches the byte
+    ex (sp),hl              ; 38 cycles of patience before reading
+    ex (sp),hl
+    in a,($BE)
+    ld hl,OldS
+    add hl,de
+    ld (hl),a
+    ld hl,OldLo
+    add hl,de
+    ld a,(hl)
+    out ($BF),a
+    ld hl,OldHi
+    add hl,de
+    ld a,(hl)
+    or $40
+    out ($BF),a
+    ld hl,OvT
+    add hl,de
+    ld a,(hl)
+    out ($BE),a
+    inc e
+    djnz PB_OVF_DRAW
+    ret
+
+; -------------------------------------------------------------------------
+; PB_SPOKE_COLOR: recolour every tile of one spoke.
+; In : HL = list of (tile, ring-row mask) pairs, B = pair count,
+;      D = ring colour (low nibble), E = spoke colour (low nibble)
+; Rows whose mask bit is set keep the ring colour; other rows take the
+; spoke colour.  Background nibble 0 (transparent, black backdrop).
+; Clobbers: AF, BC, DE, HL.  About 45 cycles per data write.
+PB_SPOKE_COLOR:
+    ld a,d
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld d,a
+    ld a,e
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld e,a
+PB_SPK_TILE:
+    push bc
+    ld a,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    push hl
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,l
+    out ($BF),a
+    ld a,h
+    or $60                  ; $2000 colour table + $40 write flag
+    out ($BF),a
+    ld b,8
+PB_SPK_ROW:
+    rrc c
+    ld a,e
+    jr nc,PB_SPK_PUT
+    ld a,d
+PB_SPK_PUT:
+    out ($BE),a
+    djnz PB_SPK_ROW
+    pop hl
+    pop bc
+    djnz PB_SPK_TILE
+    ret
+}
+
+' OS7 sound table: see polybius_sound.alexis (tools/gen_sound.py)
+' =========================================================================
+' OS7 SOUND TABLE - generated by tools/gen_sound.py (do not edit by hand)
+' Music in the first four areas: $702B tone 1 (lead), $7035 tone 2,
+' $703F noise (periodic bass + drums), $7049 tone 3 (muted bass pitch).
+' Effects after them, one area per channel: noise $7053, tone 1 $705D,
+' tone 2 $7067 (set sound table SndTable areas 7).  No effect uses
+' tone 3: it carries the bass pitch, and a 7th area keeps OS7's NMI cheap.
+' Music attenuation 3..15, effects 0..2.  All music is original.
+' =========================================================================
+asm {
+SndTable:
+    dw TitLead,$702B
+    dw TitTwo,$7035
+    dw TitNoise,$703F
+    dw TitPitch,$7049
+    dw Pulse0Two,$7035
+    dw Pulse0Noise,$703F
+    dw Pulse0Pitch,$7049
+    dw Pulse1Two,$7035
+    dw Pulse1Noise,$703F
+    dw Pulse1Pitch,$7049
+    dw Pulse2Two,$7035
+    dw Pulse2Noise,$703F
+    dw Pulse2Pitch,$7049
+    dw SfxShot,$705D
+    dw SfxBoomN,$7053
+    dw SfxHitT,$7067
+    dw SfxHitN,$7053
+    dw SfxWaveN,$7053
+    dw SfxWaveT2,$7067
+    dw SfxGate1,$705D
+    dw SfxGate2,$7067
+    dw SfxGateN,$7053
+    dw SfxMiss,$7067
+    dw SfxLevel1,$705D
+    dw SfxLevel2,$7067
+    dw SfxLife,$705D
+    dw SfxOver1,$705D
+    dw SfxOver2,$7067
+    dw SfxOverN,$7053
+    dw SfxData,$705D
+    dw 0
+TitLead:
+    db $42,$AA,$30,$12,$14,$32,$42,$7F,$30,$12,$14,$32,$42,$71,$30,$0C
+    db $14,$22,$42,$6B,$30,$18,$14,$32,$42,$71,$30,$0C,$14,$22,$42,$7F
+    db $30,$0C,$14,$22,$42,$AA,$30,$24,$14,$32,$42,$BE,$30,$0C,$14,$22
+    db $42,$AA,$30,$1F,$12,$88,$43,$AA,$40,$09,$21,$04,$16,$32,$42,$6B
+    db $30,$12,$14,$32,$42,$71,$30,$12,$14,$32,$42,$7F,$30,$0C,$14,$22
+    db $42,$AA,$30,$18,$14,$32,$42,$A0,$30,$18,$14,$32,$42,$AA,$30,$18
+    db $14,$32,$42,$87,$30,$18,$14,$32,$42,$71,$30,$1F,$12,$88,$43,$71
+    db $40,$09,$21,$02,$16,$32,$42,$AA,$30,$12,$14,$32,$42,$7F,$30,$12
+    db $14,$32,$42,$71,$30,$0C,$14,$22,$42,$6B,$30,$18,$14,$32,$42,$71
+    db $30,$0C,$14,$22,$42,$7F,$30,$0C,$14,$22,$42,$AA,$30,$24,$14,$32
+    db $42,$BE,$30,$0C,$14,$22,$42,$AA,$30,$1F,$12,$88,$43,$AA,$40,$09
+    db $21,$04,$16,$32,$42,$6B,$30,$12,$14,$32,$42,$71,$30,$12,$14,$32
+    db $42,$7F,$30,$0C,$14,$22,$42,$AA,$30,$18,$14,$32,$42,$A0,$30,$18
+    db $14,$32,$42,$AA,$30,$0C,$14,$22,$42,$A0,$30,$0C,$14,$22,$42,$87
+    db $30,$18,$14,$32,$42,$71,$30,$18,$14,$32,$41,$67,$30,$05,$11,$FE
+    db $42,$5F,$30,$13,$14,$46,$41,$B0,$30,$05,$11,$FC,$42,$A0,$30,$1F
+    db $14,$46,$42,$AA,$30,$0C,$14,$22,$42,$BE,$30,$18,$14,$32,$42,$7F
+    db $30,$18,$14,$32,$41,$67,$30,$05,$11,$FE,$42,$5F,$30,$2B,$14,$46
+    db $42,$6B,$30,$18,$14,$32,$42,$78,$30,$18,$14,$32,$42,$8F,$30,$24
+    db $14,$32,$42,$AA,$30,$0C,$14,$22,$42,$6B,$30,$1F,$12,$88,$43,$6B
+    db $40,$09,$21,$02,$16,$32,$42,$71,$30,$18,$14,$32,$42,$87,$30,$18
+    db $14,$32,$42,$AA,$30,$18,$14,$32,$42,$71,$30,$18,$14,$32,$41,$B0
+    db $30,$05,$11,$FC,$42,$A0,$30,$1F,$14,$46,$42,$AA,$30,$0C,$14,$22
+    db $42,$BE,$30,$18,$14,$32,$42,$7F,$30,$18,$14,$32,$41,$67,$30,$05
+    db $11,$FE,$42,$5F,$30,$2B,$14,$46,$42,$6B,$30,$18,$14,$32,$42,$78
+    db $30,$18,$14,$32,$42,$8F,$30,$24,$14,$32,$42,$AA,$30,$0C,$14,$22
+    db $42,$6B,$30,$1F,$12,$88,$43,$6B,$40,$09,$21,$02,$16,$32,$42,$AA
+    db $30,$12,$14,$32,$42,$87,$30,$12,$14,$32,$42,$71,$30,$12,$14,$32
+    db $42,$55,$30,$12,$14,$32,$42,$55,$30,$07,$12,$88,$43,$55,$40,$09
+    db $21,$02,$16,$32,$42,$7F,$40,$12,$12,$C6,$41,$7E,$50,$03,$32,$01
+    db $41,$80,$50,$03,$32,$FF,$41,$7E,$50,$03,$32,$01,$41,$80,$50,$03
+    db $32,$FF,$41,$7E,$50,$03,$32,$01,$41,$80,$50,$03,$32,$FF,$41,$7E
+    db $50,$03,$32,$01,$41,$80,$60,$03,$32,$FF,$41,$7E,$70,$03,$32,$01
+    db $40,$7F,$80,$06,$42,$55,$40,$12,$12,$C6,$41,$54,$50,$03,$32,$01
+    db $41,$56,$50,$03,$32,$FF,$41,$54,$50,$03,$32,$01,$41,$56,$50,$03
+    db $32,$FF,$41,$54,$60,$03,$32,$01,$41,$56,$70,$03,$32,$FF,$40,$55
+    db $80,$06,$42,$5F,$40,$18,$14,$32,$42,$6B,$40,$12,$12,$C6,$41,$6A
+    db $50,$03,$32,$01,$41,$6C,$50,$03,$32,$FF,$41,$6A,$50,$03,$32,$01
+    db $41,$6C,$50,$03,$32,$FF,$41,$6A,$50,$03,$32,$01,$41,$6C,$50,$03
+    db $32,$FF,$41,$6A,$50,$03,$32,$01,$41,$6C,$60,$03,$32,$FF,$41,$6A
+    db $70,$03,$32,$01,$40,$6B,$80,$06,$42,$71,$40,$12,$12,$C6,$41,$70
+    db $50,$03,$32,$01,$41,$72,$50,$03,$32,$FF,$41,$70,$50,$03,$32,$01
+    db $41,$72,$60,$03,$32,$FF,$41,$70,$70,$03,$32,$01,$40,$71,$80,$02
+    db $42,$87,$40,$13,$12,$88,$43,$87,$50,$09,$21,$03,$16,$32,$58
+TitTwo:
+    db $82,$FC,$51,$0C,$24,$22,$82,$53,$51,$0C,$24,$22,$82,$AC,$51,$0C
+    db $24,$22,$82,$53,$51,$0C,$24,$22,$82,$FE,$50,$0C,$24,$22,$82,$53
+    db $51,$0C,$24,$22,$82,$AC,$51,$0C,$24,$22,$82,$53,$51,$0C,$24,$22
+    db $82,$3B,$52,$0C,$24,$22,$82,$53,$51,$0C,$24,$22,$82,$AC,$51,$0C
+    db $24,$22,$82,$53,$51,$0C,$24,$22,$82,$FE,$50,$0C,$24,$22,$82,$53
+    db $51,$0C,$24,$22,$82,$AC,$51,$0C,$24,$22,$82,$53,$51,$0C,$24,$22
+    db $82,$81,$52,$0C,$24,$22,$82,$AC,$51,$0C,$24,$22,$82,$FC,$51,$0C
+    db $24,$22,$82,$AC,$51,$0C,$24,$22,$82,$53,$51,$0C,$24,$22,$82,$AC
+    db $51,$0C,$24,$22,$82,$FC,$51,$0C,$24,$22,$82,$AC,$51,$0C,$24,$22
+    db $82,$A7,$52,$0C,$24,$22,$82,$C5,$51,$0C,$24,$22,$82,$1B,$52,$0C
+    db $24,$22,$82,$C5,$51,$0C,$24,$22,$82,$53,$51,$0C,$24,$22,$82,$C5
+    db $51,$0C,$24,$22,$82,$1B,$52,$0C,$24,$22,$82,$7D,$51,$0C,$24,$22
+    db $82,$FC,$51,$06,$23,$22,$82,$53,$61,$06,$23,$22,$82,$53,$61,$06
+    db $23,$22,$82,$53,$61,$06,$23,$22,$82,$AC,$51,$06,$23,$22,$82,$53
+    db $61,$06,$23,$22,$82,$53,$61,$06,$23,$22,$82,$53,$61,$06,$23,$22
+    db $82,$FE,$50,$06,$23,$22,$82,$53,$61,$06,$23,$22,$82,$53,$61,$06
+    db $23,$22,$82,$53,$61,$06,$23,$22,$82,$AC,$51,$06,$23,$22,$82,$53
+    db $61,$06,$23,$22,$82,$53,$61,$06,$23,$22,$82,$53,$61,$06,$23,$22
+    db $82,$3B,$52,$06,$23,$22,$82,$53,$61,$06,$23,$22,$82,$53,$61,$06
+    db $23,$22,$82,$53,$61,$06,$23,$22,$82,$AC,$51,$06,$23,$22,$82,$53
+    db $61,$06,$23,$22,$82,$53,$61,$06,$23,$22,$82,$53,$61,$06,$23,$22
+    db $82,$FE,$50,$06,$23,$22,$82,$53,$61,$06,$23,$22,$82,$53,$61,$06
+    db $23,$22,$82,$53,$61,$06,$23,$22,$82,$AC,$51,$06,$23,$22,$82,$53
+    db $61,$06,$23,$22,$82,$53,$61,$06,$23,$22,$82,$53,$61,$06,$23,$22
+    db $82,$81,$52,$06,$23,$22,$82,$AC,$61,$06,$23,$22,$82,$AC,$61,$06
+    db $23,$22,$82,$AC,$61,$06,$23,$22,$82,$FC,$51,$06,$23,$22,$82,$AC
+    db $61,$06,$23,$22,$82,$AC,$61,$06,$23,$22,$82,$AC,$61,$06,$23,$22
+    db $82,$53,$51,$06,$23,$22,$82,$AC,$61,$06,$23,$22,$82,$AC,$61,$06
+    db $23,$22,$82,$AC,$61,$06,$23,$22,$82,$FC,$51,$06,$23,$22,$82,$AC
+    db $61,$06,$23,$22,$82,$AC,$61,$06,$23,$22,$82,$AC,$61,$06,$23,$22
+    db $82,$A7,$52,$06,$23,$22,$82,$C5,$61,$06,$23,$22,$82,$C5,$61,$06
+    db $23,$22,$82,$C5,$61,$06,$23,$22,$82,$1B,$52,$06,$23,$22,$82,$7D
+    db $61,$06,$23,$22,$82,$C5,$61,$06,$23,$22,$82,$C5,$61,$06,$23,$22
+    db $82,$53,$51,$06,$23,$22,$82,$C5,$61,$06,$23,$22,$82,$C5,$61,$06
+    db $23,$22,$82,$C5,$61,$06,$23,$22,$82,$1B,$52,$06,$23,$22,$82,$7D
+    db $61,$06,$23,$22,$82,$7D,$61,$06,$23,$22,$82,$C5,$61,$06,$23,$22
+    db $B2,$81,$B0,$60,$05,$11,$FC,$82,$A0,$60,$1F,$14,$46,$82,$AA,$60
+    db $0C,$14,$22,$82,$BE,$60,$18,$14,$32,$82,$7F,$60,$18,$14,$32,$81
+    db $67,$60,$05,$11,$FE,$82,$5F,$60,$2B,$14,$46,$82,$6B,$60,$18,$14
+    db $32,$82,$78,$60,$18,$14,$32,$82,$8F,$60,$24,$14,$32,$82,$AA,$60
+    db $0C,$14,$22,$82,$6B,$60,$30,$14,$32,$82,$71,$60,$18,$14,$32,$82
+    db $87,$60,$18,$14,$32,$82,$AA,$60,$18,$14,$32,$82,$71,$60,$06,$14
+    db $22,$81,$64,$51,$05,$11,$F7,$82,$40,$51,$1F,$14,$46,$82,$53,$51
+    db $0C,$14,$22,$82,$7D,$51,$18,$14,$32,$82,$FE,$50,$18,$14,$32,$81
+    db $D2,$50,$05,$11,$FB,$82,$BE,$50,$2B,$14,$46,$82,$D6,$50,$18,$14
+    db $32,$82,$F0,$50,$18,$14,$32,$82,$1D,$51,$24,$14,$32,$82,$53,$51
+    db $0C,$14,$22,$82,$D6,$50,$30,$14,$32,$82,$53,$51,$12,$14,$32,$82
+    db $0D,$51,$12,$14,$32,$82,$E2,$50,$12,$14,$32,$82,$AA,$50,$12,$14
+    db $32,$82,$AA,$50,$18,$14,$32,$83,$7F,$50,$08,$33,$04,$25,$44,$83
+    db $AA,$50,$08,$33,$05,$25,$44,$83,$7F,$50,$08,$33,$04,$25,$44,$83
+    db $D6,$50,$08,$33,$07,$25,$44,$83,$AA,$50,$08,$33,$05,$25,$44,$83
+    db $D6,$50,$08,$33,$07,$25,$44,$83,$AA,$50,$08,$33,$05,$25,$44,$83
+    db $FE,$50,$08,$33,$08,$25,$44,$83,$7F,$50,$08,$33,$04,$25,$44,$83
+    db $AA,$50,$08,$33,$05,$25,$44,$83,$7F,$50,$08,$33,$04,$25,$44,$83
+    db $D6,$50,$08,$33,$07,$25,$44,$83,$AA,$50,$08,$33,$05,$25,$44,$83
+    db $E2,$50,$08,$33,$07,$25,$44,$83,$AA,$50,$08,$33,$05,$25,$44,$83
+    db $0D,$51,$08,$33,$08,$25,$44,$98
+TitNoise:
+    db $02,$33,$0C,$15,$22,$02,$64,$04,$33,$11,$28,$02,$43,$0C,$14,$22
+    db $02,$64,$04,$33,$11,$28,$02,$33,$0C,$15,$22,$02,$64,$04,$33,$11
+    db $28,$02,$43,$0C,$14,$22,$02,$64,$04,$33,$11,$28,$02,$33,$0C,$15
+    db $22,$02,$64,$04,$33,$11,$28,$02,$43,$0C,$14,$22,$02,$64,$04,$33
+    db $11,$28,$02,$33,$0C,$15,$22,$02,$64,$04,$33,$11,$28,$02,$43,$0C
+    db $14,$22,$02,$64,$04,$33,$11,$22,$02,$43,$06,$14,$22,$02,$33,$0C
+    db $15,$22,$02,$64,$04,$33,$11,$28,$02,$43,$0C,$14,$22,$02,$64,$04
+    db $33,$11,$28,$02,$33,$0C,$15,$22,$02,$64,$04,$33,$11,$28,$02,$43
+    db $0C,$14,$22,$02,$64,$04,$33,$11,$22,$02,$43,$06,$14,$22,$02,$33
+    db $0C,$15,$22,$02,$64,$04,$33,$11,$28,$02,$43,$0C,$14,$22,$02,$64
+    db $04,$33,$11,$28,$02,$33,$0C,$15,$22,$02,$64,$04,$33,$11,$28,$02
+    db $43,$0C,$14,$22,$02,$64,$04,$33,$11,$22,$02,$43,$06,$14,$22,$02
+    db $33,$0C,$15,$22,$02,$64,$04,$33,$11,$22,$02,$43,$06,$14,$22,$02
+    db $35,$0A,$25,$21,$22,$02,$43,$0C,$14,$22,$02,$33,$0C,$15,$22,$02
+    db $64,$04,$33,$11,$22,$02,$43,$06,$14,$22,$02,$35,$0A,$25,$21,$22
+    db $02,$43,$06,$14,$22,$02,$64,$04,$33,$11,$22,$02,$33,$0C,$15,$22
+    db $02,$64,$04,$33,$11,$22,$02,$43,$06,$14,$22,$02,$35,$0A,$25,$21
+    db $22,$02,$43,$0C,$14,$22,$02,$33,$0C,$15,$22,$02,$64,$04,$33,$11
+    db $22,$02,$43,$06,$14,$22,$02,$35,$0A,$25,$21,$22,$02,$43,$06,$14
+    db $22,$02,$64,$04,$33,$11,$22,$02,$33,$0C,$15,$22,$02,$64,$04,$33
+    db $11,$22,$02,$43,$06,$14,$22,$02,$35,$0A,$25,$21,$22,$02,$43,$0C
+    db $14,$22,$02,$33,$0C,$15,$22,$02,$64,$04,$33,$11,$22,$02,$43,$06
+    db $14,$22,$02,$35,$0A,$25,$21,$22,$02,$43,$06,$14,$22,$02,$64,$04
+    db $33,$11,$22,$02,$33,$0C,$15,$22,$02,$64,$04,$33,$11,$22,$02,$43
+    db $06,$14,$22,$02,$35,$0A,$25,$21,$22,$02,$43,$0C,$14,$22,$02,$33
+    db $0C,$15,$22,$02,$64,$04,$33,$11,$22,$02,$43,$06,$14,$22,$02,$35
+    db $06,$25,$21,$02,$54,$06,$25,$22,$02,$35,$0A,$25,$21,$22,$02,$33
+    db $0C,$15,$22,$02,$43,$0C,$14,$22,$02,$35,$0A,$25,$21,$22,$02,$43
+    db $0C,$14,$22,$02,$33,$06,$15,$22,$02,$43,$06,$14,$22,$02,$64,$04
+    db $33,$11,$28,$02,$35,$0A,$25,$21,$22,$02,$43,$06,$14,$22,$02,$64
+    db $04,$33,$11,$22,$02,$33,$0C,$15,$22,$02,$43,$0C,$14,$22,$02,$35
+    db $0A,$25,$21,$22,$02,$43,$0C,$14,$22,$02,$33,$06,$15,$22,$02,$43
+    db $06,$14,$22,$02,$64,$04,$33,$11,$28,$02,$35,$0A,$25,$21,$22,$02
+    db $43,$06,$14,$22,$02,$64,$04,$33,$11,$22,$02,$33,$0C,$15,$22,$02
+    db $43,$0C,$14,$22,$02,$35,$0A,$25,$21,$22,$02,$43,$0C,$14,$22,$02
+    db $33,$06,$15,$22,$02,$43,$06,$14,$22,$02,$64,$04,$33,$11,$28,$02
+    db $35,$0A,$25,$21,$22,$02,$43,$06,$14,$22,$02,$64,$04,$33,$11,$22
+    db $02,$33,$0C,$15,$22,$02,$43,$0C,$14,$22,$02,$35,$0A,$25,$21,$22
+    db $02,$43,$0C,$14,$22,$02,$33,$0C,$15,$22,$02,$43,$0C,$14,$22,$02
+    db $35,$06,$25,$21,$02,$35,$06,$25,$21,$02,$35,$06,$25,$21,$02,$35
+    db $06,$25,$21,$02,$33,$0C,$15,$22,$02,$43,$0C,$14,$22,$02,$35,$0A
+    db $25,$21,$22,$02,$43,$0C,$14,$22,$02,$33,$06,$15,$22,$02,$43,$06
+    db $14,$22,$02,$64,$04,$33,$11,$28,$02,$35,$0A,$25,$21,$22,$02,$43
+    db $06,$14,$22,$02,$64,$04,$33,$11,$22,$02,$33,$0C,$15,$22,$02,$43
+    db $0C,$14,$22,$02,$35,$0A,$25,$21,$22,$02,$43,$0C,$14,$22,$02,$33
+    db $06,$15,$22,$02,$43,$06,$14,$22,$02,$64,$04,$33,$11,$28,$02,$35
+    db $0A,$25,$21,$22,$02,$43,$06,$14,$22,$02,$64,$04,$33,$11,$22,$02
+    db $33,$0C,$15,$22,$02,$43,$0C,$14,$22,$02,$35,$0A,$25,$21,$22,$02
+    db $43,$0C,$14,$22,$02,$33,$06,$15,$22,$02,$43,$06,$14,$22,$02,$64
+    db $04,$33,$11,$28,$02,$35,$0A,$25,$21,$22,$02,$43,$06,$14,$22,$02
+    db $64,$04,$33,$11,$22,$02,$33,$0C,$15,$22,$02,$43,$0C,$14,$22,$02
+    db $35,$0A,$25,$21,$22,$02,$43,$0C,$14,$22,$02,$33,$0C,$15,$22,$02
+    db $43,$0C,$14,$22,$02,$35,$06,$25,$21,$02,$35,$06,$25,$21,$02,$35
+    db $06,$25,$21,$02,$35,$06,$25,$21,$02,$33,$30,$15,$22,$02,$63,$18
+    db $24,$33,$02,$60,$03,$42,$11,$29,$02,$60,$03,$42,$11,$29,$02,$33
+    db $30,$15,$22,$02,$63,$18,$24,$33,$02,$60,$03,$42,$11,$29,$02,$60
+    db $03,$42,$11,$29,$02,$33,$30,$15,$22,$02,$63,$18,$24,$33,$02,$60
+    db $03,$42,$11,$29,$02,$60,$03,$42,$11,$29,$02,$33,$30,$15,$22,$02
+    db $63,$18,$24,$33,$02,$60,$03,$42,$11,$29,$02,$60,$03,$42,$11,$29
+    db $18
+TitPitch:
+    db $C0,$88,$F0,$60,$C0,$98,$F0,$60,$C0,$AB,$F0,$60,$C0,$B5,$F0,$60
+    db $C0,$88,$F0,$60,$C0,$98,$F0,$60,$C0,$AB,$F0,$60,$C0,$B5,$F0,$60
+    db $C0,$66,$F0,$60,$C0,$80,$F0,$60,$C0,$72,$F0,$60,$C0,$B5,$F0,$60
+    db $C0,$66,$F0,$60,$C0,$80,$F0,$60,$C0,$72,$F0,$60,$C0,$B5,$F0,$60
+    db $C0,$88,$F0,$60,$C0,$AB,$F0,$60,$C0,$88,$F0,$60,$C0,$B5,$F0,$60
+    db $D8
+Pulse0Two:
+    db $90
+Pulse0Noise:
+    db $02,$43,$20,$15,$22,$02,$74,$03,$33,$11,$2D,$02,$53,$10,$14,$22
+    db $02,$43,$20,$15,$22,$02,$74,$03,$33,$11,$2D,$02,$53,$10,$14,$22
+    db $02,$43,$20,$15,$22,$02,$74,$03,$33,$11,$2D,$02,$53,$10,$14,$22
+    db $02,$43,$20,$15,$22,$02,$74,$03,$33,$11,$2D,$02,$53,$10,$14,$22
+    db $02,$43,$20,$15,$22,$02,$74,$03,$33,$11,$2D,$02,$53,$10,$14,$22
+    db $02,$43,$20,$15,$22,$02,$74,$03,$33,$11,$2D,$02,$53,$10,$14,$22
+    db $02,$43,$20,$15,$22,$02,$74,$03,$33,$11,$2D,$02,$53,$10,$14,$22
+    db $02,$43,$10,$15,$22,$02,$74,$03,$33,$11,$2D,$02,$53,$10,$14,$22
+    db $02,$74,$03,$33,$11,$25,$02,$74,$03,$33,$11,$25,$18
+Pulse0Pitch:
+    db $C0,$88,$F0,$FF,$C0,$88,$F0,$01,$C0,$AB,$F0,$80,$C0,$B5,$F0,$80
+    db $D8
+Pulse1Two:
+    db $82,$FC,$61,$0C,$23,$22,$82,$53,$71,$0C,$23,$22,$82,$AC,$61,$0C
+    db $23,$22,$82,$53,$71,$0C,$23,$22,$82,$FE,$60,$0C,$23,$22,$82,$53
+    db $71,$0C,$23,$22,$82,$AC,$61,$0C,$23,$22,$82,$53,$71,$0C,$23,$22
+    db $82,$FC,$61,$0C,$23,$22,$82,$53,$71,$0C,$23,$22,$82,$AC,$61,$0C
+    db $23,$22,$82,$53,$71,$0C,$23,$22,$82,$FE,$60,$0C,$23,$22,$82,$53
+    db $71,$0C,$23,$22,$82,$AC,$61,$0C,$23,$22,$82,$53,$71,$0C,$23,$22
+    db $82,$81,$62,$0C,$23,$22,$82,$AC,$71,$0C,$23,$22,$82,$FC,$61,$0C
+    db $23,$22,$82,$AC,$71,$0C,$23,$22,$82,$53,$61,$0C,$23,$22,$82,$AC
+    db $71,$0C,$23,$22,$82,$FC,$61,$0C,$23,$22,$82,$AC,$71,$0C,$23,$22
+    db $82,$A7,$62,$0C,$23,$22,$82,$C5,$71,$0C,$23,$22,$82,$1B,$62,$0C
+    db $23,$22,$82,$C5,$71,$0C,$23,$22,$82,$53,$61,$0C,$23,$22,$82,$C5
+    db $71,$0C,$23,$22,$82,$1B,$62,$0C,$23,$22,$82,$7D,$71,$0C,$23,$22
+    db $98
+Pulse1Noise:
+    db $02,$43,$0C,$15,$22,$02,$74,$03,$33,$11,$29,$02,$53,$0C,$14,$22
+    db $02,$74,$03,$33,$11,$29,$02,$43,$0C,$15,$22,$02,$74,$03,$33,$11
+    db $29,$02,$53,$0C,$14,$22,$02,$74,$03,$33,$11,$23,$02,$53,$06,$14
+    db $22,$02,$43,$0C,$15,$22,$02,$74,$03,$33,$11,$29,$02,$53,$0C,$14
+    db $22,$02,$74,$03,$33,$11,$29,$02,$43,$0C,$15,$22,$02,$74,$03,$33
+    db $11,$29,$02,$53,$0C,$14,$22,$02,$74,$03,$33,$11,$23,$02,$53,$06
+    db $14,$22,$02,$43,$0C,$15,$22,$02,$74,$03,$33,$11,$29,$02,$53,$0C
+    db $14,$22,$02,$74,$03,$33,$11,$29,$02,$43,$0C,$15,$22,$02,$74,$03
+    db $33,$11,$29,$02,$53,$0C,$14,$22,$02,$74,$03,$33,$11,$23,$02,$53
+    db $06,$14,$22,$02,$43,$0C,$15,$22,$02,$74,$03,$33,$11,$29,$02,$53
+    db $0C,$14,$22,$02,$74,$03,$33,$11,$29,$02,$43,$0C,$15,$22,$02,$74
+    db $03,$33,$11,$23,$02,$53,$06,$14,$22,$02,$55,$08,$24,$21,$24,$02
+    db $55,$06,$24,$21,$02,$74,$03,$33,$11,$23,$18
+Pulse1Pitch:
+    db $C0,$88,$F0,$C0,$C0,$AB,$F0,$60,$C0,$B5,$F0,$60,$D8
+Pulse2Two:
+    db $82,$E0,$61,$0A,$23,$22,$82,$40,$71,$0A,$23,$22,$82,$94,$61,$0A
+    db $23,$22,$82,$40,$71,$0A,$23,$22,$82,$F0,$60,$0A,$23,$22,$82,$40
+    db $71,$0A,$23,$22,$82,$94,$61,$0A,$23,$22,$82,$40,$71,$0A,$23,$22
+    db $82,$E0,$61,$0A,$23,$22,$82,$40,$71,$0A,$23,$22,$82,$94,$61,$0A
+    db $23,$22,$82,$40,$71,$0A,$23,$22,$82,$F0,$60,$0A,$23,$22,$82,$40
+    db $71,$0A,$23,$22,$82,$94,$61,$0A,$23,$22,$82,$40,$71,$0A,$23,$22
+    db $82,$5D,$62,$0A,$23,$22,$82,$94,$71,$0A,$23,$22,$82,$E0,$61,$0A
+    db $23,$22,$82,$94,$71,$0A,$23,$22,$82,$40,$61,$0A,$23,$22,$82,$94
+    db $71,$0A,$23,$22,$82,$E0,$61,$0A,$23,$22,$82,$94,$71,$0A,$23,$22
+    db $82,$81,$62,$0A,$23,$22,$82,$AC,$71,$0A,$23,$22,$82,$FC,$61,$0A
+    db $23,$22,$82,$AC,$71,$0A,$23,$22,$82,$40,$61,$0A,$23,$22,$82,$AC
+    db $71,$0A,$23,$22,$82,$FC,$61,$0A,$23,$22,$82,$68,$71,$0A,$23,$22
+    db $98
+Pulse2Noise:
+    db $02,$43,$0A,$15,$22,$02,$74,$03,$33,$11,$22,$02,$53,$05,$14,$22
+    db $02,$55,$08,$24,$21,$22,$02,$53,$0A,$14,$22,$02,$43,$0A,$15,$22
+    db $02,$74,$03,$33,$11,$22,$02,$53,$05,$14,$22,$02,$55,$08,$24,$21
+    db $22,$02,$53,$05,$14,$22,$02,$74,$03,$33,$11,$22,$02,$43,$0A,$15
+    db $22,$02,$74,$03,$33,$11,$22,$02,$53,$05,$14,$22,$02,$55,$08,$24
+    db $21,$22,$02,$53,$0A,$14,$22,$02,$43,$0A,$15,$22,$02,$74,$03,$33
+    db $11,$22,$02,$53,$05,$14,$22,$02,$55,$08,$24,$21,$22,$02,$53,$05
+    db $14,$22,$02,$74,$03,$33,$11,$22,$02,$43,$0A,$15,$22,$02,$74,$03
+    db $33,$11,$22,$02,$53,$05,$14,$22,$02,$55,$08,$24,$21,$22,$02,$53
+    db $0A,$14,$22,$02,$43,$0A,$15,$22,$02,$74,$03,$33,$11,$22,$02,$53
+    db $05,$14,$22,$02,$55,$08,$24,$21,$22,$02,$53,$05,$14,$22,$02,$74
+    db $03,$33,$11,$22,$02,$43,$0A,$15,$22,$02,$74,$03,$33,$11,$22,$02
+    db $53,$05,$14,$22,$02,$55,$08,$24,$21,$22,$02,$53,$0A,$14,$22,$02
+    db $43,$05,$15,$22,$02,$53,$05,$14,$22,$02,$55,$05,$24,$21,$02,$53
+    db $05,$14,$22,$02,$55,$05,$24,$21,$02,$55,$05,$24,$21,$02,$55,$05
+    db $24,$21,$02,$55,$05,$24,$21,$18
+Pulse2Pitch:
+    db $C0,$80,$F0,$A0,$C0,$A1,$F0,$50,$C0,$AB,$F0,$50,$D8
+SfxShot:
+    db $43,$24,$10,$08,$11,$0A,$34,$22,$50
+SfxBoomN:
+    db $02,$04,$03,$12,$22,$02,$15,$05,$12,$33,$02,$17,$18,$28,$32,$10
+SfxHitT:
+    db $83,$78,$00,$0F,$32,$16,$18,$66,$83,$C2,$41,$0A,$31,$28,$26,$44
+    db $90
+SfxHitN:
+    db $02,$06,$32,$1F,$36,$10
+SfxWaveN:
+    db $02,$86,$0C,$F6,$22,$02,$35,$0A,$F3,$33,$02,$14,$22,$1D,$26,$10
+SfxWaveT2:
+    db $83,$F4,$11,$0F,$22,$E8,$14,$88,$83,$A4,$20,$0D,$21,$1A,$27,$33
+    db $90
+SfxGate1:
+    db $43,$90,$11,$0F,$11,$EC,$13,$68,$43,$78,$10,$0C,$11,$FA,$26,$22
+    db $50
+SfxGate2:
+    db $A3,$83,$0B,$31,$0F,$11,$F3,$13,$68,$83,$50,$30,$0A,$11,$FC,$25
+    db $22,$90
+SfxGateN:
+    db $02,$A4,$12,$F9,$22,$02,$24,$0E,$27,$22,$10
+SfxMiss:
+    db $83,$30,$12,$06,$22,$14,$13,$44,$A3,$83,$94,$12,$0A,$22,$18,$26
+    db $33,$90
+SfxLevel1:
+    db $42,$FE,$00,$04,$12,$22,$42,$D6,$00,$04,$12,$22,$42,$AA,$00,$04
+    db $12,$22,$42,$7F,$00,$04,$12,$22,$42,$6B,$00,$04,$12,$22,$42,$55
+    db $00,$04,$12,$22,$42,$40,$00,$28,$28,$56,$50
+SfxLevel2:
+    db $A2,$82,$53,$21,$04,$12,$22,$82,$FE,$20,$04,$12,$22,$82,$D6,$20
+    db $04,$12,$22,$82,$AA,$20,$04,$12,$22,$82,$7F,$20,$04,$12,$22,$82
+    db $6B,$20,$04,$12,$22,$82,$55,$20,$26,$27,$56,$90
+SfxLife:
+    db $42,$FE,$00,$04,$12,$22,$42,$D6,$00,$04,$12,$22,$42,$AA,$00,$04
+    db $12,$22,$42,$7F,$00,$04,$12,$22,$42,$6B,$00,$04,$12,$22,$42,$55
+    db $00,$04,$12,$22,$42,$40,$00,$18,$24,$56,$42,$55,$10,$06,$23,$22
+    db $42,$39,$10,$06,$23,$22,$42,$55,$40,$06,$23,$22,$42,$39,$40,$06
+    db $23,$22,$42,$55,$70,$06,$23,$22,$42,$39,$70,$06,$23,$22,$50
+SfxOver1:
+    db $42,$AA,$10,$12,$14,$46,$42,$D6,$10,$12,$14,$46,$42,$FE,$10,$12
+    db $14,$46,$42,$0D,$11,$36,$14,$46,$43,$0D,$41,$0F,$32,$08,$18,$44
+    db $50
+SfxOver2:
+    db $A9,$82,$53,$41,$12,$14,$46,$82,$AC,$41,$12,$14,$46,$82,$FC,$41
+    db $12,$14,$46,$82,$A7,$42,$36,$14,$46,$90
+SfxOverN:
+    db $3F,$37,$02,$16,$3C,$1E,$44,$10
+SfxData:
+    db $40,$2A,$10,$02,$40,$24,$20,$02,$40,$2A,$30,$02,$40,$2A,$10,$02
+    db $62,$40,$55,$20,$02,$40,$2A,$30,$02,$40,$40,$10,$02,$40,$71,$20
+    db $02,$62,$40,$38,$30,$02,$40,$38,$10,$02,$40,$40,$20,$02,$40,$2A
+    db $30,$02,$62,$40,$55,$10,$02,$40,$24,$20,$02,$66,$42,$7F,$10,$08
+    db $12,$46,$42,$55,$10,$18,$26,$46,$50
+}

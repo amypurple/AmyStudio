@@ -25,6 +25,7 @@ import { mickey120cProjectFiles } from "./examples-mickey-120c-assets.generated.
 import { pitdemonsProjectFiles } from "./examples-pitdemons-assets.generated.js";
 import { cavernsProjectFiles } from "./examples-caverns-assets.generated.js";
 import { timelostAdamAnthologyProjectFiles } from "./examples-timelost-adam.generated.js";
+import { polybiusTunnelProjectFiles } from "./examples-polybius-assets.generated.js";
 
 function encodeUtf8Base64(text) {
   if (typeof btoa === "function") {
@@ -83,6 +84,7 @@ const derivedProjectFilesById = {
   "solar-system-encyclopedia": solarSystemEncyclopediaProjectFiles,
   "amy-chess": amyChessProjectFiles,
   "amy-chess-v1.4": amyChessProjectFiles,
+  "polybius-tunnel": polybiusTunnelProjectFiles,
   "pitdemons": pitdemonsProjectFiles,
   "caverns": cavernsProjectFiles,
   "earth-globe-demo": earthGlobeProjectFiles,
