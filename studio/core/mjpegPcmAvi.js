@@ -176,7 +176,7 @@ export function buildMjpegPcmAvi({ width, height, fps, sampleRate, channels = 2,
 
 export const DEFAULT_AVI_SEGMENT_BYTES = 384 * 1024 * 1024;
 
-function estimatedFrameBytes(frame) {
+export function estimatedMjpegPcmAviFrameBytes(frame) {
   const jpegBytes = frame.jpeg?.byteLength || 0;
   const audioBytes = frame.audio?.byteLength || 0;
   // Two media chunk headers, optional word padding, and two idx1 records.
@@ -194,7 +194,7 @@ export function buildMjpegPcmAviSegments(options, maxSegmentBytes = DEFAULT_AVI_
   let group = [];
   let bytes = 4096; // Conservative allowance for RIFF and stream headers.
   for (const frame of frames) {
-    const frameBytes = estimatedFrameBytes(frame);
+    const frameBytes = estimatedMjpegPcmAviFrameBytes(frame);
     if (group.length && bytes + frameBytes > maxSegmentBytes) {
       groups.push(group);
       group = [];

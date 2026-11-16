@@ -1,4 +1,9 @@
-import { buildMjpegPcmAvi, buildMjpegPcmAviSegments } from "./mjpegPcmAvi.js?v=20261026-avi-segments1";
+import {
+  buildMjpegPcmAvi,
+  buildMjpegPcmAviSegments,
+  DEFAULT_AVI_SEGMENT_BYTES,
+  estimatedMjpegPcmAviFrameBytes
+} from "./mjpegPcmAvi.js?v=20261116-streaming-segments1";
 import { AnimatedGifEncoder, rgb565ToRgb332 } from "./animatedGif.js";
 import { renderCrtTelevision } from "./crtTelevisionRenderer.js";
 
@@ -134,6 +139,7 @@ export async function exportGameplaySession({
   videoQuality = "high",
   videoRendering = "pixels",
   crtOptions = {},
+  maxSegmentBytes = DEFAULT_AVI_SEGMENT_BYTES,
   onProgress = () => {},
   onFrame = () => {},
   signal
@@ -143,13 +149,39 @@ export async function exportGameplaySession({
   if (!recording?.initialState || !recording?.inputs?.length) {
     throw new Error("Record at least one gameplay frame before exporting video.");
   }
+  if (!Number.isSafeInteger(maxSegmentBytes) || maxSegmentBytes < 1024 * 1024) {
+    throw new RangeError("AVI segment size must be at least 1 MiB.");
+  }
   const restoreState = core.saveState();
   const canvas = document.createElement("canvas");
   const crtCanvas = videoRendering === "crt" ? document.createElement("canvas") : null;
   const profile = videoExportQualityProfile(videoQuality);
   const jpegQuality = Number.isFinite(quality) ? quality : profile.jpegQuality;
-  const frames = [];
+  let frames = [];
+  const segments = [];
+  let bufferedBytes = 4096;
+  let firstFrame = 0;
+  let width = 0;
+  let height = 0;
   let sampleRate = 0;
+  const flushSegment = () => {
+    if (!frames.length) return;
+    segments.push({
+      blob: buildMjpegPcmAvi({
+        width,
+        height,
+        fps: recording.framesPerSecond || core.getFramesPerSecond(),
+        sampleRate,
+        channels: 2,
+        frames
+      }),
+      frameCount: frames.length,
+      firstFrame
+    });
+    firstFrame += frames.length;
+    frames = [];
+    bufferedBytes = 4096;
+  };
   try {
     core.loadState(recording.initialState, { controllerMasks: recording.initialControllerMasks });
     for (let index = 0; index < recording.inputs.length; ++index) {
@@ -181,22 +213,18 @@ export async function exportGameplaySession({
       const audio = core.getAudioFrame();
       if (!sampleRate) sampleRate = audio.sampleRate;
       if (audio.sampleRate !== sampleRate || audio.channels !== 2) throw new Error("GearColeco changed audio format during video export.");
-      frames.push({ jpeg: await canvasToJpeg(encodedCanvas, jpegQuality), audio: audio.samples });
+      width = encodedCanvas.width;
+      height = encodedCanvas.height;
+      const frame = { jpeg: await canvasToJpeg(encodedCanvas, jpegQuality), audio: audio.samples };
+      const frameBytes = estimatedMjpegPcmAviFrameBytes(frame);
+      if (frames.length && bufferedBytes + frameBytes > maxSegmentBytes) flushSegment();
+      frames.push(frame);
+      bufferedBytes += frameBytes;
       onProgress({ completed: index + 1, total: recording.inputs.length });
       if ((index % 8) === 7) await nextTask();
     }
-    const framebuffer = core.getFramebufferView();
-    const width = crtCanvas?.width || framebuffer.width * profile.scale;
-    const height = crtCanvas?.height || framebuffer.height * profile.scale;
-    const frameCount = frames.length;
-    const segments = buildMjpegPcmAviSegments({
-      width,
-      height,
-      fps: recording.framesPerSecond || core.getFramesPerSecond(),
-      sampleRate,
-      channels: 2,
-      frames
-    });
+    flushSegment();
+    const frameCount = recording.inputs.length;
     return {
       blob: segments.length === 1 ? segments[0].blob : null,
       segments,

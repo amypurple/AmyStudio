@@ -59,6 +59,7 @@ try {
   const sessionResult = await exportGameplaySession({
     core,
     session,
+    maxSegmentBytes: 1024 * 1024,
     onFrame({ framebuffer }) {
       replayedFrames.push(hash(new Uint8Array(
         framebuffer.pixels.buffer,
@@ -77,8 +78,16 @@ try {
   assert.equal(hash(new Uint8Array(core.getFramebuffer().pixels.buffer)), expectedFrames.at(-1), "export must restore the visible framebuffer");
   assert.equal(sessionResult.fps, 60);
   assert.ok(sessionResult.sampleRate > 0);
-  const bytes = new Uint8Array(await sessionResult.blob.arrayBuffer());
-  assert.equal(new TextDecoder().decode(bytes.subarray(0, 4)), "RIFF");
+  assert.ok(sessionResult.segments.length > 1, "the small test limit must flush AVI data while encoding");
+  assert.equal(sessionResult.segments.reduce((sum, segment) => sum + segment.frameCount, 0), 600);
+  assert.deepEqual(
+    sessionResult.segments.map((segment) => segment.firstFrame),
+    sessionResult.segments.map((_, index, all) => all.slice(0, index).reduce((sum, item) => sum + item.frameCount, 0))
+  );
+  for (const segment of sessionResult.segments) {
+    const bytes = new Uint8Array(await segment.blob.arrayBuffer());
+    assert.equal(new TextDecoder().decode(bytes.subarray(0, 4)), "RIFF");
+  }
   const cpuBeforeGif = core.getCpuState();
   const ramBeforeGif = hash(core.readRam(0, 0x10000));
   const vramBeforeGif = hash(core.readVram(0, 0x4000));

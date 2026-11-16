@@ -10,7 +10,7 @@ import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAda
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
 import { GameplayRecordingSession } from "./gameplayRecordingSession.js?v=20260918-unbounded-input-log";
-import { downloadGameplayVideo, downloadGameplayVideoSegments, exportGameplayGifSession, exportGameplaySession } from "./romGameplayVideoExport.js?v=20261026-avi-segments1";
+import { downloadGameplayVideo, downloadGameplayVideoSegments, exportGameplayGifSession, exportGameplaySession } from "./romGameplayVideoExport.js?v=20261116-streaming-segments1";
 import { createDevelopmentRouteStore, expandRouteInputs } from "./developmentCheckpointRoutes.js?v=20260919-route-replay";
 import {
   createRomTestCase,
