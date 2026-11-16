@@ -103,10 +103,11 @@ A size change does not replace these tests. Every existing self-test must still 
 
 #### Feature matrix suites
 
-`tools/amy-feature-matrix.mjs` registers the permanent release-gate tests and can run the
-complete matrix or one focused suite. Additional private DEV experiments remain separate until
-they are stable enough to promote; every such exception must have a reason in
-`tools/amy-feature-matrix-exclusions.json`:
+`tools/amy-feature-matrix.mjs` registers a bounded set of permanent release-gate tests and can
+run the complete matrix or one focused suite. Focused public regression and project tests may
+remain standalone and should be run when their subsystem changes. Additional private DEV
+experiments remain separate until they are stable enough to promote; any experiment deliberately
+tracked as a matrix exclusion must have a reason in `tools/amy-feature-matrix-exclusions.json`:
 
 ```text
 node tools/amy-feature-matrix.mjs --suite language

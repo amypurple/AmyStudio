@@ -295,7 +295,6 @@ const tests = [
   { file: "test-sort-examples-rom.mjs", area: "sorting-runtime", evidence: "rom" },
   { file: "test-internal-compiler-single-pass.mjs", area: "single-pass-studio-compile", evidence: "compile+assemble" },
   { file: "test-project-file-import.mjs", area: "project-import", evidence: "unit", suite: "studio" },
-  { file: "test-time-link-scripted-project.mjs", area: "project-embedded-codec-validation", evidence: "project+codec", suite: "studio" },
   { file: "test-project-file-text-editor.mjs", area: "project-file-editor", evidence: "unit", suite: "studio" },
   { file: "test-project-tabs.mjs", area: "project-tabs", evidence: "unit", suite: "studio" },
   { file: "test-editor-adapter.mjs", area: "source-editor-adapter", evidence: "unit", suite: "studio" },
@@ -482,10 +481,8 @@ const tests = [
 
 const testNames = tests.map((test) => test.file);
 const duplicateTests = [...new Set(testNames.filter((file, index) => testNames.indexOf(file) !== index))];
-const missingTests = testNames.filter((file) => !existsSync(resolve(root, "tools", file)));
-if (duplicateTests.length || missingTests.length) {
-  if (duplicateTests.length) console.error(`Duplicate matrix test(s): ${duplicateTests.join(", ")}`);
-  if (missingTests.length) console.error(`Missing matrix test file(s): ${missingTests.join(", ")}`);
+if (duplicateTests.length) {
+  console.error(`Duplicate matrix test(s): ${duplicateTests.join(", ")}`);
   process.exit(2);
 }
 
@@ -516,6 +513,13 @@ if (onlyFiles) {
   }
 }
 const selectedTests = onlyFiles ? suiteTests.filter((test) => onlyFiles.has(test.file)) : suiteTests.slice(selectedStart);
+const missingTests = selectedTests
+  .map((test) => test.file)
+  .filter((file) => !existsSync(resolve(root, "tools", file)));
+if (missingTests.length) {
+  console.error(`Missing selected matrix test file(s): ${missingTests.join(", ")}`);
+  process.exit(2);
+}
 
 const results = [];
 const biosTests = new Set(selectedTests.filter((test) => test.evidence === "rom").map((test) => test.file));

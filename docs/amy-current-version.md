@@ -5,7 +5,8 @@ the examples, and [the Amy Language Reference](amy-language.md) define the curre
 surface. Historical `v2.1`, proposed `v2.2`, and `v3` documents are not compatibility
 promises.
 
-Last reconciled with the compiler and OS7/EOS support matrix: **2026-10-04**.
+Last reconciled with the compiler, OS7/EOS support matrix, public documentation,
+and browser IDE: **2026-11-16**.
 
 ## Normative sources
 

@@ -63,8 +63,9 @@ sub start:
   loop forever
 end sub
 `);
-assert.equal(offsetCopy.ok, false, "RAM copy with offset destination unexpectedly compiled; update the guide");
-assert.match(offsetCopy.log || "", /unknown statement/i);
+assert.equal(offsetCopy.ok, true, `RAM copy with offset destination failed: ${offsetCopy.log || "unknown error"}`);
+assert.match(offsetCopy.asmBody || "", /AMY_UVAR_(?:SOURCE|TARGET|OFFSET)/i,
+  "RAM copy with offset destination should retain the user-array operands");
 
 const boundedRandom = compile("variable random bounds", `
 u8 Minimum = 2

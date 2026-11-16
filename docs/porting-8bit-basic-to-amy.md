@@ -280,22 +280,26 @@ For rows of tiles that drift horizontally (Bunny Hop's clouds):
 
 ### Statements
 
-- A single-line `if ... then` accepts assignments, `inc`/`dec`, `goto` and
-  subroutine calls, but not `put char`, `print`, `play sound`, `fill`,
-  `set sprite` and similar: use the block form.
+- A single-line `if ... then` accepts assignments, `inc`/`dec`, `goto`, calls,
+  `put char`, `print`, `play sound`, `stop sound`, `fill`, `set sprite`, `vpoke`,
+  and backdrop changes. Use the block form when several statements belong to
+  the condition or when it makes the control flow clearer.
 - Reserved names cannot be variables or labels: `play`, `Fire`, `Start`
   (when a label `start:` exists) all failed. Prefer descriptive names
   (`play_round`, `Planting`, `RowStart`).
-- A `u16` cannot be loaded straight from a `u8` array element or a ROM table
-  (`V0 = V0Tab[T]` fails): go through a `u8` variable.
-- `copy Source count N to Array + Offset` (offset destination in RAM) is
-  not supported; `copy Array + K count N to Array` is. Variable counts and
-  destinations work for `put` and `merge` to VRAM.
-- `random(A, B)` with constant bounds is the reliable form.
-- BCD accepts `+=` only with literals or constants: add a variable amount
-  with a loop of `Score += 1`.
-- `i32` + `str$` gives an 11-character buffer: sign at index 0, ten digits
-  after it. Print `NumBuf + 5 count 6` for six padded digits.
+- Assigning a `u8` RAM-array or ROM-table element to `u16` widens it
+  automatically, so `Wide = ByteTable[Index]` is the direct modern form.
+- `copy Source count N to Array + Offset` supports dynamic RAM destination
+  offsets. The compiler still checks every statically known source and
+  destination extent and rejects a provable overrun.
+- `random(A, B)` accepts constant or runtime byte-style bounds and returns an
+  inclusive value. Equal bounds return that bound.
+- BCD compound addition and subtraction accept literals, compatible BCD
+  values, byte values, and bounded `u16` values. `BCD -= u16` saturates at
+  zero; choose enough packed digits for the largest result.
+- Plain `str$(Value)` emits only the sign and significant digits. Use
+  `digits$(Value, N)` for zero padding or `width$(Value, N)` for a
+  right-aligned field; do not slice a presumed fixed-width conversion buffer.
 - `keypad(1)` returns 0-9, 10 for `*`, 11 for `#`, 255 for none.
 - `choose menu min to max into Var cursor Tile at X,Y step N` starts on the
   current value of `Var`; keep it between calls so the cursor stays put.

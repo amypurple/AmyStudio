@@ -1606,6 +1606,8 @@ and floating-point values are not currently accepted.
 - `if Score > StartScore goto Label` accepts a named `const` on the right side
 - `Score += Bonus` and `Score -= Delta` accept `u8` or `i8` sources
 - `Score += OtherScore` and `Score -= OtherScore` accept same-size BCD sources
+- `Score += WordValue` and `Score -= WordValue` accept bounded `u16` values;
+  subtraction saturates at zero
 - `bcd digits 5 Credits` stores 5 displayed decimal digits in packed BCD
 - `bcd digits 8 Score8` gives an 8-digit BCD value
 - current implementation range is `bcd digits 1` .. `bcd digits 12`

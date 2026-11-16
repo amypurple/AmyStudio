@@ -13056,9 +13056,9 @@ export const exampleManifest = [
   },
   {
     "id": "isol",
-    "label": "ISOLATION (COMPUTE!'s Gazette, May 1990) (May 1990)",
+    "label": "ISOLATION (COMPUTE!'s Gazette, May 1990)",
     "detail": "ColecoVision port of \"Isolation\", COMPUTE!'s Gazette May 1990 (Commodore 64 BASIC, disk 1990-05; listing in orig/). The listing names no author (only \"COPYRIGHT 1990 COMPUTE! PUBLICATIONS, INC.\"), so the credit is the magazine's.",
-    "projectName": "ISOLATION (COMPUTE!'s Gazette, May 1990)",
+    "projectName": "ISOLATION",
     "sourceLang": "amy",
     "memoryProfile": "colecovision_legacy_sdcc",
     "editorialTrack": "manual-canon",

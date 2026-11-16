@@ -2,7 +2,7 @@
 
 Source:
 
-`C:/Users/Amy/Documents/git/AmysCVAssembly/AmysCVAssemblerPro-v2.html`
+`AmysCVAssembly/AmysCVAssemblerPro-v2.html` from the companion AmysCVAssembly repository.
 
 ## Candidate Core Blocks
 

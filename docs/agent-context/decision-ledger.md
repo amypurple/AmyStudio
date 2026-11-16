@@ -1666,3 +1666,19 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Final hardware-safety evidence still requires the access-trace checker or
   openMSX until instruction-level GearColeco phase calibration is complete.
 
+## 2026-11-16 - Public Studio and documentation audit
+
+- Browser inspection covered the portal, Studio startup, source editing, Balanced compilation,
+  ROM Test & Debug, live documentation, example browser, sound-table creator, and graphics editor;
+  no console error, unreachable control, or crash was observed.
+- Reconciled the public current-version date and corrected stale porting guidance for inline
+  statements, widening, RAM-copy offsets, runtime random bounds, `BCD +=/-= u16`, and `str$`.
+- Removed one workstation-specific path from the published assembler README and normalized the
+  duplicated ISOLATION publication label in the generated example catalogue.
+- Restored the clean repository's missing quick-QA and VDP/breakpoint tests. `amy-qa quick` now
+  passes 35 representative builds plus 25 focused compiler/runtime tests; the Studio feature
+  suite passes, including portal, mobile project creation, debugger, recording, docs, targets,
+  incremental builds, and VS Code project-model coverage.
+- Matrix file validation now applies after `--suite`/`--only` selection. Focused public regression
+  tests may remain standalone; a full matrix run still rejects any missing selected test.
+
