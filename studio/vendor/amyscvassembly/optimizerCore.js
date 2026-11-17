@@ -5478,11 +5478,18 @@ export class Z80Optimizer {
                             } else {
                                 const jpToken = new Instruction(token.label, 'jp', token.operands, token.lineNumber);
                                 optimized.push(jpToken);
-                                // A labeled RET can be an independent branch target. Keep it and
-                                // consume only an immediately adjacent, unlabeled RET.
-                                if (isDirectRet) i++;
+                                // A referenced label on the RET is an independent branch target.
+                                // Otherwise remove the dead label and RET together with the CALL
+                                // rewrite; keeping them lost the byte that tail-call elimination
+                                // is meant to save.
+                                const retLabel = next.label;
+                                const retLabelReferenced = retLabel && tokens.some((candidate, candidateIdx) =>
+                                    candidateIdx !== i + 1 && this.tokenReferencesSymbol(candidate, retLabel));
+                                if (!retLabelReferenced) {
+                                    i += isDirectRet ? 1 : 2;
+                                    this.stats.bytesSaved++;
+                                }
                                 this.stats.callRetToJp++;
-                                this.stats.bytesSaved++;
                                 optimizerLog(`  CALL+RET → JP at line ${token.lineNumber}`, 'debug');
                                 continue;
                             }
