@@ -5,6 +5,22 @@ instruments, vibrato, arpeggios, or music that coexists with ordinary OS7 effect
 
 ## Choose the smallest suitable level
 
+Before choosing Tiny Sound, decide whether the composition needs two compact
+melodic streams or a coordinated four-voice OS7 arrangement. Tiny Sound remains
+the smaller default. For three audible tones plus drums, or periodic-noise bass
+plus two tones and drums, use `tools/audio/os7music.py` with a text score. The
+validated starting point is `tools/fixtures/os7-music/threetone-march.txt`:
+
+```powershell
+python tools/audio/os7music.py tools/fixtures/os7-music/threetone-march.txt -o music.alexis --wav music.wav
+```
+
+The generator reports encoded bytes, duration, attenuation ranges and sound-area
+ownership. It can also emit frame-by-frame PSG JSON. Treat its WAV as an editing
+preview; prove final playback with a real-OS7 PSG trace and
+`tools/audio/os7check.py`. Do not replace a compact two-stream tune with the larger
+four-voice representation unless the audible arrangement needs those voices.
+
 ### Level 1: compact four-stream teaching example
 
 Target reference: **Flynn's Gold**, after its source is promoted from the incoming

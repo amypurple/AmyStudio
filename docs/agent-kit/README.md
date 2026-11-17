@@ -15,6 +15,12 @@ node tools/amy-author-check.mjs --project studio/examples-src/my-game.alexis
 Small models and quick lookups should use the generated
 [agent cheatsheet](CHEATSHEET.md), which cannot quietly preserve obsolete rules.
 
+For music authoring, the kit includes the validated Claude/Amy text-score workflow
+under `tools/audio/`. It can generate coordinated four-voice OS7 music, effects,
+WAV previews and PSG-state evidence. The Studio Sound & Music window links to the
+composer and a compact example; ordinary two-channel Tiny Sound remains the
+preferred smaller solution when four voices are unnecessary.
+
 It selects QA from detected capabilities and lists required runtime evidence. Add
 `--execute` to run adapters. Runtime/ABI uses bounded `amy-qa quick`; only explicit
 `--profile promotion` selects corpus compilation. Missing dependencies are `SKIP`,
