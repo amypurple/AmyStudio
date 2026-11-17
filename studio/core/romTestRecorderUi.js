@@ -427,6 +427,7 @@ function buildDialog() {
           <label>Keys<select data-field="keyboardTarget" title="Route the computer keyboard to the ADAM keyboard or a joystick port"><option value="adam" selected>ADAM</option><option value="joy1">JOY P1</option><option value="joy2">JOY P2</option></select></label>
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
           <label>VDP timing<select data-field="vdpTiming" title="Model real TMS9918A VRAM access slots and expose unsafe transfers"><option value="compatible" selected>Compatible</option><option value="realistic">Realistic TMS9918A</option></select></label>
+          <label>Audio output<select data-field="audioOutput" title="Keep exact PSG output or apply a deterministic Coleco television speaker response"><option value="accurate" selected>PSG accurate</option><option value="tv">Coleco TV</option></select></label>
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
           <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
           <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="adamlink-hayes">AdamLink Hayes modem</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="eve-hayes">Eve Hayes modem</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option><option value="micro-hayes">MicroInnovations Hayes modem</option></select></label>
@@ -965,6 +966,7 @@ export function createRomTestRecorderUi({
         region: field("region").value,
         videoChip: field("videoChip").value,
         vdpTiming: field("vdpTiming").value,
+        audioOutput: field("audioOutput").value,
         voiceModule: field("voiceModule").value,
         adamSound: field("adamSound").value,
         adamSerial: field("adamSerial").value
@@ -1758,6 +1760,7 @@ export function createRomTestRecorderUi({
     loadedAdamMedia = adam ? adamMediaBytes : null;
     core.setVideoChip(field("videoChip").value);
     core.setAccurateVdpTiming(field("vdpTiming").value === "realistic");
+    core.setAudioOutputProfile(field("audioOutput").value);
     const serialSetting = field("adamSerial").value;
     core.setAdamSoundExpansion(field("adamSound").value);
     const serialProfile = serialSetting.split("-")[0];
@@ -2093,6 +2096,16 @@ export function createRomTestRecorderUi({
       try {
         await startCore();
         setRecorderStatus(`VDP timing is ${timing}; recording restarted.`);
+      } catch (error) {
+        setRecorderStatus(error.message || String(error));
+      }
+    });
+    field("audioOutput").addEventListener("change", async () => {
+      const profile = field("audioOutput").selectedOptions[0]?.textContent || field("audioOutput").value;
+      setRecorderStatus(`Restarting with audio output: ${profile}...`);
+      try {
+        await startCore();
+        setRecorderStatus(`Audio output is ${profile}; recording restarted.`);
       } catch (error) {
         setRecorderStatus(error.message || String(error));
       }
@@ -2447,6 +2460,7 @@ export function createRomTestRecorderUi({
         loadedRom = rom;
         core.setVideoChip(testCase.environment?.videoChip || field("videoChip").value);
         core.setAccurateVdpTiming((testCase.environment?.vdpTiming || field("vdpTiming").value) === "realistic");
+        core.setAudioOutputProfile(testCase.environment?.audioOutput || field("audioOutput").value);
         core.loadBios(bios);
         const replayRegion = testCase.environment?.region === "pal" ? GEARCOLECO_TEST_REGION.PAL : GEARCOLECO_TEST_REGION.NTSC;
         field("region").value = String(replayRegion);

@@ -1,0 +1,149 @@
+diff --git a/studio/vendor/Gearcoleco-main/src/Audio.cpp b/studio/vendor/Gearcoleco-main/src/Audio.cpp
+index 26c2e49df..17453b71f 100644
+--- a/studio/vendor/Gearcoleco-main/src/Audio.cpp
++++ b/studio/vendor/Gearcoleco-main/src/Audio.cpp
+@@ -31,6 +31,8 @@ Audio::Audio()
+     InitPointer(m_pSGMBuffer);
+     m_bMute = false;
+     m_master_volume = 1.0f;
++    m_outputProfile = OutputProfile_Accurate;
++    ResetOutputFilter();
+     m_bVgmRecordingEnabled = false;
+     m_AY8910Register = 0;
+     m_voiceModuleType = 1;
+@@ -107,6 +109,63 @@ void Audio::Reset(bool bPAL)
+ 
+     memset(m_pSampleBuffer, 0, GC_AUDIO_BUFFER_SIZE * sizeof(blip_sample_t));
+     memset(m_pSGMBuffer, 0, GC_AUDIO_BUFFER_SIZE * sizeof(s16));
++    ResetOutputFilter();
++}
++
++void Audio::SetOutputProfile(int profile)
++{
++    int selected = CLAMP(profile, static_cast<int>(OutputProfile_Accurate),
++        static_cast<int>(OutputProfile_ColecoTV));
++    if (selected != m_outputProfile)
++    {
++        m_outputProfile = selected;
++        ResetOutputFilter();
++    }
++}
++
++int Audio::GetOutputProfile() const
++{
++    return m_outputProfile;
++}
++
++void Audio::ResetOutputFilter()
++{
++    for (int channel = 0; channel < 2; ++channel)
++    {
++        m_tvPreviousInput[channel] = 0;
++        m_tvHighPass[channel] = 0;
++        m_tvLowPass1[channel] = 0;
++        m_tvLowPass2[channel] = 0;
++    }
++}
++
++void Audio::ApplyOutputProfile(s16* pSampleBuffer, int sampleCount)
++{
++    if (m_outputProfile != OutputProfile_ColecoTV || !IsValidPointer(pSampleBuffer))
++        return;
++
++    // Fixed-point AC coupling and two-pole speaker roll-off. The response follows
++    // the broad bandwidth of ADAMEm's ColecoVision hardware-sampled sound banks
++    // without embedding or redistributing those historical samples.
++    const s32 highPassCoefficient = 32351; // 90 Hz at 44.1 kHz, Q15
++    const s32 lowPassCoefficient = 18839;  // 6 kHz at 44.1 kHz, Q15
++
++    for (int index = 0; index < sampleCount; ++index)
++    {
++        int channel = index & 1;
++        s32 input = pSampleBuffer[index];
++        s32 highPass = input - m_tvPreviousInput[channel] +
++            static_cast<s32>((static_cast<s64>(highPassCoefficient) * m_tvHighPass[channel]) >> 15);
++        m_tvPreviousInput[channel] = input;
++        m_tvHighPass[channel] = highPass;
++
++        m_tvLowPass1[channel] += static_cast<s32>(
++            (static_cast<s64>(lowPassCoefficient) * (highPass - m_tvLowPass1[channel])) >> 15);
++        m_tvLowPass2[channel] += static_cast<s32>(
++            (static_cast<s64>(lowPassCoefficient) * (m_tvLowPass1[channel] - m_tvLowPass2[channel])) >> 15);
++
++        pSampleBuffer[index] = static_cast<s16>(CLAMP(m_tvLowPass2[channel], -32768, 32767));
++    }
+ }
+ 
+ void Audio::Mute(bool mute)
+@@ -152,6 +211,8 @@ void Audio::EndFrame(s16* pSampleBuffer, int* pSampleCount)
+ 
+         if (!m_bMute && (m_master_volume > 0.0f))
+             m_SP0256Voice.Mix(pSampleBuffer, count, m_iSampleRate, m_master_volume);
++
++        ApplyOutputProfile(pSampleBuffer, count);
+     }
+ 
+     m_ElapsedCycles = 0;
+@@ -186,6 +247,7 @@ void Audio::LoadState(std::istream& stream, int version)
+     }
+ 
+     m_pApu->volume(0.6);
++    ResetOutputFilter();
+ }
+ 
+ void Audio::LoadStateV1(std::istream& stream)
+@@ -202,6 +264,7 @@ void Audio::LoadStateV1(std::istream& stream)
+     m_pApu->reset();
+     m_pApu->volume(0.6);
+     m_pBuffer->clear();
++    ResetOutputFilter();
+ }
+ 
+ bool Audio::StartVgmRecording(const char* file_path, int clock_rate, bool is_pal, const VgmMetadata& metadata)
+diff --git a/studio/vendor/Gearcoleco-main/src/Audio.h b/studio/vendor/Gearcoleco-main/src/Audio.h
+index b4f3e664e..e002ce6be 100644
+--- a/studio/vendor/Gearcoleco-main/src/Audio.h
++++ b/studio/vendor/Gearcoleco-main/src/Audio.h
+@@ -30,12 +30,20 @@
+ class Audio
+ {
+ public:
++    enum OutputProfile
++    {
++        OutputProfile_Accurate = 0,
++        OutputProfile_ColecoTV = 1
++    };
++
+     Audio();
+     ~Audio();
+     void Init();
+     void Reset(bool bPAL);
+     void Mute(bool mute);
+     void SetMasterVolume(float volume);
++    void SetOutputProfile(int profile);
++    int GetOutputProfile() const;
+     void WriteAudioRegister(u8 value);
+     void SGMWrite(u8 value);
+     u8 SGMRead();
+@@ -68,6 +76,9 @@ public:
+     void ResetEveVoice();
+ 
+ private:
++    void ResetOutputFilter();
++    void ApplyOutputProfile(s16* pSampleBuffer, int sampleCount);
++
+     Sms_Apu* m_pApu;
+     Stereo_Buffer* m_pBuffer;
+     AY8910* m_pAY8910;
+@@ -78,6 +89,11 @@ private:
+     s16* m_pSGMBuffer;
+     bool m_bMute;
+     float m_master_volume;
++    int m_outputProfile;
++    s32 m_tvPreviousInput[2];
++    s32 m_tvHighPass[2];
++    s32 m_tvLowPass1[2];
++    s32 m_tvLowPass2[2];
+     VgmRecorder m_VgmRecorder;
+     bool m_bVgmRecordingEnabled;
+     u8 m_AY8910Register;

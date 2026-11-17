@@ -889,6 +889,20 @@ extern "C"
         return 1;
     }
 
+    GCW_EXPORT int gcw_set_audio_output_profile(int profile)
+    {
+        if (!IsReady() || profile < Audio::OutputProfile_Accurate ||
+            profile > Audio::OutputProfile_ColecoTV)
+            return 0;
+        g_core->GetAudio()->SetOutputProfile(profile);
+        return 1;
+    }
+
+    GCW_EXPORT int gcw_get_audio_output_profile()
+    {
+        return IsReady() ? g_core->GetAudio()->GetOutputProfile() : -1;
+    }
+
     GCW_EXPORT u32 gcw_disassemble(u16 address, u8* output, u32 size)
     {
         const u32 required = 73;

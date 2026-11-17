@@ -1,7 +1,7 @@
 import { validateTms9918Snapshot } from "./tms9918StateValidator.js";
 
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261115-vdp-slots1",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261117-coleco-tv-audio",
   import.meta.url
 );
 
@@ -503,6 +503,23 @@ export class GearcolecoTestCore {
     if (this.module._gcw_set_voice_module_type(type) !== 1) {
       throw new Error("GearColeco could not configure the voice-module profile.");
     }
+  }
+
+  setAudioOutputProfile(profile) {
+    this.assertAlive();
+    const profiles = { accurate: 0, tv: 1, colecotv: 1 };
+    const value = typeof profile === "number" ? profile : profiles[String(profile).toLowerCase()];
+    if (!Number.isInteger(value) || value < 0 || value > 1) {
+      throw new RangeError(`Unknown audio-output profile '${profile}'.`);
+    }
+    if (this.module._gcw_set_audio_output_profile(value) !== 1) {
+      throw new Error("GearColeco could not configure the audio-output profile.");
+    }
+  }
+
+  getAudioOutputProfile() {
+    this.assertAlive();
+    return this.module._gcw_get_audio_output_profile() | 0;
   }
 
   getFramebufferView() {

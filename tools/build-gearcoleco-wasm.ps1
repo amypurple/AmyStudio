@@ -118,6 +118,8 @@ $exported = @(
     "_gcw_get_dropped_vram_accesses",
     "_gcw_set_sp0256_enabled",
     "_gcw_set_voice_module_type",
+    "_gcw_set_audio_output_profile",
+    "_gcw_get_audio_output_profile",
     "_gcw_run_frame",
     "_gcw_step_instruction",
     "_gcw_profile_begin",
@@ -202,6 +204,7 @@ $versionFile = Join-Path $OutputDir "BUILD.txt"
     "megacart_debug=active_rom_bank,cartridge_type"
     "sp0256_core=rom_microsequencer_lpc12"
     "sp0256_voice_modules=lundy_43_44_45,eve_48_49_4a_4b"
+    "audio_output_profiles=psg_accurate,coleco_tv_fixed_point"
     "video_chips=tms9918a,f18a_v1.9"
     "tms9918a_vram_timing=compatible,realistic_access_slots_single_pending_request"
     "adam=firmware,adamnet,keyboard,ddp,disk,media_export,printer,64k_expansion_ram"
