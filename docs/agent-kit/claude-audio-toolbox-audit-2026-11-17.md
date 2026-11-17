@@ -2,10 +2,12 @@
 
 ## Publication decision
 
-`Polybius-B-v2.zip` is an experimental alternate production. It does not replace
-the published `Polybius: The Tunnel` example, its project assets, ROM, screenshots,
-or catalog entry. The B score is retained only as an audio-tool fixture because it
-exercises a long four-voice arrangement.
+`Polybius-B-v2.zip` is a distinct sequel project, not an alternate build of the
+published game. Its durable working title is **Polybius: The Labyrinth**: an
+annular maze game with crystals, sentinels and a central core, following
+**Polybius: The Tunnel**. It remains incomplete and does not replace The Tunnel's
+project assets, ROM, screenshots or catalog entry. Its score is retained only as
+an advanced audio-tool fixture because it exercises a long four-voice arrangement.
 
 ## Adopted
 
