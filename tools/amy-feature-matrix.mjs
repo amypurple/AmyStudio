@@ -401,8 +401,9 @@ const tests = [
   { file: "test-fujinet-cartridge-image.mjs", area: "fujinet-cartridge-image", evidence: "compile+assemble" },
   { file: "test-fujinet-optimizer-profiles.mjs", area: "fujinet-optimizer-markers", evidence: "compile+assemble" },
   { file: "test-fujinet-absent-runtime.mjs", area: "fujinet-absent-runtime", evidence: "rom", suite: "emulator" },
-  // Opt-in external rig: prints SKIP unless its MAME and fujinet-pc paths are set.
+  // Opt-in external rigs: each prints SKIP unless its MAME/ADAMEm and fujinet-pc paths are set.
   { file: "test-fujinet-coleco-runtime.mjs", area: "fujinet-coleco-mame-runtime", evidence: "runtime", suite: "emulator", timeoutMs: 900_000 },
+  { file: "test-fujinet-adam-runtime.mjs", area: "fujinet-adam-adamem-runtime", evidence: "runtime", suite: "emulator", timeoutMs: 900_000 },
   { file: "test-native-eos-generator.mjs", area: "native-eos-generator", evidence: "runtime", suite: "emulator" },
   { file: "test-native-eos-system-records.mjs", area: "native-eos-system-records", evidence: "compile+assemble" },
   { file: "test-adam-project-forms.mjs", area: "adam-project-forms", evidence: "runtime", suite: "emulator" },

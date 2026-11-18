@@ -1781,6 +1781,15 @@ export function transpileAmyCore(sourceText, deps) {
   const megaCartSelectedBanks = new Set();
   const megaCartImports = [];
   let megaCartCurrentBankLabel = null;
+  let fujinetPacketLabel = null;
+  // ADAM FujiNet packets and replies (0-259) plus AMY_FNA_DRAIN scratch (260-266).
+  function ensureFujinetPacket() {
+    if (fujinetPacketLabel) return fujinetPacketLabel;
+    fujinetPacketLabel = "AMY_FUJINET_PACKET";
+    const address = reserveRam(fujinetPacketLabel, 267, "FujiNet AdamNet packet buffer");
+    runtimeDeclarations.push(`${fujinetPacketLabel} EQU ${formatHex16(address)}`);
+    return fujinetPacketLabel;
+  }
   function ensureMegaCartCurrentBank() {
     if (megaCartCurrentBankLabel) return megaCartCurrentBankLabel;
     megaCartCurrentBankLabel = "AMY_MEGACART_CURRENT_BANK";
@@ -4985,6 +4994,7 @@ export function transpileAmyCore(sourceText, deps) {
       rawLine: statementRawLine,
       buildContext,
       appKeyConfig: fujinetAppKeyConfig,
+      ensureFujinetPacket,
       emitLoadInt8ValueInto,
       emitLoadCountIntoBC,
       emitLoadSourceAddressIntoHL,

@@ -248,14 +248,18 @@ export function resolveAmyBuildContext(project = {}, manifest = null) {
     for (const capability of ["os7", "controller", "vdp", "psg"]) capabilities.add(capability);
     capabilities.delete("eos");
   }
+  // FujiNet needs to know the final AdamNet capability, so it resolves after the memory profile.
   if (hardware.has("fujinet")) {
     if (target.id === "colecovision-cartridge") {
       capabilities.add("fujinet");
       capabilities.add("fujinet-cartridge");
     } else if (target.id === "colecovision-megacart") {
       throw new Error("FujiNet hardware is not supported on colecovision-megacart: the FujiNet cartridge mailbox occupies $F800-$FFFF, including the MegaCart mapper window.");
+    } else if (capabilities.has("adamnet") && capabilities.has("eos")) {
+      capabilities.add("fujinet");
+      capabilities.add("fujinet-adamnet");
     } else {
-      throw new Error(`FujiNet hardware is not supported on ${target.id} yet.`);
+      throw new Error(`FujiNet hardware on ${target.id} requires an EOS memory profile with AdamNet services (adam-eos-application or adam-os7-eos-drivers).`);
     }
   }
 

@@ -114,7 +114,8 @@ function assertMailboxConfined(optimizedAsm, label) {
 
 try {
   const targets = [
-    ["cartridge", ["--hardware", "fujinet"], "FNC_"]
+    ["cartridge", ["--hardware", "fujinet"], "FNC_"],
+    ["adam", ["--target", "adam-native-program", "--medium", "dsk", "--hardware", "fujinet"], "FNA_"]
   ];
   for (const [name, args, prefix] of targets) {
     const baseline = compile(name, "off", args);
@@ -148,7 +149,7 @@ try {
   assert.doesNotMatch(await canary(false), /3A05FD/, "unprotected hotspot read survived Safe; revisit the canary");
   assert.match(await canary(true), /3A05FD3A41FE/, "protected hotspot reads were removed");
 
-  console.log(`FujiNet optimizer profiles: PASS (${profiles.length} profiles, cartridge marker regions byte-identical, protocol bytes, mailbox confined, canary)`);
+  console.log(`FujiNet optimizer profiles: PASS (${profiles.length} profiles, cartridge + ADAM marker regions byte-identical, protocol bytes, mailbox confined, canary)`);
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

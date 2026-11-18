@@ -14,6 +14,8 @@ const temp = mkdtempSync(join(tmpdir(), "amy-fujinet-syntax-"));
 
 const contexts = {
   cartridge: resolveAmyBuildContext({ target: { platform: "colecovision-cartridge", hardware: ["fujinet"] } }),
+  adam: resolveAmyBuildContext({ target: { platform: "adam-native-program", medium: "dsk", hardware: ["fujinet"] } }),
+  hybrid: resolveAmyBuildContext({ target: { platform: "adam-disk", medium: "dsk", hardware: ["fujinet"] } }, { memoryProfile: "adam-os7-eos-drivers" }),
   plain: resolveAmyBuildContext({ target: { platform: "colecovision-cartridge" } })
 };
 
@@ -52,10 +54,13 @@ function rejects(context, body, pattern, withDeclarations = true) {
 try {
   // Target resolution.
   assert.ok(contexts.cartridge.capabilities.includes("fujinet-cartridge"));
+  assert.ok(contexts.adam.capabilities.includes("fujinet-adamnet"));
+  assert.ok(contexts.hybrid.capabilities.includes("fujinet-adamnet"));
   assert.ok(getBuildContextDefines(contexts.cartridge).includes("AMY_HAS_FUJINET"));
   assert.ok(!getBuildContextDefines(contexts.plain).includes("AMY_HAS_FUJINET"));
   assert.throws(() => resolveAmyBuildContext({ target: { platform: "colecovision-megacart", hardware: ["fujinet"] } }), /megacart.*mailbox/i);
-  assert.throws(() => resolveAmyBuildContext({ target: { platform: "adam-native-program", medium: "dsk", hardware: ["fujinet"] } }), /not supported/i);
+  assert.throws(() => resolveAmyBuildContext({ target: { platform: "adam-native-program", hardware: ["fujinet"] } }, { memoryProfile: "colecovision_legacy_sdcc" }), /AdamNet/i);
+  assert.throws(() => resolveAmyBuildContext({ target: { platform: "adam-disk", hardware: ["fujinet"] } }), /AdamNet/i);
 
   // Every form, on each backend.
   const forms = [
@@ -79,7 +84,10 @@ try {
     ["Got = fujinet hostname into Page status S", "ADAPTER"],
     ["Total = fujinet ip into Page", "ADAPTER"]
   ];
-  for (const [form, routine] of forms) accepts(contexts.cartridge, form, new RegExp(`call AMY_FNC_${routine}\\b`));
+  for (const [name, context] of Object.entries({ cartridge: contexts.cartridge, adam: contexts.adam, hybrid: contexts.hybrid })) {
+    const prefix = name === "cartridge" ? "AMY_FNC_" : "AMY_FNA_";
+    for (const [form, routine] of forms) accepts(context, form, new RegExp(`call ${prefix}${routine}\\b`));
+  }
 
   // Mode, translation and the 6-byte app key open.
   accepts(contexts.cartridge, "network open Unit Url read write translate crlf", /ld de,\$0C03/i);
@@ -92,15 +100,22 @@ try {
   // Inline `if ... then` forms reach the FujiNet handler.
   accepts(contexts.cartridge, "if Present then network close 1", /call AMY_FNC_CLOSE/);
   accepts(contexts.cartridge, "if Present then Got = network read 1 into Page", /call AMY_FNC_READ/);
+  accepts(contexts.adam, "if Present then network write 1 \"X\" status S", /call AMY_FNA_WRITE/);
 
   // System records.
   accepts(contexts.cartridge, "Info.Error = 5\nClock.Second = 1\nTotal = Info.Waiting", /AMY_UVAR_Info\+3|\$70[0-9A-F]{2}/i);
   rejects(contexts.plain, "FujiNetStatus Info\nloop forever", /FujiNetStatus|unknown|type/i, false);
 
+  // ADAM packet RAM is reserved only when a statement uses it.
+  assert.match(accepts(contexts.adam, "network close 1"), /AMY_FUJINET_PACKET EQU/);
+  assert.doesNotMatch(accepts(contexts.adam, "Got = 1"), /AMY_FUJINET_PACKET/);
+  assert.doesNotMatch(accepts(contexts.cartridge, "network close 1"), /AMY_FUJINET_PACKET/);
+
   // Rejections.
   rejects(contexts.plain, "network close 1", /target\.hardware "fujinet"/);
   rejects(contexts.cartridge, "network close 9", /unit must be 1-8/);
   rejects(contexts.cartridge, "network close 0", /unit must be 1-8/);
+  rejects(contexts.adam, "network close 3", /unit must be 1-2/);
   rejects(contexts.cartridge, "Got = network read 1 into Page count 65", /exceeds the 64-byte buffer/);
   rejects(contexts.cartridge, "network write 1 from Page count 100", /exceeds the 64-byte buffer/);
   rejects(contexts.cartridge, "network read 1 into Page", /returns a value/);
@@ -137,7 +152,9 @@ end sub`, /cannot run from the NMI/);
   const sourcePath = join(temp, "all-forms.alexis");
   writeFileSync(sourcePath, `${declarations}${forms.map(([form]) => form).join("\n")}\nloop forever\n`);
   const builds = [
-    ["cartridge", ["--hardware", "fujinet"]]
+    ["cartridge", ["--hardware", "fujinet"]],
+    ["adam", ["--target", "adam-native-program", "--medium", "dsk", "--hardware", "fujinet"]],
+    ["hybrid", ["--target", "adam-disk", "--medium", "dsk", "--memory-profile", "adam-os7-eos-drivers", "--hardware", "fujinet"]]
   ];
   for (const [name, args] of builds) {
     const romPath = join(temp, `${name}.bin`);
@@ -153,7 +170,7 @@ end sub`, /cannot run from the NMI/);
   assert.equal(megacart.status, 2, "MegaCart + FujiNet must stop at target resolution");
   assert.match(megacart.stderr, /megacart.*mailbox/i);
 
-  console.log(`FujiNet statements: PASS (${forms.length} forms, inline if, records, rejections, hazards, NMI paths, amyc build)`);
+  console.log(`FujiNet statements: PASS (${forms.length} forms x 3 targets, inline if, records, packet RAM, rejections, hazards, NMI paths, amyc builds)`);
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

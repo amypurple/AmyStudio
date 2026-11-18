@@ -1,7 +1,10 @@
 // FujiNet statements: network channels, JSON queries, app keys, clock and
-// adapter information, for the FujiNet-ColecoVision cartridge (capability
-// fujinet-cartridge): runtime AMY_FNC_* in src/alexis_lib/coleco_fujinet_cart.asm.
-// Every mailbox access lives in the runtime, never in generated code.
+// adapter information. Two backends share one surface:
+// - ColecoVision cartridge (capability fujinet-cartridge): the FujiNet
+//   cartridge mailbox, runtime AMY_FNC_* in src/alexis_lib/coleco_fujinet_cart.asm;
+// - ADAM EOS targets (capability fujinet-adamnet): AdamNet DCBs, runtime
+//   AMY_FNA_* in src/alexis_lib/coleco_fujinet_adamnet.asm.
+// Every mailbox or DCB access lives in the runtime, never in generated code.
 
 const QUALIFIED_OPERAND = "[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*";
 const STATUS_CLAUSE = `(?:\\s+status\\s+(${QUALIFIED_OPERAND}))?`;
@@ -18,7 +21,7 @@ const ADAPTER_FIELDS = Object.freeze({
   ip: { offset: 140, width: 16 },
   mac: { offset: 204, width: 18 }
 });
-const UNIT_LIMITS = Object.freeze({ cartridge: 8 });
+const UNIT_LIMITS = Object.freeze({ cartridge: 8, adamnet: 2 });
 
 const RESULT_FORMS = "network\\s+(?:read|query)|appkey\\s+read|fujinet\\s+(?:present|hostname|ip|ssid|version|mac)";
 
@@ -90,6 +93,7 @@ export function handleFujinetStatement({
   rawLine,
   buildContext,
   appKeyConfig = null,
+  ensureFujinetPacket = () => null,
   emitLoadInt8ValueInto,
   emitLoadCountIntoBC,
   emitLoadSourceAddressIntoHL,
@@ -108,11 +112,17 @@ export function handleFujinetStatement({
 
   const fail = (message) => ({ ok: false, handled: true, log: `${message}: ${rawLine}` });
   const capabilities = new Set(buildContext?.capabilities || []);
-  const backend = capabilities.has("fujinet-cartridge") ? "cartridge" : null;
+  const backend = capabilities.has("fujinet-cartridge")
+    ? "cartridge"
+    : capabilities.has("fujinet-adamnet") ? "adamnet" : null;
   if (!backend) {
-    return fail("FujiNet statements require target.hardware \"fujinet\" on a ColecoVision cartridge");
+    return fail("FujiNet statements require target.hardware \"fujinet\" on a ColecoVision cartridge or an ADAM EOS target");
   }
-  const routine = (name) => `AMY_FNC_${name}`;
+  const prefix = backend === "cartridge" ? "AMY_FNC_" : "AMY_FNA_";
+  const routine = (name) => {
+    if (backend === "adamnet") ensureFujinetPacket();
+    return `${prefix}${name}`;
+  };
 
   // Loads A with a unit, checking a constant against this backend's range.
   const loadUnit = (token) => {

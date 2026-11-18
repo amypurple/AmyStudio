@@ -78,11 +78,19 @@ for (const [hardware, backend] of [
 const fujinetCartridgeContext = resolveAmyBuildContext({ target: { platform: "colecovision-cartridge", hardware: ["fujinet"] } });
 assert.ok(fujinetCartridgeContext.capabilities.includes("fujinet-cartridge"));
 assert.ok(getBuildContextDefines(fujinetCartridgeContext).includes("AMY_HAS_FUJINET"));
-assert.throws(() => resolveAmyBuildContext({ target: { platform: "colecovision-megacart", hardware: ["fujinet"] } }), /megacart/i);
-assert.throws(() => resolveAmyBuildContext({
+const fujinetAdamContext = resolveAmyBuildContext({
   target: { platform: "adam-native-program", medium: "dsk", hardware: ["fujinet"] },
   memoryProfile: "adam-eos-application"
-}), /not supported/);
+});
+assert.ok(fujinetAdamContext.capabilities.includes("fujinet-adamnet"));
+assert.ok(resolveAmyBuildContext({ target: { platform: "adam-disk", hardware: ["fujinet"] } }, { memoryProfile: "adam-os7-eos-drivers" })
+  .capabilities.includes("fujinet-adamnet"));
+assert.throws(() => resolveAmyBuildContext({ target: { platform: "colecovision-megacart", hardware: ["fujinet"] } }), /megacart/i);
+assert.throws(() => resolveAmyBuildContext({ target: { platform: "adam-disk", hardware: ["fujinet"] } }), /AdamNet/);
+assert.throws(() => resolveAmyBuildContext(
+  { target: { platform: "adam-native-program", hardware: ["fujinet"] } },
+  { memoryProfile: "colecovision_legacy_sdcc" }
+), /AdamNet/);
 const hybridContext = resolveAmyBuildContext({
   target: { platform: "adam-disk", medium: "dsk" },
   memoryProfile: "adam-os7-eos-drivers"
