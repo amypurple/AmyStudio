@@ -195,8 +195,27 @@ own `$4000-$4CFF`. Amy variables therefore use `$2100-$3FFF`: enough for an
 | ADAM printer | `print "AMY" to printer [status S]` | `REJECT` | `VERIFIED` | `VERIFIED` | Amy lowers a string literal to one ETX-terminated EOS `$FC63` transfer; a scalar byte uses `$FC66`. Both services handle AdamNet busy `$86`. GearColeco verifies the exact `AMY` plus CR spool, status 0, and continuation on DSK/DDP. |
 | ADAM serial byte I/O | `Present = serial present`; `Ready = serial readable`; `Byte = serial read`; `serial write Byte`; `Connected = serial carrier` | `N/A` | `VERIFIED` | `VERIFIED` | `target.hardware` selects `adamlink`, `eve-serial`, or `micro-serial`; source remains port-independent. Native execution verifies absence, readiness, RX/TX, continuation and carrier. Real AdamLink III corrected an earlier reversed assumption: data is `$5E`, status/control is `$5F`; its initialization no longer pollutes TX, and it consumes injected data. The SCN2651 model now distinguishes asserted DSR bit 7 from active-low DCD bit 6. Eve remains `$44/$45`; MIB3 carrier is input `$1D` bit 5. |
 | ADAM modem protocols | emulator hardware option | `N/A` | `VERIFIED` | `VERIFIED` | The serial API, three hardware profiles, Hayes command/result traffic, writable media and save states are verified. Untouched AdamLink III completes XMODEM send and receive, retry, duplicate handling, cancellation and timeout. Explicit instant, 300, 1200, 2400, 9600 and 19200-baud 8N1 line modes now drive TxRDY/TxEMT from measured character time; the 300-baud regression proves the transmitter remains busy across video frames. |
+| FujiNet network channels | `Present = fujinet present`; `network open/close/status/write/json/http mode Unit ...`; `Got = network read/query Unit ... into Buffer` | `PARTIAL` cartridge; `REJECT` MegaCart | `PARTIAL` | `PARTIAL` | `target.hardware: ["fujinet"]`. The cartridge backend reads the FujiNet-ColecoVision mailbox at `$F800-$FFFF`; the ADAM backend drives AdamNet DCBs for devices `$09/$0A/$0F/$03` directly. GearColeco has no FujiNet device: it verifies the absent path (every status 1, continuation) on the cartridge and native EOS under all five profiles. The present path (HTTP GET, POST, TCP echo with a short read, JSON queries including a clamped value followed by another query) is verified in MAME's FujiNet cartridge device and in ADAMEm (native EOS and the OS7+EOS hybrid), each against a private fujinet-pc, by the opt-in `test-fujinet-coleco-runtime.mjs` and `test-fujinet-adam-runtime.mjs`. MegaCart is rejected because the mailbox covers the mapper window. |
+| FujiNet app keys, clock, adapter | `appkey creator $1234 app 1`; `Got = appkey read Key into Buffer`; `appkey write Key from Buffer count N`; `fujinet time into Clock`; `Got = fujinet hostname/ip/ssid/version/mac into Buffer` | `PARTIAL` cartridge; `REJECT` MegaCart | `PARTIAL` | `PARTIAL` | Same evidence as the network row: write/read round trip, missing key read as 0 bytes, `FujiNetTime` fields and the firmware version string, in MAME and ADAMEm. |
 
 ## Engineering progress log
+
+### 2026-11-18: FujiNet network, app keys, clock and adapter
+
+- Added the `fujinet` hardware id for `colecovision-cartridge` and EOS ADAM
+  targets, the `AMY_HAS_FUJINET` define, and the `network`, `appkey` and
+  `fujinet` statement family with `FujiNetStatus` and `FujiNetTime` records.
+- ColecoVision: runtime `src/alexis_lib/coleco_fujinet_cart.asm` speaks the
+  cartridge mailbox by single-byte hotspot reads. Each mailbox primitive sits
+  between `AMY_OPTIMIZER_TIMING` markers placed after its entry label; without
+  them the optimizer deletes the reads from Safe up. The image is padded with
+  `$FF` to 32 KiB with `FUJI` at `$FCFC` by post-optimizer `forg`, so the
+  program must end below `$F800`.
+- ADAM: runtime `src/alexis_lib/coleco_fujinet_adamnet.asm` builds packets in
+  a 267-byte buffer reserved only when used, and finds the FujiNet's DCBs in
+  EOS's device table. Reads carry their length, so the device never sends more
+  than the buffer holds.
+- No FujiNet statement may be reachable from `on vblank` or a scene's NMI path.
 
 ### 2026-10-04: native EOS asynchronous VBlank ownership
 

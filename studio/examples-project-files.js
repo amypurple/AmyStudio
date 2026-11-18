@@ -44,7 +44,21 @@ function makeEditorsProjectFile(editors) {
 }
 
 
+// FujiNet examples need target.hardware, which only project.amy.json carries in Studio.
+function fujinetProjectFiles(projectName, target) {
+  return [{
+    path: "project.amy.json", kind: "json", source: "example",
+    base64: encodeUtf8Base64(JSON.stringify({ version: 2, projectName, target }, null, 2))
+  }];
+}
+const fujinetCartridgeTarget = { platform: "colecovision-cartridge", hardware: ["fujinet"] };
+
 const derivedProjectFilesById = {
+  "fujinet-http-text": fujinetProjectFiles("FujiNet HTTP Text", fujinetCartridgeTarget),
+  "fujinet-json-query": fujinetProjectFiles("FujiNet JSON Query", fujinetCartridgeTarget),
+  "fujinet-appkey-score": fujinetProjectFiles("FujiNet App Key Score", fujinetCartridgeTarget),
+  "fujinet-clock-info": fujinetProjectFiles("FujiNet Clock and Adapter", fujinetCartridgeTarget),
+  "adam-native-fujinet-demo": fujinetProjectFiles("ADAM Native EOS FujiNet", { platform: "adam-native-program", medium: "dsk", hardware: ["fujinet"] }),
   "timelost-adam-anthology-lab": timelostAdamAnthologyProjectFiles,
   "megacart-bank-demo": [
     {

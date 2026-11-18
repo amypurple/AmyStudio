@@ -1,3 +1,21 @@
+## 2026-11-18 - FujiNet network statements
+
+- Added `target.hardware: ["fujinet"]` (`--hardware fujinet`) for ColecoVision
+  cartridges and EOS ADAM programs, with the `AMY_HAS_FUJINET` define.
+- New statements: `fujinet present`, `network open/close/status/read/write/json/query/http mode`,
+  `appkey creator/read/write`, `fujinet time`, and `fujinet hostname/ip/ssid/version/mac`,
+  plus the `FujiNetStatus` and `FujiNetTime` records.
+- ColecoVision builds become the 32 KiB FujiNet cartridge image (program below
+  `$F800`, `$FF` filler, `FUJI` at `$FCFC`). `forg` accepts an optional message.
+- ADAM builds drive the FujiNet's AdamNet devices through EOS's DCB table.
+- Without a FujiNet every statement fails at once with status 1.
+- Tests: statements, image layout and five-profile marker byte identity in the
+  quick suites; absent-device runtime in GearColeco; opt-in MAME and ADAMEm runs
+  against a private fujinet-pc cover HTTP, POST, TCP, JSON, app keys and clock
+  on the cartridge, native EOS and the OS7+EOS hybrid.
+- Examples: `fujinet-http-text`, `fujinet-json-query`, `fujinet-appkey-score`,
+  `fujinet-clock-info`, `adam-native-fujinet-demo`.
+
 ## 2026-11-08 - Bounded BCD word adjustment and divided array indexes
 
 - `BCD += u16` and `BCD -= u16` now use a bounded five-digit decimal

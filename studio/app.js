@@ -12,7 +12,7 @@ import {
   loadAmySyntaxColorsPreference,
   saveAmySyntaxColorsPreference
 } from "./core/editor/sourceSyntaxOverlay.js?v=20260805-overlay-native-pitch";
-import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260803-120-colors";
+import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20261118-fujinet";
 import {
   createSourceBreakpointController,
   instrumentAmySourceWithSourceMarkers,

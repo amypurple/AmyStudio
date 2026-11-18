@@ -1716,3 +1716,20 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   `B70CE221AC5D841CA27400BC1998813FC57086960006CF478A51A347B20DB25C`).
 - `vscode.html` now links and describes 0.1.19.
 
+## 2026-11-18 - FujiNet mailbox reads need entry-anchored optimizer markers
+
+- The FujiNet-ColecoVision cartridge has no /WR: the console sends bytes by
+  reading hotspots (`$FD00+reg`, `$FE00+value`, `$FF00+byte`). Those reads look
+  dead to the optimizer, which deletes them from Safe up.
+- `AMY_OPTIMIZER_TIMING_BEGIN_*` / `END_*` keep them, but only when BEGIN sits
+  right after the routine's entry label. Placed before the entry, Experimental's
+  single-call inliner pulls the body out of the region and deletes the read.
+  Inside a region use only relative branches so the bytes stay identical across
+  profiles; `tools/test-fujinet-optimizer-profiles.mjs` checks this and keeps an
+  unprotected canary.
+- Fixed-layout image tails use `forg` (runs after the optimizer, pads `$FF`,
+  refuses to move backward). `assert` runs before the optimizer and a backward
+  `org` is silent, so neither can enforce the FujiNet `$F800` limit.
+- GearColeco has no FujiNet device; present-path evidence comes from MAME's
+  FujiNet cartridge device and ADAMEm against fujinet-pc (opt-in tests).
+
