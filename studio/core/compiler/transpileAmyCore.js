@@ -1,4 +1,10 @@
 import { analyzeStaticAbiEligibility } from "./staticAbiAnalysis.js?v=20261103-claude-open6";
+import {
+  handleFujinetStatement as defaultHandleFujinetStatement,
+  scanFujinetAppKeyDeclaration,
+  findFujinetCartridgeHazard,
+  FUJINET_STATEMENT_SEARCH
+} from "./fujinetStatementHelpers.js?v=20261118-fujinet";
 
 export function analyzeGlobalScratchClobbers(sourceText, stripComment = (line) => line) {
   const rawLines = String(sourceText || "").split(/\r?\n/);
@@ -145,6 +151,7 @@ export function transpileAmyCore(sourceText, deps) {
     handleDisplayGraphicsSpriteStatement,
     handleSoundSpinnerStatement,
     handleAdamStatement = () => ({ ok: true, handled: false, lines: [] }),
+    handleFujinetStatement = defaultHandleFujinetStatement,
     handleVramTextStatement,
     handlePrintFormatStatement,
     handleVramPixelInputStatement,
@@ -1569,6 +1576,8 @@ export function transpileAmyCore(sourceText, deps) {
   const forEachLowering = lowerForEachLoops(prunedLines);
   if (!forEachLowering.ok) return { ok: false, asmBody: "", log: forEachLowering.log };
   const lines = rewriteImmediateByteTempCoordinateUsesCore(forEachLowering.lines, normalizeExpression);
+  const fujinetCartridge = !!buildContext?.capabilities?.includes("fujinet-cartridge");
+  const fujinetAppKeyConfig = scanFujinetAppKeyDeclaration(lines, stripAmyInlineComment);
   const inferredRoutineGraphicsModes = inferRoutineGraphicsModes(lines);
   const usesCustomNumericTiles = lines.some((candidateRaw) =>
     /^set\s+number\s+(?:digits|pad)\s+(?:tile|tiles|char|to)\s+/i.test(stripAmyInlineComment(candidateRaw).trim())
@@ -2601,6 +2610,38 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   installNativeEosRecordTypes();
+
+  function installFujinetRecordTypes() {
+    if (!buildContext?.capabilities?.includes("fujinet")) return;
+    const makeField = (name, offset, type, size) => ({
+      name,
+      declaredType: type === "int16" ? "u16" : "u8",
+      type,
+      offset,
+      size,
+      isArray: false,
+      length: null,
+      elementSize: size
+    });
+    const install = (name, fields, byteSize) => {
+      recordTypes.set(name, {
+        name,
+        fields: new Map(fields.map((field) => [field.name, field])),
+        orderedFields: fields,
+        byteSize,
+        system: true
+      });
+    };
+    install("FujiNetStatus", [
+      makeField("Waiting", 0, "int16", 2),
+      makeField("Connected", 2, "int8", 1),
+      makeField("Error", 3, "int8", 1)
+    ], 4);
+    install("FujiNetTime", ["Century", "Year", "Month", "Day", "Hour", "Minute", "Second"]
+      .map((name, offset) => makeField(name, offset, "int8", 1)), 7);
+  }
+
+  installFujinetRecordTypes();
 
   function parseRecordDefinitions() {
     const simpleRecordFieldRe = /^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[\s*(\d+|\$[0-9A-Fa-f]+|[A-Za-z_][A-Za-z0-9_]*)\s*\])?$/i;
@@ -4938,6 +4979,30 @@ export function transpileAmyCore(sourceText, deps) {
     return null;
   }
 
+  function compileFujinetStatement(statementLine, statementRawLine) {
+    return handleFujinetStatement({
+      line: statementLine,
+      rawLine: statementRawLine,
+      buildContext,
+      appKeyConfig: fujinetAppKeyConfig,
+      emitLoadInt8ValueInto,
+      emitLoadCountIntoBC,
+      emitLoadSourceAddressIntoHL,
+      emitStoreInt8FromA,
+      emitStoreInt16FromHL,
+      emitTextLiteral,
+      getByteArrayBufferInfo,
+      resolveWholeRecord: resolveStaticWholeRecord,
+      getRuntimeInfo: (token) => getRuntimeInfo(normalizeExpression(token)),
+      resolveValueType,
+      tryEvaluateConstant: (token) => {
+        const value = tryEvaluateCompileTimeNumericExpression(token);
+        return Number.isFinite(value) ? value : null;
+      },
+      makeGeneratedLabel
+    });
+  }
+
   for (let sourceLineNumber = 0; sourceLineNumber < lines.length; sourceLineNumber += 1) {
     const overlayDefinition = overlayDefinitions.get(sourceLineNumber);
     if (overlayDefinition) {
@@ -4969,6 +5034,18 @@ export function transpileAmyCore(sourceText, deps) {
     const internalSourceMarker = line.match(/^debug\s+source\s+marker\s+(\d+)$/i);
     if (internalSourceMarker) {
       body.push(`; @amy-source-line ${internalSourceMarker[1]}`);
+      continue;
+    }
+    if (fujinetCartridge) {
+      const hazard = findFujinetCartridgeHazard(line);
+      if (hazard) return { ok: false, asmBody: "", log: `Line ${sourceLineNumber + 1}: ${hazard}: ${rawLine}` };
+    }
+    // `appkey creator <id> app <id>` is a declaration: it emits nothing and was
+    // read before compilation, so it must not open the implicit main program.
+    if (/^appkey\s+creator\b/i.test(line)) {
+      if (fujinetAppKeyConfig?.error) return { ok: false, asmBody: "", log: fujinetAppKeyConfig.error };
+      const declaration = compileFujinetStatement(line, rawLine);
+      if (!declaration.ok) return { ok: false, asmBody: "", log: declaration.log };
       continue;
     }
 
@@ -5953,6 +6030,15 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     {
+      const fujinetStmt = compileFujinetStatement(line, rawLine);
+      if (fujinetStmt.handled) {
+        if (!fujinetStmt.ok) return { ok: false, asmBody: "", log: fujinetStmt.log };
+        body.push(...fujinetStmt.lines);
+        continue;
+      }
+    }
+
+    {
       const soundSpinnerStmt = handleSoundSpinnerStatement({
         line,
         rawLine,
@@ -6313,6 +6399,7 @@ export function transpileAmyCore(sourceText, deps) {
       emitArithInt16Op,
       makeGeneratedLabel,
       formatIxOffset,
+      compileFujinetStatement,
       compileDisplayGraphicsSpriteStatement: (inlineLine, inlineRawLine) => handleDisplayGraphicsSpriteStatement({
         line: inlineLine,
         rawLine: inlineRawLine,
@@ -6865,6 +6952,39 @@ export function transpileAmyCore(sourceText, deps) {
     localBytes: staticAbiLocalBytes,
     totalBytes: staticAbiParamBytes + staticAbiLocalBytes
   };
+
+  // A FujiNet transaction from the NMI would interleave with one the main
+  // program has in flight, so no NMI-driven path may contain one.
+  if (buildContext?.capabilities?.includes("fujinet")) {
+    const nmiRoots = [];
+    if (onFrameHook && !onFrameHook.generated) nmiRoots.push(["on vblank", onFrameHook.name]);
+    for (const scene of sceneParsing.scenes) {
+      nmiRoots.push([`scene '${scene.name}' on enter`, scene.enterRoutine], [`scene '${scene.name}' on frame`, scene.frameRoutine]);
+    }
+    if (nmiRoots.length) {
+      const analysis = analyzeStaticAbiEligibility(lines, { resolveInclude: resolveStaticAbiInclude });
+      for (const [role, rootName] of nmiRoots) {
+        const visited = new Set();
+        const inspect = (key) => {
+          if (visited.has(key)) return null;
+          visited.add(key);
+          const routine = analysis.routines.get(key);
+          if (!routine) return null;
+          const blocked = routine.body.find((candidate) => FUJINET_STATEMENT_SEARCH.test(candidate));
+          if (blocked) return `'${blocked}' in '${routine.name}'`;
+          for (const next of analysis.graph.get(key) || []) {
+            const reason = inspect(next);
+            if (reason) return reason;
+          }
+          return null;
+        };
+        const reason = inspect(lowerName(rootName));
+        if (reason) {
+          return { ok: false, asmBody: "", log: `FujiNet statements cannot run from the NMI (${role} path): ${reason}.` };
+        }
+      }
+    }
+  }
 
   if (sceneParsing.scenes.length) {
     const analysis = analyzeStaticAbiEligibility(lines, { resolveInclude: resolveStaticAbiInclude });

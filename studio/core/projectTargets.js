@@ -248,6 +248,16 @@ export function resolveAmyBuildContext(project = {}, manifest = null) {
     for (const capability of ["os7", "controller", "vdp", "psg"]) capabilities.add(capability);
     capabilities.delete("eos");
   }
+  if (hardware.has("fujinet")) {
+    if (target.id === "colecovision-cartridge") {
+      capabilities.add("fujinet");
+      capabilities.add("fujinet-cartridge");
+    } else if (target.id === "colecovision-megacart") {
+      throw new Error("FujiNet hardware is not supported on colecovision-megacart: the FujiNet cartridge mailbox occupies $F800-$FFFF, including the MegaCart mapper window.");
+    } else {
+      throw new Error(`FujiNet hardware is not supported on ${target.id} yet.`);
+    }
+  }
 
   return Object.freeze({
     platform: target.id,
@@ -274,6 +284,7 @@ export function getBuildContextDefines(context) {
   if (capabilities.has("sgm")) defines.push("AMY_HAS_SGM");
   if (capabilities.has("sgm-ay")) defines.push("AMY_HAS_SGM_AY");
   if (capabilities.has("serial")) defines.push("AMY_HAS_SERIAL");
+  if (capabilities.has("fujinet")) defines.push("AMY_HAS_FUJINET");
   return Object.freeze(defines);
 }
 

@@ -12,7 +12,7 @@ const run = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: repo
 
 const help = run("--help");
 assert.equal(help.status, 0, help.stderr);
-for (const text of ["--output", "experimental", "adam-native-program", "colecovision_legacy_sdcc", "microinnovations-serial"]) {
+for (const text of ["--output", "experimental", "adam-native-program", "colecovision_legacy_sdcc", "microinnovations-serial", "fujinet"]) {
   assert.match(help.stdout, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 }
 

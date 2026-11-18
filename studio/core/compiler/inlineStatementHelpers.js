@@ -52,6 +52,7 @@ export function createInlineStatementCompiler(ctx) {
     emitArithInt16Op,
     makeGeneratedLabel,
     formatIxOffset,
+    compileFujinetStatement,
     compileDisplayGraphicsSpriteStatement,
     compileVramTextStatement,
     compileVramPixelInputStatement,
@@ -64,6 +65,12 @@ export function createInlineStatementCompiler(ctx) {
     let inlineLines = null;
     const qualifiedOperand = "[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[[^\\]]+\\])?)*";
     const currentFunction = currentFunctionRef();
+    const fujinetResult = compileFujinetStatement?.(inlineStmt, rawLineText);
+    if (fujinetResult?.handled) {
+      return fujinetResult.ok
+        ? { ok: true, lines: fujinetResult.lines, log: "" }
+        : { ok: false, lines: [], log: fujinetResult.log };
+    }
     if (/^(?:set|hide)\s+sprites?\b/i.test(inlineStmt)) {
       const displayResult = compileDisplayGraphicsSpriteStatement?.(inlineStmt, rawLineText);
       if (displayResult?.handled) {

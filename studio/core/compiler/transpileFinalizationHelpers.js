@@ -1731,7 +1731,8 @@ export function finalizeAmyTranspile({
       ...(normalizedOverlayLayouts.length
         ? { ramOverlays: normalizedOverlayLayouts.map((overlay) => ({ ...overlay })) }
         : {}),
-      needsFrameCounter
+      needsFrameCounter,
+      ...(buildContext?.capabilities?.includes("fujinet-cartridge") ? { fujinetCartridgeImage: true } : {})
     },
     ramUsage: {
       usedBytes: totalPhysicalBytes,

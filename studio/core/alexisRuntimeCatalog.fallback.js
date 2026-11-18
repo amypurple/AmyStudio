@@ -976,5 +976,170 @@ export const alexisRuntimeCatalog = {
     "sourcePath": "src/alexis_lib/coleco_tripcm_sequence.asm",
     "asm": "AMY_PLAY_TRIPCM_SEQUENCE:",
     "deps": ["AMY_TRIPCM_CORE"]
+  },
+  "AMY_FN_FAIL": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_common.asm",
+    "asm": "AMY_FN_FAIL:\n    ret"
+  },
+  "AMY_FN_MIN_BC_HL": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_common.asm",
+    "asm": "AMY_FN_MIN_BC_HL:\n    ret"
+  },
+  "AMY_FN_TEXT_LENGTH": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_common.asm",
+    "asm": "AMY_FN_TEXT_LENGTH:\n    ret"
+  },
+  "AMY_FN_COPY_STRING": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_common.asm",
+    "asm": "AMY_FN_COPY_STRING:\n    ret"
+  },
+  "AMY_FN_FINISH_TEXT": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_common.asm",
+    "asm": "AMY_FN_FINISH_TEXT:\n    ret"
+  },
+  "AMY_FNC_PRESENT": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_PRESENT:\n    ret"
+  },
+  "AMY_FNC_BEGIN": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_BEGIN:\n    ret"
+  },
+  "AMY_FNC_TXBYTE": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_TXBYTE:\n    ret"
+  },
+  "AMY_FNC_TXBLOCK": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_TXBLOCK:\n    ret"
+  },
+  "AMY_FNC_COMMIT": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_COMMIT:\n    ret"
+  },
+  "AMY_FNC_REPLY_WORD": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_REPLY_WORD:\n    ret"
+  },
+  "AMY_FNC_REPLY_BYTE": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_REPLY_BYTE:\n    ret"
+  },
+  "AMY_FNC_WINDOW": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_WINDOW:\n    ret"
+  },
+  "AMY_FNC_RXCOPY": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_RXCOPY:\n    ret"
+  },
+  "AMY_FNC_UNIT": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "asm": "AMY_FNC_UNIT:\n    ret"
+  },
+  "AMY_FNC_SIMPLE": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_BEGIN", "AMY_FNC_COMMIT"],
+    "asm": "AMY_FNC_SIMPLE:\n    ret"
+  },
+  "AMY_FNC_OPEN": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FN_TEXT_LENGTH", "AMY_FN_MIN_BC_HL", "AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FNC_BEGIN", "AMY_FNC_TXBYTE", "AMY_FNC_TXBLOCK", "AMY_FNC_COMMIT"],
+    "asm": "AMY_FNC_OPEN:\n    ret"
+  },
+  "AMY_FNC_CLOSE": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FNC_SIMPLE"],
+    "asm": "AMY_FNC_CLOSE:\n    ret"
+  },
+  "AMY_FNC_STATUS": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FNC_SIMPLE", "AMY_FNC_RXCOPY"],
+    "asm": "AMY_FNC_STATUS:\n    ret"
+  },
+  "AMY_FNC_READ": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FNC_SIMPLE", "AMY_FNC_REPLY_WORD", "AMY_FNC_REPLY_BYTE", "AMY_FN_MIN_BC_HL", "AMY_FNC_BEGIN", "AMY_FNC_TXBYTE", "AMY_FNC_COMMIT", "AMY_FNC_RXCOPY"],
+    "asm": "AMY_FNC_READ:\n    ret"
+  },
+  "AMY_FNC_WRITE": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FN_MIN_BC_HL", "AMY_FNC_BEGIN", "AMY_FNC_TXBYTE", "AMY_FNC_TXBLOCK", "AMY_FNC_COMMIT"],
+    "asm": "AMY_FNC_WRITE:\n    ret"
+  },
+  "AMY_FNC_JSON": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FNC_BEGIN", "AMY_FNC_TXBYTE", "AMY_FNC_COMMIT", "AMY_FNC_SIMPLE"],
+    "asm": "AMY_FNC_JSON:\n    ret"
+  },
+  "AMY_FNC_HTTP_MODE": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FNC_BEGIN", "AMY_FNC_TXBYTE", "AMY_FNC_COMMIT"],
+    "asm": "AMY_FNC_HTTP_MODE:\n    ret"
+  },
+  "AMY_FNC_QUERY": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FN_TEXT_LENGTH", "AMY_FN_MIN_BC_HL", "AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FNC_BEGIN", "AMY_FNC_TXBLOCK", "AMY_FNC_TXBYTE", "AMY_FNC_COMMIT"],
+    "asm": "AMY_FNC_QUERY:\n    ret"
+  },
+  "AMY_FNC_DRAIN": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_UNIT", "AMY_FN_FAIL", "AMY_FNC_SIMPLE", "AMY_FNC_REPLY_WORD", "AMY_FN_MIN_BC_HL", "AMY_FNC_BEGIN", "AMY_FNC_TXBYTE", "AMY_FNC_COMMIT", "AMY_FNC_RXCOPY", "AMY_FN_FINISH_TEXT"],
+    "asm": "AMY_FNC_DRAIN:\n    ret"
+  },
+  "AMY_FNC_APPKEY_OPEN": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_BEGIN", "AMY_FNC_TXBYTE", "AMY_FNC_COMMIT"],
+    "asm": "AMY_FNC_APPKEY_OPEN:\n    ret"
+  },
+  "AMY_FNC_APPKEY_READ": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_SIMPLE", "AMY_FN_FAIL", "AMY_FN_MIN_BC_HL", "AMY_FNC_REPLY_WORD", "AMY_FNC_RXCOPY"],
+    "asm": "AMY_FNC_APPKEY_READ:\n    ret"
+  },
+  "AMY_FNC_APPKEY_WRITE": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FN_MIN_BC_HL", "AMY_FNC_BEGIN", "AMY_FNC_TXBLOCK", "AMY_FNC_COMMIT"],
+    "asm": "AMY_FNC_APPKEY_WRITE:\n    ret"
+  },
+  "AMY_FNC_TIME": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_BEGIN", "AMY_FNC_TXBYTE", "AMY_FNC_COMMIT", "AMY_FN_FAIL", "AMY_FNC_RXCOPY"],
+    "asm": "AMY_FNC_TIME:\n    ret"
+  },
+  "AMY_FNC_ADAPTER": {
+    "group": "fujinet",
+    "sourcePath": "src/alexis_lib/coleco_fujinet_cart.asm",
+    "deps": ["AMY_FNC_SIMPLE", "AMY_FN_FAIL", "AMY_FN_MIN_BC_HL", "AMY_FNC_WINDOW", "AMY_FN_COPY_STRING", "AMY_FN_FINISH_TEXT"],
+    "asm": "AMY_FNC_ADAPTER:\n    ret"
   }
 };
