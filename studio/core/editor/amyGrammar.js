@@ -9,6 +9,11 @@ export const AMY_FIXED_PHRASES = Object.freeze([
   ["voice detect into","keyword"],["voice speak","keyword"],["voice start","keyword"],["voice stop","keyword"],["voice speaking into","keyword"],["voice allophone","keyword"],["voice ready","keyword"],["voice reset","keyword"],
   ["psg tone","keyword"],["psg volume","keyword"],["psg noise","keyword"],
   ["ay write","keyword"],["ay read","keyword"],["ay mute","keyword"],
+  ["network open","keyword"],["network close","keyword"],["network status","keyword"],["network read","keyword"],["network write","keyword"],
+  ["network json","keyword"],["network query","keyword"],["network http mode","keyword"],["post data","keyword"],
+  ["fujinet present","keyword"],["fujinet time into","keyword"],["fujinet hostname into","keyword"],["fujinet ip into","keyword"],
+  ["fujinet ssid into","keyword"],["fujinet version into","keyword"],["fujinet mac into","keyword"],
+  ["appkey creator","keyword"],["appkey read","keyword"],["appkey write","keyword"],
   ["state machine","keyword"],["end state machine","keyword"],["on enter","keyword"],["on frame","keyword"],
   ["end sub","keyword"],["end if","keyword"],["end select","keyword"],["end with","keyword"],["end record","keyword"],["end overlay","keyword"],["end scene","keyword"],["end data","keyword"],["end picture","keyword"]
 ].map(([phrase,type]) => ({ phrase, words: phrase.split(" "), type })));

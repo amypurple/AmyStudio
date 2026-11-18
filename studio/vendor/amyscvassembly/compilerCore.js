@@ -2703,7 +2703,11 @@ function isIxIyDisplacementOperandText(value) {
                                         throw new Error(`FORG requires a non-negative physical offset, got ${physicalOffset}`);
                                     }
                                     if (physicalOffset < this.output.length) {
-                                        throw new Error(`FORG cannot move backward from $${this.output.length.toString(16).toUpperCase()} to $${physicalOffset.toString(16).toUpperCase()}`);
+                                        // Optional second operand: a message explaining the fixed layout,
+                                        // e.g. FORG $7800,"program must end below the FujiNet mailbox".
+                                        const overflow = this.output.length - physicalOffset;
+                                        const reason = token.operands[1]?.type === 'string' ? `: ${token.operands[1].value}` : '';
+                                        throw new Error(`FORG cannot move backward from $${this.output.length.toString(16).toUpperCase()} to $${physicalOffset.toString(16).toUpperCase()} (${overflow} bytes over)${reason}`);
                                     }
                                     this.usesPhysicalOrigins = true;
                                     while (this.output.length < physicalOffset) this.output.push(0xFF);

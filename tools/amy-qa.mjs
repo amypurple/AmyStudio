@@ -56,6 +56,8 @@ const quickTests = [
   "test-unsigned-compare-elseif-optimization.mjs",
   "test-put-frame-coordinate-index-reuse.mjs",
   "test-optimizer-effect-barriers.mjs",
+  "test-fujinet-optimizer-profiles.mjs",
+  "test-fujinet-cartridge-image.mjs",
   "test-user-routine-clobber-inference.mjs",
   "test-call-asm-abi-rom.mjs",
   "test-overlay-layout-rom.mjs",

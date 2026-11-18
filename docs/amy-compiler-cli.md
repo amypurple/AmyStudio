@@ -49,8 +49,12 @@ Repeat `--hardware` when a build uses more than one device:
 
 ```text
 sgm, sgm1, adam-sound-enhancer, adamlink,
-eve-serial, orphanware-serial, micro-serial, microinnovations-serial
+eve-serial, orphanware-serial, micro-serial, microinnovations-serial, fujinet
 ```
+
+`fujinet` is accepted on `colecovision-cartridge` and on ADAM targets with an
+EOS memory profile; `colecovision-megacart` and OS7-only ADAM builds stop with
+exit code 2. On a cartridge it also makes the ROM the 32 KiB FujiNet image.
 
 ### ADAM Targets
 

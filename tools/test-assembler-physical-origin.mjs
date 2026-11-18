@@ -42,4 +42,12 @@ db 2
 assert.equal(backwards.ok, false);
 assert.match(backwards.log, /FORG cannot move backward/);
 
+const explained = await assemble(`
+org $8000
+db 1,2,3
+forg $0002,"program must end below the mailbox"
+`);
+assert.equal(explained.ok, false);
+assert.match(explained.log, /FORG cannot move backward from \$3 to \$2 \(1 bytes over\): program must end below the mailbox/);
+
 console.log("Assembler physical origin: PASS");

@@ -120,7 +120,7 @@ if Present then serial write Byte
 
 The compiler selects OS7 or EOS implementations for shared graphics, VRAM, input, timing, sprite, sound, decompression, and VoxPCM operations according to the project target. The detailed runtime evidence and remaining hardware qualifications live in [OS7 / EOS Command Support](amy-os7-eos-command-support.md).
 
-Expanded targets can declare SP0256 voice adapters, SGM-compatible AY sound, the ADAM Sound Enhancer, and supported serial interfaces through project hardware metadata. Direct AY access uses `ay write`, `ay read`, and `ay mute`; unsupported targets reject those commands instead of silently emitting unusable I/O.
+Expanded targets can declare SP0256 voice adapters, SGM-compatible AY sound, the ADAM Sound Enhancer, supported serial interfaces, and a FujiNet through project hardware metadata. With `fujinet`, ColecoVision cartridges and EOS ADAM programs share `network open/read/write/status/json/query/close`, `appkey read/write`, `fujinet time` and adapter-field forms; see [FujiNet network](amy-language.md#fujinet-network). Direct AY access uses `ay write`, `ay read`, and `ay mute`; unsupported targets reject those commands instead of silently emitting unusable I/O.
 
 ### Development and testing
 

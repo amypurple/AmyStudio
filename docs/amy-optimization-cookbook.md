@@ -393,6 +393,29 @@ Use **CVBasic Plot Port** for the hidden-display strategy and **CVBasic Live Plo
 for visible batched drawing. The Vector Cube example protects each complete animation
 frame in the same way.
 
+## Keep side-effect reads out of the optimizer's reach
+
+The optimizer treats a memory read whose value is overwritten as dead and
+removes it from Safe up. That is wrong for hardware that acts on the read
+itself, such as the FujiNet cartridge mailbox, where reading `$FF00+byte`
+sends a byte. Runtime routines keep such reads between zero-byte labels:
+
+```asm
+SEND_BYTE:
+AMY_OPTIMIZER_TIMING_BEGIN_SEND_BYTE:
+    ld d,$FF
+    ld e,a
+    ld a,(de)
+AMY_OPTIMIZER_TIMING_END_SEND_BYTE:
+    ret
+```
+
+Put the BEGIN label directly after the entry label. If it comes first,
+Experimental can inline the routine body outside the protected region. Inside
+the region, use only relative branches (`jr`, `djnz`), so the bytes stay the
+same under every profile. The compiler wraps inline `asm { }` blocks in these
+markers automatically.
+
 ## Compression is a size and time tradeoff
 
 For a compressed asset, compare:

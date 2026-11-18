@@ -5,7 +5,7 @@ let projectFilesModulePromise = null;
 
 async function loadExampleProjectFilesById(id) {
   if (!projectFilesModulePromise) {
-    projectFilesModulePromise = import("./examples-project-files.js?v=20260926-adam-quebec16");
+    projectFilesModulePromise = import("./examples-project-files.js?v=20261118-fujinet");
   }
   const module = await projectFilesModulePromise;
   return module.projectFilesById?.[id] || [];

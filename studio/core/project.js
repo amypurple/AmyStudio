@@ -1,4 +1,4 @@
-import { renderAlexisRuntime } from "./alexisRuntime.js?v=20260803-120-colors";
+import { renderAlexisRuntime } from "./alexisRuntime.js?v=20261118-fujinet";
 import { getSplitLibraryCatalog, resolveSelectedLibModulesDetailed } from "./libraryModules.js";
 import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
 import { inferAmyMemoryCapabilities, inferControllerBackendFromSource } from "./compilerFrontend.js?v=20260609-show-picture-nmi1";
@@ -2585,6 +2585,19 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   lines.push("; --- Program ---");
   lines.push(asmBodyWithRuntimeInit.trimEnd());
   lines.push("");
+
+  if (metadata?.fujinetCartridgeImage) {
+    // The FujiNet cartridge maps its mailbox over $F800-$FFFF and keeps it live
+    // only for an exact 32 KiB image carrying "FUJI" at $FCFC. FORG runs after
+    // the optimizer, pads with $FF and refuses to move backward.
+    lines.push("; --- FujiNet cartridge image ---");
+    lines.push("AMY_PROGRAM_END:");
+    lines.push('        forg    $7800,"a FujiNet cartridge program must end below the mailbox at $F800 (30 KiB)"');
+    lines.push("        forg    $7CFC");
+    lines.push('        db      "FUJI"');
+    lines.push("        forg    $8000");
+    lines.push("");
+  }
 
   return lines.join("\n");
 }

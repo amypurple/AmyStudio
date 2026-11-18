@@ -3938,6 +3938,25 @@ parameters; pass an index, a ROM/RAM address in `u16`, or use a global array.
 | `restore Name` | Reset DATA cursor |
 | `read Var` / `read V1, V2, ...` | Read DATA item(s) |
 
+### FujiNet (`target.hardware: ["fujinet"]`)
+
+| Statement | Meaning |
+|---|---|
+| `Present = fujinet present` | `1` when a FujiNet answers |
+| `network open Unit "URL" read [translate crlf] [status S]` | Open a channel (`read`, `write`, `read write`, `post`) |
+| `Got = network read Unit into Buffer [count N] [status S]` | Read what is waiting, without waiting |
+| `network write Unit from Buffer count N [status S]` | Send bytes |
+| `network status Unit as Info [status S]` | Bytes waiting, connected, error code |
+| `network json Unit [status S]` | Parse the reply as JSON |
+| `Got = network query Unit "/path" into Buffer [status S]` | Copy one JSON value |
+| `network http mode Unit post data [status S]` | Switch an HTTP channel's mode |
+| `network close Unit [status S]` | Close a channel |
+| `appkey creator $1234 app 1` | App key ids |
+| `Got = appkey read Key into Buffer [status S]` | Read an app key |
+| `appkey write Key from Buffer count N [status S]` | Write an app key |
+| `fujinet time into Clock [status S]` | Date and time |
+| `Got = fujinet hostname into Buffer [status S]` | Adapter text field (`ip`, `ssid`, `version`, `mac`) |
+
 ### ASM interop
 
 | Statement | Meaning |
@@ -3958,6 +3977,8 @@ parameters; pass an index, a ROM/RAM address in `u16`, or use a global array.
 | Timed game loop | `do` / `wait` / input / logic / `update sprites` / `loop` |
 | Draw text | `print at X,Y, "TEXT"` |
 | Draw a number | `print Value at X,Y digits N` |
+| Fetch one value from a web API | `network open` → `network json` → `network query` (`target.hardware: ["fujinet"]`) |
+| Keep a high score on the FujiNet | `appkey creator ...` → `appkey write` / `appkey read` |
 | Draw a score | `print at X,Y, Score` |
 | Compose a HUD string | `format Value into Buffer` then `put Buffer count N at X,Y` |
 | One tile on screen | `put char V at X,Y` |
@@ -4526,6 +4547,115 @@ Constant counts larger than the destination are rejected. A calculated byte or
 word count is accepted under the same caller-owned bounds contract as ordinary
 Amy buffer copies. The transfer uses `LDIR` while the selected bank is visible,
 then restores the previous bank.
+
+## FujiNet network
+
+A [FujiNet](https://fujinet.online/) gives a program network channels (HTTP,
+HTTPS, TCP, TNFS and the other FujiNet protocols), JSON parsing, app keys
+saved on the FujiNet's SD card, a clock and adapter information. Declare it in
+`project.amy.json` with `target.hardware: ["fujinet"]`, or pass
+`--hardware fujinet` to `amyc`. The same source builds for two targets:
+
+| Target | How Amy reaches the FujiNet |
+|---|---|
+| `colecovision-cartridge` | The FujiNet-ColecoVision cartridge's mailbox at `$F800-$FFFF` |
+| `adam-native-program`, OS7+EOS hybrid (`adam-os7-eos-drivers`) | AdamNet devices N1 `$09`, N2 `$0A`, Fuji `$0F` and clock `$03` |
+
+```basic
+appkey creator $A3A5 app 1
+
+u8 Present = 0
+u8 S = 0
+u8 Got = 0
+u8 Page[64]
+u8 Url[48]
+FujiNetStatus Info
+FujiNetTime Clock
+
+Present = fujinet present
+network open 1 "N:HTTPS://example.com/data.json" read status S
+network open 2 Url read write translate crlf status S
+network status 1 as Info status S
+Got = network read 1 into Page status S
+Got = network read 1 into Page count 16
+network write 2 from Page count Got status S
+network write 2 "GET / HTTP/1.0" status S
+network json 1 status S
+Got = network query 1 "/main/temp" into Page status S
+network http mode 1 post data status S
+network close 1 status S
+
+Got = appkey read 0 into Page status S
+appkey write 0 from Page count Got status S
+
+fujinet time into Clock status S
+Got = fujinet hostname into Page status S
+Got = fujinet ip into Page
+Got = fujinet ssid into Page
+Got = fujinet version into Page
+Got = fujinet mac into Page
+```
+
+Every form takes an optional trailing `status Var`: `0` success, `1` failure.
+Statements and assignments also work after `if ... then`.
+
+- `fujinet present` returns `1` when a FujiNet answers. Without one, every
+  other statement returns status `1` at once and the program carries on, so one
+  ROM runs on plain hardware and in Studio's emulator, which has no FujiNet.
+- The unit (`1` above) is a byte expression: `1-8` on the ColecoVision
+  cartridge, `1-2` on the ADAM. A constant out of range is a compile error.
+- `network open` takes a string literal or a `u8` buffer. A buffer is sent
+  up to its first `0` or its end, with trailing spaces trimmed, so
+  `Url = "N:HTTP://" + ...` assignments work. The mode is `read` (4),
+  `write` (8), `read write` (12) or `post` (13); `translate` sets the
+  FujiNet's line-ending translation (default `none`).
+- `network read` never waits for data. It reads what is waiting, at most the
+  buffer size, the optional `count`, and 1024 bytes, and returns how many bytes
+  it read. It returns `0` while nothing has arrived, and status `1` once the
+  channel has ended (end of file or an error) with nothing left. A count
+  destination may be `u8` or `u16`.
+- `network write` sends a buffer or a string literal. Longer writes are
+  split into 317-byte (cartridge) or 256-byte (ADAM) transactions.
+- `network status ... as Info` fills a `FujiNetStatus` record: `Waiting`
+  (`u16`), `Connected` and `Error` (the FujiNet error code: `1` OK, `136`
+  end of file).
+- `network json` selects the JSON parser and parses what the channel
+  received. Each `network query` then copies one value into a buffer and
+  returns its length. The rest of a value longer than the buffer is read and
+  discarded, because leftover bytes would corrupt the next query. Trailing CR
+  and LF are dropped, and a `0` follows the value when the buffer has room, so
+  size buffers one byte larger than the longest value.
+- `network http mode` switches an HTTP channel between `body`,
+  `post data`, `set headers`, `get headers` and `collect headers`. For a
+  POST: open with `post`, switch to `post data`, write the body, switch back
+  to `body`, then read the reply.
+- `appkey creator <1-$FFFF> app <0-$FF>` declares the ids once per program.
+  Keys `0-255` hold up to 64 bytes each on the FujiNet's SD card. A key that was
+  never written reads as `0` bytes with status `0`. Pick a creator id no other
+  program uses.
+- `fujinet time` fills a `FujiNetTime` record (`Century`, `Year`,
+  `Month`, `Day`, `Hour`, `Minute`, `Second`) in the FujiNet's time zone.
+- `fujinet hostname|ip|ssid|version|mac` copies one text field of the
+  adapter configuration.
+
+Blocking: an open, query or HTTP status can wait for the network, up to the
+FujiNet's own 90-second timeout. An enabled NMI keeps running meanwhile, so
+music and frame counters continue. FujiNet statements cannot run from `on vblank` or a scene's
+`on enter`/`on frame` path: a transaction started from the NMI would interleave
+with one the main program has in flight. Amy rejects any such call path.
+
+ColecoVision cartridge image: the FujiNet cartridge keeps its mailbox live
+only for an exact 32 KiB image that carries `FUJI` at `$FCFC`. With
+`fujinet` hardware Amy pads the ROM with `$FF` to 32768 bytes and adds the
+claim, so the program must end below `$F800` (30 KiB). The build fails with
+the overshoot when it does not. On hardware every access to `$8000-$FFFF` is a
+cartridge access, so Amy also rejects MegaCart targets and bank statements,
+constant `poke` addresses from `$8000`, and constant `peek` addresses from
+`$F800`. Inline ASM must follow the same rule.
+
+ADAM: the FujiNet statements need EOS's AdamNet device table, so they require
+an EOS memory profile (native or OS7+EOS hybrid). An ADAM build reserves a
+267-byte packet buffer in user RAM, but only when it uses a FujiNet statement.
 
 ## Super Game Module AY sound
 

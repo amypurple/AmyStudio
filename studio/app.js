@@ -12,7 +12,7 @@ import {
   loadAmySyntaxColorsPreference,
   saveAmySyntaxColorsPreference
 } from "./core/editor/sourceSyntaxOverlay.js?v=20260805-overlay-native-pitch";
-import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20260803-120-colors";
+import { AMY_AUTOCOMPLETE, autocompleteCommandBias, isAutocompleteSourceTypeName } from "./core/editor/autocompleteCatalog.js?v=20261118-fujinet";
 import {
   createSourceBreakpointController,
   instrumentAmySourceWithSourceMarkers,
@@ -73,7 +73,7 @@ import { handleSoundSpinnerStatement } from "./core/compiler/soundSpinnerStateme
 import { createTypeSymbolHelpers } from "./core/compiler/typeSymbolHelpers.js?v=20260605-dsound-asset-fix";
 import { createU32Helpers } from "./core/compiler/u32Helpers.js";
 import { createValueParseHelpers } from "./core/compiler/valueParseHelpers.js?v=20261103-claude-open6";
-import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20261007-adam-dual-reset1";
+import { finalizeAmyTranspile } from "./core/compiler/transpileFinalizationHelpers.js?v=20261118-fujinet";
 import { handleVramTextStatement } from "./core/compiler/vramTextStatementHelpers.js?v=20261103-ram-copy-offset";
 import { handleVramPixelInputStatement } from "./core/compiler/vramPixelInputStatementHelpers.js?v=20260802-keypad-blank";
 import { transpileAmySource } from "./core/amyCompiler.js?v=20260621-source-lang-amy";
@@ -91,7 +91,7 @@ import {
   previewColecoBiosTitleFromMetadata,
   previewDinaBiosTitleFromMetadata
 } from "./core/colecoBiosPreview.js?v=20260721-diamond-sprite-frames";
-import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20260804-compact-asm-comments";
+import { analyzeLibraryResolution, generateAsm } from "./core/project.js?v=20261118-fujinet";
 import { createProjectFileUiHelpers } from "./core/projectFileUi.js?v=20260918-files-audit";
 import { createMode2RepackerUi } from "./core/mode2RepackerUi.js?v=20261012-mode2-repacker1";
 import { createProjectFileAddonBundle } from "./core/addons/projectFileAddonBundle.js?v=20260729-reversi-menu-preview";
@@ -113,7 +113,7 @@ import {
 import { createPreviewShellHelpers } from "./core/previewShell.js";
 import { exportProject as exportProjectCore, importProjectObject as importProjectObjectCore } from "./core/projectPersistence.js";
 import { createStatusAsmUiHelpers } from "./core/statusAsmUi.js";
-import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20261103-claude-open6";
+import { transpileAmyCore } from "./core/compiler/transpileAmyCore.js?v=20261118-fujinet";
 import { bindAsmViewEvents, bindTopUiEvents, bindStudioRuntimeEvents } from "./core/uiEvents.js?v=20260926-adam-quebec16";
 import { bindStudioShellEvents } from "./core/bindStudioEvents.js?v=20260911-tripcm";
 import { bytesToBase64, formatByteSize } from "./core/utils/bytes.js";

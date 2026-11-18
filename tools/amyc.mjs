@@ -93,7 +93,7 @@ const CLI_VALUES = Object.freeze({
   target: ["colecovision-cartridge", "colecovision-megacart", "adam-native-program", "adam-disk", "adam-data-pack"],
   medium: ["dsk", "ddp"],
   memoryProfile: ["colecovision-cartridge", "colecovision-megacart", "colecovision_legacy_sdcc", "adam-eos-application", "adam-os7-eos-drivers"],
-  hardware: ["sgm", "sgm1", "adam-sound-enhancer", "adamlink", "eve-serial", "orphanware-serial", "micro-serial", "microinnovations-serial"]
+  hardware: ["sgm", "sgm1", "adam-sound-enhancer", "adamlink", "eve-serial", "orphanware-serial", "micro-serial", "microinnovations-serial", "fujinet"]
 });
 
 const HELP_TEXT = `Amy compiler command line
@@ -347,10 +347,18 @@ async function main() {
   const sourceMemoryProfile = sourceText.match(/^\s*memory\s+["']([^"']+)["']/im)?.[1] || null;
   const requestedMemoryProfile = opts.memoryProfile || sourceMemoryProfile;
   if (requestedMemoryProfile) project.memoryProfile = requestedMemoryProfile;
-  const buildContext = resolveAmyBuildContext(project, {
-    target: project.target,
-    ...(requestedMemoryProfile ? { memoryProfile: requestedMemoryProfile } : {})
-  });
+  let buildContext;
+  try {
+    buildContext = resolveAmyBuildContext(project, {
+      target: project.target,
+      ...(requestedMemoryProfile ? { memoryProfile: requestedMemoryProfile } : {})
+    });
+  } catch (error) {
+    const message = error?.message || String(error);
+    writeBuildReport(opts, { ok: false, source: srcPath, stage: "target", diagnostics: [diagnosticFromLog(srcPath, "target", message)] });
+    console.error(`Compile failed: ${message}`);
+    process.exit(2);
+  }
   project.memoryProfile = buildContext.memoryProfile || project.memoryProfile;
 
   const transpiled = transpileAmySource({
