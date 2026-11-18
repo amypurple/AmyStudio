@@ -19,6 +19,5 @@ AMY_SCREEN_ON_NMI:
     ld c,a
     ld b,1
     call WRITE_REGISTER
-    call READ_REGISTER
     ei
     ret

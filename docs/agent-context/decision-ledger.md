@@ -1693,3 +1693,17 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   `test-inline-asm-symbol-codegen.mjs` cover comments and five optimization
   profiles; clean-repository `amy-qa quick` passes.
 
+## 2026-11-18 - r12.2 contracts promoted with the r12.3 ASM fix
+
+- The clean compiler now retains native computed `u16`/`i16` comparisons,
+  byte-oriented constant unsigned word shifts from 7 through 15, and pending
+  VBlank across `nmi on`, `screen on`, and managed VRAM restoration.
+- The native EOS substitutions follow the same NMI contract. Optimized ASM
+  exports omit debugger-only inline-ASM source-anchor labels.
+- The three r12.2 contracts are mandatory members of `amy-qa quick`, preventing
+  a future package from silently reverting to a stale compiler base.
+- Evidence: the focused five-profile tests and clean `amy-qa quick` pass. The
+  full Balanced corpus passes 869/869 examples, assembles 868 ROMs totaling
+  8,834,549 bytes, and delegates one target-specific project normally; report:
+  `build/r12.3-clean-balanced-audit.json`.
+

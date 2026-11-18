@@ -406,7 +406,6 @@ function adaptNativeEosVramRuntime(text, capabilities = {}) {
     "    jp WRITE_REGISTER"
   ]);
   adapted = replaceRoutine(adapted, "AMY_ENABLE_NMI", [
-    "    call READ_REGISTER",
     "    ld a,(VDP_R1_SHADOW)",
     "    or $20",
     "    ld (VDP_R1_SHADOW),a",
@@ -415,7 +414,6 @@ function adaptNativeEosVramRuntime(text, capabilities = {}) {
     "    jp WRITE_REGISTER"
   ]);
   adapted = replaceRoutine(adapted, "AMY_SCREEN_ON_NMI", [
-    "    call READ_REGISTER",
     "    ld a,(VDP_R1_SHADOW)",
     "    or $60",
     "    ld (VDP_R1_SHADOW),a",

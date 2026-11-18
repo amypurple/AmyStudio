@@ -82,6 +82,12 @@ import { assembleAmysCVAssembly } from "../studio/vendor/amyscvassembly/compiler
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+function makePortableOptimizedAssembly(source) {
+  // Inline-ASM source anchors are internal debugger metadata. Exporting them as
+  // labels can confuse downstream tools that merge or relocate the listing.
+  return String(source || "").replace(/^\s*\.AMY_USER_ASM_LINE_\d+:\s*\r?\n/gmi, "");
+}
+
 const CLI_VALUES = Object.freeze({
   optimization: ["auto", "off", "safe", "balanced", "aggressive", "experimental"],
   target: ["colecovision-cartridge", "colecovision-megacart", "adam-native-program", "adam-disk", "adam-data-pack"],
@@ -465,8 +471,9 @@ async function main() {
   }
   if (opts.optimizedAsm !== undefined) {
     const optimizedAsmPath = typeof opts.optimizedAsm === "string" ? path.resolve(opts.optimizedAsm) : base + ".optimized.asm";
-    writeOutputFile(optimizedAsmPath, assembled.optimizedAsm || generatedAsm, "utf8");
-    console.log("OPT  -> " + optimizedAsmPath + " (" + (assembled.optimizedAsm || generatedAsm).length + " chars)");
+    const optimizedAsm = makePortableOptimizedAssembly(assembled.optimizedAsm || generatedAsm);
+    writeOutputFile(optimizedAsmPath, optimizedAsm, "utf8");
+    console.log("OPT  -> " + optimizedAsmPath + " (" + optimizedAsm.length + " chars)");
   }
   console.log("ROM  " + rom.length + " bytes  (" + opts.opt + " optimizer)");
   if (opts.rom !== undefined) {

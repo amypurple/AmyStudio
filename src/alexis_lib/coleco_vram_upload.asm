@@ -4,7 +4,8 @@
 ; AMY_VRAM_BEGIN saves the current BIOS VDP register 1 shadow on the caller's
 ; stack, disables NMI, and returns with that saved word left below the stack top.
 ; AMY_VRAM_END consumes that saved word, restores the shadow/register, and
-; acknowledges pending VDP status if NMI was originally enabled.
+; leaves pending VDP status latched if NMI was originally enabled, allowing the
+; VDP to deliver that VBlank immediately after interrupt enable is restored.
 ;
 ; This deliberately mirrors the old inline wrapper contract without requiring a
 ; RAM scratch byte.
@@ -33,7 +34,6 @@ AMY_VRAM_END:
     ld a,($73C4)
     and $20
     jr z,AMY_VRAM_END_DONE
-    call READ_REGISTER
     ei
 AMY_VRAM_END_DONE:
     jp (hl)

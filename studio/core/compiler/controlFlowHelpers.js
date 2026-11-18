@@ -901,6 +901,17 @@ export function createControlFlowHelpers(ctx) {
       const computedWordCompare = emitComputedSignedWordCompareGoto(leftAst, effectiveOperator, rightAst, asmLabel);
       if (computedWordCompare) return computedWordCompare;
     }
+    const computedWordDomain = leftComputed && rightComputed
+      && computedWidth > 8
+      && computedWidth <= 16
+      && !computedMixedSignedness
+      && (computedHasExpression(leftAst) || computedHasExpression(rightAst));
+    if (computedWordDomain) {
+      const computedWordCompare = computedSigned
+        ? emitComputedSignedWordCompareGoto(leftAst, effectiveOperator, rightAst, asmLabel)
+        : emitComputedUnsignedWordCompareGoto(leftAst, effectiveOperator, rightAst, asmLabel);
+      if (computedWordCompare) return computedWordCompare;
+    }
     if (shouldUseComputedCompare) {
       const promotedLeft = preserveSignedMixedCompare
         ? emitComputeExpressionAst(leftAst)

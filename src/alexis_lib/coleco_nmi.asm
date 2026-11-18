@@ -13,7 +13,8 @@ AMY_DISABLE_NMI:
     call WRITE_REGISTER
     ret
 
-; Set VDP R1 interrupt-enable bit and acknowledge pending VDP status.
+; Set VDP R1 interrupt-enable bit. A pending VBlank must remain latched so the
+; VDP can deliver it immediately after interrupt enable is restored.
 AMY_ENABLE_NMI:
     ld a,($73C4)
     or $20
@@ -21,6 +22,5 @@ AMY_ENABLE_NMI:
     ld c,a
     ld b,1
     call WRITE_REGISTER
-    call READ_REGISTER
     ei
     ret

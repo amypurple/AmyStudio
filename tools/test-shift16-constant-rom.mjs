@@ -8,7 +8,7 @@ import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearc
 
 const root = resolve(import.meta.dirname, "..");
 const profiles = ["off", "safe", "balanced", "aggressive", "experimental"];
-const counts = [0, 1, 5, 8, 9, 15, 16];
+const counts = [0, 1, 5, 7, 8, 9, 11, 15, 16];
 const checks = [];
 const source = ["u16 U = $A55A", "i16 S = -12345"];
 for (const count of counts) {
@@ -45,6 +45,13 @@ try {
     assert.equal(build.status, 0, `${profile}: ${build.stdout || ""}${build.stderr || ""}`);
     const asm = readFileSync(asmPath, "utf8");
     assert.doesNotMatch(asm, /AMY_SHIFT16_LOOP/, `${profile}: constant shift retained a runtime loop`);
+    const ur11Store = asm.indexOf("ld (AMY_UVAR_UR11),hl");
+    const ur11Load = asm.lastIndexOf("ld hl,(AMY_UVAR_U)", ur11Store);
+    const optimizedUnsigned = ur11Load >= 0 && ur11Store >= 0 ? asm.slice(ur11Load, ur11Store) : "";
+    assert.match(optimizedUnsigned, /ld l,h\s+ld h,0\s+srl l\s+srl l\s+srl l/i,
+      `${profile}: u16 >> 11 did not use the high-byte specialization`);
+    assert.doesNotMatch(optimizedUnsigned, /srl h\s+rr l/i,
+      `${profile}: u16 >> 11 retained full-width shift pairs`);
     const core = await GearcolecoTestCore.create({ seed: 0x53484946 });
     try {
       core.loadBios(bios);

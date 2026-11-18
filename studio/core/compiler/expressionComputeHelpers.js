@@ -1147,6 +1147,20 @@ export function createExpressionComputeHelpers({
             return [...loadLeft, "    ld l,h", "    ld h,0"];
           }
         }
+        if (node.op === ">>" && !isSignedDeclaredType(leftType?.declaredType)
+          && !isAnyFixedDeclaredType(leftType?.declaredType)) {
+          if (shiftCount === 7) {
+            return [...loadLeft, "    add hl,hl", "    ld l,h", "    ld h,0", "    rl h"];
+          }
+          if (shiftCount > 8 && shiftCount < 16) {
+            return [
+              ...loadLeft,
+              "    ld l,h",
+              "    ld h,0",
+              ...Array.from({ length: shiftCount - 8 }, () => "    srl l")
+            ];
+          }
+        }
         const oneShift = node.op === "<<"
           ? ["    add hl,hl"]
           : signedRightShift

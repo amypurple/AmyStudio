@@ -544,6 +544,10 @@ export function createAssignmentArithmeticHelpers({
       }
       const lines = [];
       let remaining = count;
+      if (direction === "right" && !signedRight && count === 7) {
+        lines.push("    add hl,hl", "    ld l,h", "    ld h,0", "    rl h");
+        remaining = 0;
+      }
       if (count >= 8) {
         if (direction === "left") {
           lines.push("    ld h,l", "    ld l,0");
@@ -558,7 +562,9 @@ export function createAssignmentArithmeticHelpers({
         ? ["    add hl,hl"]
         : signedRight
           ? ["    sra h", "    rr l"]
-          : ["    srl h", "    rr l"];
+          : count >= 8
+            ? ["    srl l"]
+            : ["    srl h", "    rr l"];
       for (let index = 0; index < remaining; index += 1) lines.push(...oneShift);
       return [...loadValue, ...lines, ...storeTarget];
     }
