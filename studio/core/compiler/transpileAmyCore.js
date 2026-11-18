@@ -1212,9 +1212,18 @@ export function transpileAmyCore(sourceText, deps) {
     let currentRecord = null;
     let currentOverlay = false;
     let currentRoutine = null;
+    let loweringAsm = false;
     const declarationsLowered = rawLines.map((rawLine, lineIndex) => {
       const code = stripAmyInlineComment(rawLine);
       const stripped = code.trim();
+      if (loweringAsm) {
+        if (stripped === "}") loweringAsm = false;
+        return rawLine;
+      }
+      if (/^asm\s*\{$/i.test(stripped)) {
+        loweringAsm = true;
+        return rawLine;
+      }
       const unsupportedDimensions = stripped.match(/^(?:(?:ram|dim|local)\s+)?[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*\s*\[([^\]]*)\]/i);
       if (unsupportedDimensions && unsupportedDimensions[1].split(",").length > 2) {
         throw new Error(`Amy supports one- and two-dimensional arrays; '${stripped}' has more than two dimensions at line ${lineIndex + 1}`);
@@ -1266,8 +1275,17 @@ export function transpileAmyCore(sourceText, deps) {
     let scanRecord = false;
     let scanOverlay = null;
     let scanRoutine = null;
+    let scanAsm = false;
     for (const rawLine of declarationsLowered) {
       const stripped = stripAmyInlineComment(rawLine).trim();
+      if (scanAsm) {
+        if (stripped === "}") scanAsm = false;
+        continue;
+      }
+      if (/^asm\s*\{$/i.test(stripped)) {
+        scanAsm = true;
+        continue;
+      }
       if (/^record\b/i.test(stripped)) { scanRecord = true; continue; }
       if (/^end\s+record$/i.test(stripped)) { scanRecord = false; continue; }
       const overlayStart = stripped.match(/^overlay\s+([A-Za-z_][A-Za-z0-9_]*)\s*:?$/i);
@@ -1409,8 +1427,17 @@ export function transpileAmyCore(sourceText, deps) {
       return result + comment;
     };
     let rewriteRoutine = null;
+    let rewriteAsm = false;
     const lines = declarationsLowered.map((rawLine, lineIndex) => {
       const stripped = stripAmyInlineComment(rawLine).trim();
+      if (rewriteAsm) {
+        if (stripped === "}") rewriteAsm = false;
+        return rawLine;
+      }
+      if (/^asm\s*\{$/i.test(stripped)) {
+        rewriteAsm = true;
+        return rawLine;
+      }
       const routineStart = stripped.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
       if (routineStart) rewriteRoutine = routineStart[1].toLowerCase();
       const lowered = rewriteLine(rawLine, lineIndex, rewriteRoutine);

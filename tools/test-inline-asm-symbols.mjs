@@ -37,6 +37,14 @@ assert.equal(helpers.rewriteUserSymbolsInAsmLine("  ld hl,FACE"), "  ld hl,AMY_U
 assert.equal(helpers.rewriteUserSymbolsInAsmLine("  ld a,(amy(A))"), "  ld a,(AMY_UVAR_A)");
 assert.equal(helpers.rewriteUserSymbolsInAsmLine("  ld hl,amy(HL)"), "  ld hl,AMY_UVAR_HL");
 assert.equal(helpers.rewriteUserSymbolsInAsmLine("  ld a,(amy(Lives)) ; explicit"), "  ld a,(AMY_UVAR_Lives) ; explicit");
+assert.equal(
+  helpers.rewriteUserSymbolsInAsmLine("  nop ; value in [min(D,E), max(D,E)+1]"),
+  "  nop ; value in [min(D,E), max(D,E)+1]"
+);
+assert.equal(
+  helpers.rewriteUserSymbolsInAsmLine("  nop ; amy(Missing) is documentation only"),
+  "  nop ; amy(Missing) is documentation only"
+);
 assert.throws(
   () => helpers.rewriteUserSymbolsInAsmLine("  ld a,(A)"),
   /Ambiguous inline ASM name 'A'.*amy\(A\)/
@@ -56,6 +64,19 @@ const explicitProgram = transpileAmyForTest([
 assert.equal(explicitProgram.ok, true, explicitProgram.log);
 assert.match(explicitProgram.asmBody, /ld a,\(AMY_UVAR_A\)/);
 assert.match(explicitProgram.asmBody, /; @amy-source-line 3\s+ld a,\(AMY_UVAR_A\)/);
+
+const bracketCommentProgram = transpileAmyForTest([
+  "u8 D = 1",
+  "u8 E = 2",
+  "asm {",
+  "  nop ; value in [min(D,E), max(D,E)+1]",
+  "  ld a,(amy(D)) ; amy(Missing) and Fake[Row,Column] are comments",
+  "}",
+  "loop forever",
+].join("\n"));
+assert.equal(bracketCommentProgram.ok, true, bracketCommentProgram.log);
+assert.match(bracketCommentProgram.asmBody, /nop ; value in \[min\(D,E\), max\(D,E\)\+1\]/);
+assert.match(bracketCommentProgram.asmBody, /ld a,\(AMY_UVAR_D\) ; amy\(Missing\) and Fake\[Row,Column\] are comments/);
 
 const ambiguousProgram = transpileAmyForTest([
   "u8 A = 7",

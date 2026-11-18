@@ -1682,3 +1682,14 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Matrix file validation now applies after `--suite`/`--only` selection. Focused public regression
   tests may remain standalone; a full matrix run still rejects any missing selected test.
 
+## 2026-11-18 - Amy syntax lowering treats inline ASM as opaque
+
+- Amy-level declaration and two-dimensional-array passes skip complete
+  `asm {}` blocks. Brackets, commas, identifiers, and `amy(Name)` written in
+  ASM comments can no longer be mistaken for Amy array expressions or symbols.
+- The dedicated inline-ASM pass still rewrites real Amy symbols before `;` and
+  preserves the comment and source markers verbatim.
+- Evidence: `test-inline-asm-symbols.mjs` and
+  `test-inline-asm-symbol-codegen.mjs` cover comments and five optimization
+  profiles; clean-repository `amy-qa quick` passes.
+
