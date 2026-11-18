@@ -1707,3 +1707,12 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   8,834,549 bytes, and delegates one target-specific project normally; report:
   `build/r12.3-clean-balanced-audit.json`.
 
+## 2026-11-18 - VS Code 0.1.19 embeds clean r12.3
+
+- Extension 0.1.19 stages the compiler after the r12.3 promotion rather than
+  retaining the November 15 compiler bundled by 0.1.18.
+- Its bundled-toolchain contract passes, and the published VSIX is
+  `downloads/amy-studio-vscode-0.1.19.vsix` (SHA-256
+  `B70CE221AC5D841CA27400BC1998813FC57086960006CF478A51A347B20DB25C`).
+- `vscode.html` now links and describes 0.1.19.
+
