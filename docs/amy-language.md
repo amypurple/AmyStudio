@@ -3580,6 +3580,34 @@ Rules:
 - Arguments are Z80 ABI registers, not typed Amy parameters; document what the routine destroys.
 - `include asm` emits code at that source position. If the include contains executable routines, place it after a terminating jump/loop or call it through a forward `call asm` so normal program flow cannot fall into the included code accidentally.
 
+#### Where inline ASM is emitted
+
+Amy classifies a top-level `asm {}` block by what it contains:
+
+- an executable block stays in source order; if it appears before the first Amy statement, Amy opens `Start:` first, so the block executes during startup;
+- a block containing `db`, `dw`, `ds`, `defb`, `defw`, `defs`, or `incbin` is ROM data and is detached from main-program flow;
+- a block containing only `Name equ Value` definitions is also detached;
+- a block inside a `sub` or `function` remains inside that routine, including a mixed instruction/data block.
+
+Do not mix a callable top-level routine and its data merely to control placement. Put execution
+behind a terminating jump or loop, or keep the data in a separate block:
+
+```basic
+asm {
+DrawThing:
+  ; executable routine
+  ret
+}
+
+asm {
+ThingData:
+  db 1,2,3,4
+}
+```
+
+The optimizer treats user ASM as an opaque timing and side-effect barrier. Labels remain callable
+with `call asm DrawThing`; detached data remains addressable by its raw assembler label.
+
 ---
 
 ## Optional Memory and Project Metadata
