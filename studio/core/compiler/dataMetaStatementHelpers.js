@@ -112,6 +112,7 @@ export function handleDataMetaStatement({
       if (!state.insideRoutine && (emitsInlineData || emitsOnlyEqu)) {
         state.detachedAsmData.push(...state.asmBuffer);
       } else {
+        if (state.asmNeedsImplicitStart) state.ensureImplicitStartForExecutable?.();
         const markerId = Number.isInteger(state.sourceLineNumber) ? state.sourceLineNumber : 0;
         body.push(
           `AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_${markerId}:`,
@@ -160,6 +161,7 @@ export function handleDataMetaStatement({
   }
 
   if (/^asm\s*\{$/i.test(line)) {
+    state.asmNeedsImplicitStart = Boolean(state.needsImplicitStart);
     state.inAsm = true;
     return { handled: true, ok: true };
   }

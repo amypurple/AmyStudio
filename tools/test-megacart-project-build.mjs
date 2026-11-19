@@ -40,6 +40,21 @@ const manifest = {
     { name: "BANK2", type: "switchable-bank", bank: 2, exports: ["Bank2Text", "MarkBankCall", "Bank2Compressed"], sources: [{ path: "banks/bank2.amy", kind: "amy" }] }
   ]
 };
+await assert.rejects(
+  buildMegaCartProject({
+    project: { projectFiles: [{ path: "banks/bank1.asm", data: "not accepted" }] },
+    manifest: {
+      target: { platform: "colecovision-megacart", romSizeKb: 64 },
+      outputs: [
+        { name: "FIXED", type: "fixed-bank", sources: [] },
+        { name: "BANK1", type: "switchable-bank", bank: 1, sources: [{ path: "banks/bank1.asm", kind: "asm" }] }
+      ]
+    },
+    fixedBank: fixed,
+    compileAsm: assemble
+  }),
+  /no embedded file content.*base64/i
+);
 const built = await buildMegaCartProject({
   project: { projectFiles: files },
   manifest,

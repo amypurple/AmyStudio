@@ -18,6 +18,15 @@ function findProjectFile(project, path) {
   return (project.projectFiles || []).find((entry) => normalizedPath(entry.path).toLowerCase() === wanted) || null;
 }
 
+function requiredProjectFileBytes(file, context) {
+  if (typeof file?.base64 !== "string" || !file.base64) {
+    throw new Error(`${context} has no embedded file content. MegaCart project files must provide non-empty base64 data.`);
+  }
+  const bytes = projectFileBytes(file);
+  if (!bytes.length) throw new Error(`${context} is empty.`);
+  return bytes;
+}
+
 function normalizedAssembly(result, logicalStart, logicalEnd) {
   const bytes = result instanceof Uint8Array
     ? result
@@ -96,16 +105,17 @@ export async function buildMegaCartProject({
       const source = sourceDescriptor(rawSource);
       const file = findProjectFile(project, source.path);
       if (!file) throw new Error(`MegaCart ${output.name} cannot find '${source.path}'.`);
+      const fileBytes = requiredProjectFileBytes(file, `MegaCart ${output.name} source '${source.path}'`);
       if (source.kind === "amy") {
         if (typeof compileAmyBank !== "function") {
           throw new Error(`MegaCart ${output.name} uses Amy source '${source.path}', but no bank-local Amy compiler is available.`);
         }
-        asmParts.push(await compileAmyBank(new TextDecoder().decode(projectFileBytes(file)), source.path, {
+        asmParts.push(await compileAmyBank(new TextDecoder().decode(fileBytes), source.path, {
           bank: logicalBank,
           outputName: output.name || `bank${logicalBank}`
         }));
-      } else if (source.kind === "asm") asmParts.push(new TextDecoder().decode(projectFileBytes(file)));
-      else chunks.push(projectFileBytes(file));
+      } else if (source.kind === "asm") asmParts.push(new TextDecoder().decode(fileBytes));
+      else chunks.push(fileBytes);
     }
     if (asmParts.length) {
       if (chunks.length) throw new Error(`MegaCart ${output.name} cannot mix ASM and binary assets in one output yet.`);
@@ -120,6 +130,7 @@ export async function buildMegaCartProject({
       sourceMap = assembled.sourceMap;
     }
     const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    if (!length) throw new Error(`MegaCart ${output.name || `bank ${logicalBank}`} produced an empty switchable bank.`);
     const bytes = new Uint8Array(length);
     let offset = 0;
     for (const chunk of chunks) {

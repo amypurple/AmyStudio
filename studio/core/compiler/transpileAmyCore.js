@@ -1694,6 +1694,7 @@ export function transpileAmyCore(sourceText, deps) {
   const inlineAsmSymbols = new Set();
   const dataLengths = new Map();
   let inAsm = false;
+  let asmNeedsImplicitStart = false;
   let inData = null;
   let asmBuffer = [];
   let selectedMemoryProfile = buildContext?.memoryProfile || "colecovision_legacy_sdcc";
@@ -5187,6 +5188,8 @@ export function transpileAmyCore(sourceText, deps) {
           set inData(value) { inData = value; },
           get inAsm() { return inAsm; },
           set inAsm(value) { inAsm = value; },
+          get asmNeedsImplicitStart() { return asmNeedsImplicitStart; },
+          set asmNeedsImplicitStart(value) { asmNeedsImplicitStart = value; },
           get asmBuffer() { return asmBuffer; },
           set asmBuffer(value) { asmBuffer = value; },
           get selectedMemoryProfile() { return selectedMemoryProfile; },
@@ -5202,6 +5205,8 @@ export function transpileAmyCore(sourceText, deps) {
           get hasRamOverlay() { return overlayDefinitions.size > 0; },
           get detachedAsmData() { return romData; },
           get insideRoutine() { return Boolean(currentFunction || (currentProc && lowerName(currentProc) !== "start")); },
+          get needsImplicitStart() { return !currentProc; },
+          ensureImplicitStartForExecutable,
           get sourceLineNumber() { return sourceLineNumber + 1; },
           resolveAsmInclude: (includePath) => resolveStaticAbiInclude?.(includePath),
           rewriteUserSymbolsInExpression,

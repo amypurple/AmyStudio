@@ -12,6 +12,7 @@ const temp = mkdtempSync(join(tmpdir(), "amy-megacart-cli-"));
 const source = `
 project "MegaCart CLI runtime"
 memory "colecovision-megacart"
+bank rom 64
 u8 Done = 0
 Done = 77
 loop forever
@@ -32,15 +33,13 @@ try {
     const romPath = join(temp, `case-${profile}.rom`);
     const result = spawnSync(process.execPath, [
       resolve(root, "tools/amyc.mjs"), sourcePath,
-      "--target", "colecovision-megacart",
-      "--memory-profile", "colecovision-megacart",
       "--asm", asmPath, "--rom", romPath, "--opt", profile
     ], { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
     assert.equal(result.status, 0, `${profile}: ${result.stdout || ""}${result.stderr || ""}`);
     const asm = readFileSync(asmPath, "utf8");
     const rom = readFileSync(romPath);
-    assert.equal(rom.length, 128 * 1024, `${profile}: MegaCart image size`);
-    assert.deepEqual([...rom.subarray(7 * 16384, 7 * 16384 + 2)], [0x55, 0xAA], `${profile}: fixed-bank header`);
+    assert.equal(rom.length, 64 * 1024, `${profile}: source-selected MegaCart image size`);
+    assert.deepEqual([...rom.subarray(3 * 16384, 3 * 16384 + 2)], [0x55, 0xAA], `${profile}: fixed-bank header`);
     const core = await GearcolecoTestCore.create({ seed: 0x4D434C49 });
     try {
       core.loadBios(bios);

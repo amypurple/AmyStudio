@@ -170,7 +170,7 @@ const DEPS = {
 };
 
 function parseArgs(argv) {
-  const opts = { file: null, help: false, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, reportJson: null, opt: "balanced", projectDir: null, target: "colecovision-cartridge", medium: null, memoryProfile: null, hardware: [], defines: [], disabledOptimizerPasses: [], experimentalRecordIx: false };
+  const opts = { file: null, help: false, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, reportJson: null, opt: "balanced", projectDir: null, target: "colecovision-cartridge", targetExplicit: false, medium: null, memoryProfile: null, hardware: [], defines: [], disabledOptimizerPasses: [], experimentalRecordIx: false };
   const requiredValue = (index, option) => {
     const value = argv[index + 1];
     if (!value || value.startsWith("--")) throw new Error(`${option} requires a value.`);
@@ -186,7 +186,7 @@ function parseArgs(argv) {
     else if (a === "--report-json") opts.reportJson = requiredValue(i++, a);
     else if (a === "--opt") opts.opt = requiredValue(i++, a).toLowerCase();
     else if (a === "--project-dir") opts.projectDir = requiredValue(i++, a);
-    else if (a === "--target") opts.target = requiredValue(i++, a).toLowerCase();
+    else if (a === "--target") { opts.target = requiredValue(i++, a).toLowerCase(); opts.targetExplicit = true; }
     else if (a === "--medium") opts.medium = requiredValue(i++, a).toLowerCase();
     else if (a === "--memory-profile") opts.memoryProfile = requiredValue(i++, a);
     else if (a === "--hardware") opts.hardware.push(requiredValue(i++, a).toLowerCase());
@@ -324,6 +324,14 @@ async function main() {
   const srcPath = path.resolve(opts.file);
   if (!existsSync(srcPath)) { console.error("File not found: " + srcPath); process.exit(2); }
   const sourceText = readFileSync(srcPath, "utf8");
+  const sourceMemoryProfile = sourceText.match(/^\s*memory\s+["']([^"']+)["']/im)?.[1] || null;
+  const sourceMegaCartSize = Number(sourceText.match(/^\s*bank\s+rom\s+(64|128|256|512|1024)(?:\s*kb)?\s*$/im)?.[1] || 0) || null;
+  const sourceRequestsMegaCart = sourceMemoryProfile === "colecovision-megacart" || sourceMegaCartSize != null;
+  if (sourceRequestsMegaCart && opts.targetExplicit && opts.target !== "colecovision-megacart") {
+    console.error(`Compile failed: source requests a ColecoVision MegaCart, but --target ${opts.target} was selected.`);
+    process.exit(1);
+  }
+  if (sourceRequestsMegaCart) opts.target = "colecovision-megacart";
   const resolveStaticAbiInclude = (includePath) => {
     const normalized = String(includePath || "").replace(/\\/g, "/");
     const abs = normalized.toLowerCase().startsWith("@project/")
@@ -344,7 +352,6 @@ async function main() {
   project.projectName = path.basename(base);
   project.projectFiles = collectProjectDirAsmFiles(opts.projectDir);
   project.target = { platform: opts.target, ...(opts.medium ? { medium: opts.medium } : {}), ...(opts.hardware.length ? { hardware: opts.hardware.filter(Boolean) } : {}) };
-  const sourceMemoryProfile = sourceText.match(/^\s*memory\s+["']([^"']+)["']/im)?.[1] || null;
   const requestedMemoryProfile = opts.memoryProfile || sourceMemoryProfile;
   if (requestedMemoryProfile) project.memoryProfile = requestedMemoryProfile;
   const buildContext = resolveAmyBuildContext(project, {
@@ -376,8 +383,7 @@ async function main() {
       ? ""
       : ` Select --target colecovision-megacart for fixed-bank-only builds.`;
     const message = `Standalone Amy source cannot resolve MegaCart banked imports (${imports}).${targetHint} ` +
-      `Use a multifile MegaCart .amy.json project with switchable-bank outputs and exported symbols; ` +
-      `see studio/examples-src/megacart-bank-demo.amy.json.`;
+      `Use a multifile MegaCart .amy.json project with switchable-bank outputs and exported symbols.`;
     writeBuildReport(opts, { ok: false, source: srcPath, stage: "transpile", diagnostics: [diagnosticFromLog(srcPath, "transpile", message)] });
     console.error(`Compile failed: ${message}`);
     process.exit(1);
@@ -453,7 +459,8 @@ async function main() {
   let rom = assembled.binary || assembled.bytes || new Uint8Array();
   if (opts.target === "colecovision-megacart") {
     try {
-      rom = buildMegaCartImage({ sizeKb: 128, fixedBank: rom }).image;
+      const sizeKb = Number(transpiled.metadata?.megaCart?.romSizeKb || sourceMegaCartSize || 128);
+      rom = buildMegaCartImage({ sizeKb, fixedBank: rom }).image;
     } catch (error) {
       const message = error?.message || String(error);
       writeBuildReport(opts, { ok: false, source: srcPath, stage: "package", diagnostics: [diagnosticFromLog(srcPath, "package", message)] });

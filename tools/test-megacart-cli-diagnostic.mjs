@@ -23,7 +23,7 @@ loop forever
     assert.equal(result.status, 1);
     const output = `${result.stdout || ""}${result.stderr || ""}`;
     assert.match(output, /Standalone Amy source cannot resolve MegaCart banked imports/i);
-    assert.match(output, /megacart-bank-demo\.amy\.json/i);
+    assert.match(output, /multifile MegaCart \.amy\.json project/i);
     assert.doesNotMatch(output, /Invalid expression: AMY_MEGACART/i);
   }
   console.log("MegaCart standalone import diagnostic: PASS");
