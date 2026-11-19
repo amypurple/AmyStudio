@@ -188,14 +188,25 @@ export function createTypeSymbolHelpers(ctx) {
 
   function rewriteUserSymbolsInAsmLine(sourceLine) {
     const line = String(sourceLine || "");
-    const commentIndex = line.indexOf(";");
+    let quote = "";
+    let commentIndex = -1;
+    for (let index = 0; index < line.length; index += 1) {
+      const ch = line[index];
+      if (quote) {
+        if (ch === quote) {
+          if (line[index + 1] === quote) index += 1;
+          else quote = "";
+        }
+      } else if (ch === "\"" || ch === "'") quote = ch;
+      else if (ch === ";") { commentIndex = index; break; }
+    }
     const code = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
     const comment = commentIndex >= 0 ? line.slice(commentIndex) : "";
     const instruction = code.match(/^(\s*(?:[A-Za-z_][A-Za-z0-9_]*:\s*)?)([A-Za-z_.][A-Za-z0-9_.]*)([\s\S]*)$/);
     if (!instruction) return line;
     const explicitSymbols = new Map();
     let explicitIndex = 0;
-    const operands = instruction[3].replace(/\bamy\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/gi, (_match, name) => {
+    const rewriteCodeSpan = (span) => span.replace(/\bamy\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/gi, (_match, name) => {
       const resolved = resolveNamedAsmSymbol(name);
       if (!resolved) {
         throw new Error(`Unknown Amy symbol '${name}' in inline ASM expression amy(${name}).`);
@@ -203,8 +214,7 @@ export function createTypeSymbolHelpers(ctx) {
       const placeholder = `__AMY_EXPLICIT_${explicitIndex++}__`;
       explicitSymbols.set(placeholder, resolved);
       return placeholder;
-    });
-    const rewrittenOperands = operands.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name, offset, expression) => {
+    }).replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name, offset, expression) => {
       if (explicitSymbols.has(name)) return name;
       if (offset > 0 && expression[offset - 1] === "$") return name;
       if (inlineAsmSymbols.has(name.toLowerCase())) return name;
@@ -217,6 +227,28 @@ export function createTypeSymbolHelpers(ctx) {
       }
       return resolved || name;
     }).replace(/__AMY_EXPLICIT_\d+__/g, (placeholder) => explicitSymbols.get(placeholder));
+    let rewrittenOperands = "";
+    let spanStart = 0;
+    quote = "";
+    const operands = instruction[3];
+    for (let index = 0; index < operands.length; index += 1) {
+      const ch = operands[index];
+      if (!quote && (ch === "\"" || ch === "'")) {
+        rewrittenOperands += rewriteCodeSpan(operands.slice(spanStart, index));
+        quote = ch;
+        spanStart = index;
+      } else if (quote && ch === quote) {
+        if (operands[index + 1] === quote) index += 1;
+        else {
+          rewrittenOperands += operands.slice(spanStart, index + 1);
+          quote = "";
+          spanStart = index + 1;
+        }
+      }
+    }
+    rewrittenOperands += quote
+      ? operands.slice(spanStart)
+      : rewriteCodeSpan(operands.slice(spanStart));
     // The first token is an opcode/directive, not an Amy expression. Rewriting
     // it would turn a mnemonic such as OUT into a same-named Amy label.
     return `${instruction[1]}${instruction[2]}${rewrittenOperands}${comment}`;
