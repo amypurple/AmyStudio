@@ -27,6 +27,9 @@ import {
 } from "../studio/core/compilerFrontend.js";
 import { transpileAmySource } from "../studio/core/amyCompiler.js";
 import { buildMegaCartImage } from "../studio/core/megaCartImage.js";
+import { buildMegaCartProject } from "../studio/core/megaCartProjectBuild.js";
+import { buildMegaCartImportTrampolines } from "../studio/core/megaCartTrampolines.js";
+import { formatMegaCartDebuggerSymbols } from "../studio/core/megaCartLinkMap.js";
 import { emitSafeCall as emitSafeCallCore } from "../studio/core/compiler/runtimeCallHelpers.js";
 import { createBcdHelpers } from "../studio/core/compiler/bcdHelpers.js";
 import { createAddressHelpers } from "../studio/core/compiler/addressHelpers.js";
@@ -99,7 +102,7 @@ const CLI_VALUES = Object.freeze({
 const HELP_TEXT = `Amy compiler command line
 
 Usage:
-  node tools/amyc.mjs <file.alexis> [options]
+  node tools/amyc.mjs <file.alexis|project.amy.json> [options]
 
 Outputs (not written unless requested):
   --output [path]          Write the compiled .rom or ADAM .bin (--rom is an alias)
@@ -127,12 +130,16 @@ Advanced:
 
 If an optional output path is omitted, the file is written beside the source.
 The compiler always assembles and reports ROM/RAM use, even with no output flag.
-Full ADAM .dsk/.ddp project packaging is performed by Amy Studio, not this
-single-source compiler; those targets compile their program payload here.
+Multifile MegaCart projects use a .amy.json manifest with one Amy fixed-bank
+output and Amy, assembly, or binary-asset switchable-bank outputs. The CLI
+links exported bank symbols, emits import trampolines, and writes one .rom.
+Full ADAM .dsk/.ddp project packaging is performed by Amy Studio, not this CLI;
+those targets compile their program payload here.
 
 Examples:
   node tools/amyc.mjs game.alexis --output --asm --opt balanced
   node tools/amyc.mjs game.alexis --output build/game.rom --symbols build/game.sym
+  node tools/amyc.mjs project.amy.json --output build/game-megacart.rom --opt balanced
   node tools/amyc.mjs app.alexis --target adam-native-program --medium dsk --output
   node tools/amyc.mjs game.alexis --hardware sgm1 --define DEBUG --output`;
 
@@ -305,6 +312,198 @@ function buildAssemblyFiles(asm, projectDir) {
   return files;
 }
 
+function projectSourceDescriptor(source) {
+  return typeof source === "string"
+    ? { path: source, kind: /\.(?:asm|inc)$/i.test(source) ? "asm" : "asset" }
+    : source || {};
+}
+
+function loadMegaCartCliProject(manifestPath) {
+  let manifestObject;
+  try {
+    manifestObject = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Cannot read MegaCart project '${manifestPath}': ${error.message || error}`);
+  }
+  if (manifestObject?.target?.platform !== "colecovision-megacart") {
+    throw new Error("Project JSON must declare target.platform as 'colecovision-megacart'.");
+  }
+  const outputs = Array.isArray(manifestObject.outputs) ? manifestObject.outputs : [];
+  if (!outputs.length) throw new Error("MegaCart project JSON has no outputs.");
+  const projectDir = path.dirname(manifestPath);
+  const projectFiles = Array.isArray(manifestObject.projectFiles)
+    ? manifestObject.projectFiles.map((entry) => ({ ...entry }))
+    : [];
+  const findEmbedded = (filePath) => projectFiles.find((entry) =>
+    String(entry.path || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase() ===
+    String(filePath || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase()
+  );
+  for (const output of outputs) {
+    for (const rawSource of output.sources || []) {
+      const source = projectSourceDescriptor(rawSource);
+      if (!source.path || findEmbedded(source.path)) continue;
+      const absolute = path.resolve(projectDir, String(source.path).replace(/^@project[\\/]/i, ""));
+      if (!existsSync(absolute)) {
+        if (output.type === "fixed-bank" && source.kind === "amy" && typeof manifestObject.sourceText === "string") {
+          projectFiles.push({ path: source.path, kind: "amy-source", base64: Buffer.from(manifestObject.sourceText, "utf8").toString("base64") });
+          continue;
+        }
+        throw new Error(`MegaCart ${output.name || output.type} cannot find '${source.path}' beside the project manifest.`);
+      }
+      projectFiles.push({
+        path: source.path,
+        kind: source.kind === "amy" ? "amy-source" : source.kind === "asm" ? "asm-source" : "asset",
+        base64: Buffer.from(readFileSync(absolute)).toString("base64")
+      });
+    }
+  }
+  const fixedOutput = outputs.find((output) => output.type === "fixed-bank");
+  const fixedSource = projectSourceDescriptor(fixedOutput?.sources?.[0]);
+  if (!fixedOutput || fixedSource.kind !== "amy") throw new Error("MegaCart CLI requires one Amy fixed-bank source.");
+  const fixedFile = findEmbedded(fixedSource.path);
+  if (!fixedFile?.base64) throw new Error(`MegaCart fixed source '${fixedSource.path}' has no content.`);
+  return {
+    manifest: { ...manifestObject, outputs },
+    project: {
+      ...manifestObject,
+      projectName: manifestObject.projectName || path.basename(manifestPath, path.extname(manifestPath)),
+      sourceLang: "amy",
+      memoryProfile: manifestObject.memoryProfile || "colecovision-megacart",
+      target: { ...manifestObject.target },
+      outputs,
+      projectFiles,
+      sourceText: Buffer.from(fixedFile.base64, "base64").toString("utf8")
+    },
+    projectDir
+  };
+}
+
+async function compileMegaCartCliProject(opts, manifestPath) {
+  const loaded = loadMegaCartCliProject(manifestPath);
+  const { project, manifest: projectManifest, projectDir } = loaded;
+  const buildContext = resolveAmyBuildContext(project, projectManifest);
+  const resolveStaticAbiInclude = (includePath) => {
+    const normalized = String(includePath || "").replace(/\\/g, "/");
+    const embedded = project.projectFiles.find((entry) =>
+      String(entry.path || "").replace(/\\/g, "/").replace(/^@project\//i, "").toLowerCase() ===
+      normalized.replace(/^@project\//i, "").toLowerCase()
+    );
+    if (embedded?.base64) return Buffer.from(embedded.base64, "base64").toString("utf8");
+    const absolute = normalized.toLowerCase().startsWith("@project/")
+      ? path.resolve(projectDir, normalized.slice("@project/".length))
+      : path.resolve(REPO, normalized);
+    return existsSync(absolute) ? readFileSync(absolute, "utf8") : null;
+  };
+  const transpileSource = (sourceText, context) => transpileAmyCore(sourceText, {
+    ...DEPS,
+    resolveStaticAbiInclude,
+    buildContext: context,
+    predefinedSymbols: [...new Set([...getBuildContextDefines(context), ...opts.defines.filter(Boolean)])],
+    experimentalRecordIx: opts.experimentalRecordIx || optimizationUsesRecordIx(opts.opt)
+  });
+  const fixedTranspiled = transpileSource(project.sourceText, buildContext);
+  if (!fixedTranspiled.ok) throw new Error(`Fixed bank failed:\n${fixedTranspiled.log}`);
+  const fixedAsm = generateAsm(project, fixedTranspiled.asmBody, fixedTranspiled.assets || [], {
+    ...(fixedTranspiled.metadata || {}), buildTarget: buildContext
+  });
+  const profile = getOptimizationProfile(opts.opt, fixedAsm);
+  const assemblyFiles = (source, filename) => {
+    const files = { [filename]: source, ...alexisLibrarySources };
+    for (const entry of project.projectFiles) {
+      if (!entry?.base64 || !entry?.path) continue;
+      const bytes = new Uint8Array(Buffer.from(entry.base64, "base64"));
+      const normalized = String(entry.path).replace(/\\/g, "/").replace(/^@project\//i, "");
+      files[normalized] = bytes;
+      files[`@project/${normalized}`] = bytes;
+    }
+    const includes = buildAssemblyFiles(source, projectDir);
+    return { ...includes, ...files };
+  };
+  const assemble = async (source, filename, { optimize = false } = {}) => {
+    const assembled = await assembleAmysCVAssembly(assemblyFiles(source, filename), filename, {
+      outputFilename: filename.replace(/\.asm$/i, ".bin"),
+      outputMode: "binary",
+      targetPlatform: optimize ? "coleco" : "raw",
+      optimizerEnabled: optimize ? profile.optimizerEnabled : false,
+      optimizerConfig: optimize ? profile.optimizerConfig : null
+    });
+    if (!assembled.ok) throw new Error(`${filename} failed:\n${assembled.log}`);
+    return {
+      bytes: assembled.binary || assembled.bytes,
+      symbols: assembled.symbols,
+      symbolsText: assembled.symbolsText || "",
+      optimizedAsm: assembled.optimizedAsm || source,
+      sourceDebugMap: assembled.sourceDebugMap
+    };
+  };
+  let finalFixedAsm = fixedAsm;
+  let finalFixedResult = null;
+  const built = await buildMegaCartProject({
+    project,
+    manifest: projectManifest,
+    fixedBank: null,
+    buildSignature: `amyc-cli-v1:${buildContext.memoryProfile || ""}`,
+    compileAmyBank: async (source, filename, bankInfo) => {
+      const bankContext = {
+        platform: "colecovision-megacart-bank",
+        memoryProfile: buildContext.memoryProfile,
+        capabilities: ["os7", "megacart", "bank-local"],
+        romSizeKb: buildContext.romSizeKb,
+        bank: bankInfo.bank
+      };
+      const transpiled = transpileSource(source, bankContext);
+      if (!transpiled.ok) throw new Error(`${filename} failed:\n${transpiled.log}`);
+      if (transpiled.assets?.length) throw new Error(`${filename} uses external Amy assets; place them directly in the bank output.`);
+      return `org $C000\n${transpiled.asmBody}`;
+    },
+    compileAsm: (source, filename) => assemble(source, filename),
+    compileFixed: async ({ linkMap }) => {
+      const trampolines = buildMegaCartImportTrampolines({
+        imports: fixedTranspiled.metadata?.megaCart?.imports || [],
+        currentBankLabel: fixedTranspiled.metadata?.megaCart?.currentBankLabel,
+        linkMap
+      });
+      finalFixedAsm = `${fixedAsm}${trampolines}`;
+      finalFixedResult = await assemble(finalFixedAsm, "fixed.asm", { optimize: true });
+      return finalFixedResult;
+    }
+  });
+  const base = manifestPath.replace(/(?:\.amy)?\.json$/i, "");
+  const outputPath = opts.rom === undefined
+    ? null
+    : typeof opts.rom === "string" ? path.resolve(opts.rom) : `${base}.rom`;
+  if (outputPath) {
+    writeOutputFile(outputPath, built.image);
+    console.log(`ROM  -> ${outputPath}`);
+  }
+  const asmPath = opts.asm === undefined ? null : typeof opts.asm === "string" ? path.resolve(opts.asm) : `${base}.fixed.asm`;
+  const optimizedAsmPath = opts.optimizedAsm === undefined ? null : typeof opts.optimizedAsm === "string" ? path.resolve(opts.optimizedAsm) : `${base}.fixed.optimized.asm`;
+  const symbolsPath = opts.symbols === undefined ? null : typeof opts.symbols === "string" ? path.resolve(opts.symbols) : `${base}.sym`;
+  if (asmPath) {
+    writeOutputFile(asmPath, finalFixedAsm, "utf8");
+    console.log(`ASM  -> ${asmPath}`);
+  }
+  if (optimizedAsmPath) {
+    writeOutputFile(optimizedAsmPath, makePortableOptimizedAssembly(finalFixedResult?.optimizedAsm || finalFixedAsm), "utf8");
+    console.log(`OPT  -> ${optimizedAsmPath}`);
+  }
+  if (symbolsPath) {
+    writeOutputFile(symbolsPath, formatMegaCartDebuggerSymbols(finalFixedResult?.symbolsText || "", built.linkMap), "utf8");
+    console.log(`SYM  -> ${symbolsPath}`);
+  }
+  console.log(`ROM  ${built.image.length} bytes (${opts.opt} optimizer, ${built.layout.bankCount} MegaCart banks)`);
+  writeBuildReport(opts, {
+    ok: true,
+    source: manifestPath,
+    target: project.target,
+    memoryProfile: project.memoryProfile,
+    optimization: opts.opt,
+    romBytes: built.image.length,
+    diagnostics: [],
+    artifacts: { rom: outputPath, asm: asmPath, optimizedAsm: optimizedAsmPath, symbols: symbolsPath }
+  });
+}
+
 async function main() {
   let opts;
   try {
@@ -323,6 +522,17 @@ async function main() {
   }
   const srcPath = path.resolve(opts.file);
   if (!existsSync(srcPath)) { console.error("File not found: " + srcPath); process.exit(2); }
+  if (/\.json$/i.test(srcPath)) {
+    try {
+      await compileMegaCartCliProject(opts, srcPath);
+    } catch (error) {
+      const message = error?.message || String(error);
+      writeBuildReport(opts, { ok: false, source: srcPath, stage: "project", diagnostics: [diagnosticFromLog(srcPath, "project", message)] });
+      console.error(`Compile failed: ${message}`);
+      process.exit(1);
+    }
+    return;
+  }
   const sourceText = readFileSync(srcPath, "utf8");
   const sourceMemoryProfile = sourceText.match(/^\s*memory\s+["']([^"']+)["']/im)?.[1] || null;
   const sourceMegaCartSize = Number(sourceText.match(/^\s*bank\s+rom\s+(64|128|256|512|1024)(?:\s*kb)?\s*$/im)?.[1] || 0) || null;

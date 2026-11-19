@@ -407,6 +407,7 @@ const tests = [
   { file: "test-megacart-image.mjs", area: "megacart-image", evidence: "unit", suite: "examples" },
   { file: "test-megacart-project-build.mjs", area: "megacart-project-build", evidence: "runtime", suite: "examples" },
   { file: "test-megacart-cli-runtime.mjs", area: "megacart-cli-source-target", evidence: "runtime", suite: "examples" },
+  { file: "test-megacart-cli-project-runtime.mjs", area: "megacart-cli-multifile-project", evidence: "runtime", suite: "examples" },
   { file: "test-megacart-cli-diagnostic.mjs", area: "megacart-cli-diagnostic", evidence: "diagnostics", suite: "examples" },
   { file: "test-megacart-incremental-build.mjs", area: "megacart-incremental-build", evidence: "compile+assemble", suite: "studio" },
   { file: "test-check-examples-project-targets.mjs", area: "project-target-audit-routing", evidence: "unit", suite: "examples" },

@@ -1,6 +1,6 @@
 # Amy Compiler Command Line
 
-`tools/amyc.mjs` compiles one Amy source file with the same compiler and Z80 assembler used by Amy Studio.
+`tools/amyc.mjs` compiles an Amy source file or a multifile ColecoVision MegaCart project with the same compiler, linker and Z80 assembler used by Amy Studio.
 
 ```powershell
 node tools/amyc.mjs game.alexis --output --asm --opt balanced
@@ -56,6 +56,26 @@ eve-serial, orphanware-serial, micro-serial, microinnovations-serial
 
 The CLI compiles the program payload for ADAM targets and emits a `.bin` by default. Complete `.dsk` and `.ddp` multifile media packaging remains an Amy Studio project operation.
 
+### Multifile MegaCart Projects
+
+Pass a `.amy.json` project manifest directly to build one complete banked ROM:
+
+```powershell
+node tools/amyc.mjs project.amy.json --output build/game.rom --opt balanced
+```
+
+The manifest must declare `target.platform` as `colecovision-megacart`, one
+`fixed-bank` output whose first source is Amy, and any required
+`switchable-bank` outputs. Switchable sources may be Amy (`kind: "amy"`), Z80
+assembly (`kind: "asm"`), or binary assets (`kind: "asset"`). Paths are
+resolved beside the manifest; Studio-exported manifests containing base64
+`projectFiles` also work. Exported Amy/ASM symbols satisfy `call bank N, Name`
+imports and the linker generates bank-switch/restore trampolines automatically.
+
+`--asm` and `--optimized-asm` write the linked fixed-bank listings. `--symbols`
+writes bank-qualified debugger symbols. The final `.rom` contains every bank;
+no separate bank files need to be joined manually.
+
 ## Examples
 
 ```powershell
@@ -71,6 +91,9 @@ node tools/amyc.mjs game.alexis --opt aggressive --hardware sgm1 --define DEBUG 
 
 # Native ADAM payload
 node tools/amyc.mjs app.alexis --target adam-native-program --medium dsk --output
+
+# Multifile 128K MegaCart project
+node tools/amyc.mjs megacart-game.amy.json --output build/megacart-game.rom --symbols build/megacart-game.sym
 ```
 
 Unknown options, invalid values, missing values and extra positional arguments are rejected. Exit code `0` means success, `1` means compilation/assembly failure, and `2` means invalid command-line use.

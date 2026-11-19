@@ -60,6 +60,7 @@ const quickTests = [
   "test-call-asm-abi-rom.mjs",
   "test-leading-inline-asm-runtime.mjs",
   "test-megacart-cli-runtime.mjs",
+  "test-megacart-cli-project-runtime.mjs",
   "test-megacart-cli-diagnostic.mjs",
   "test-overlay-layout-rom.mjs",
   "test-sprite-count-init-runtime.mjs",

@@ -1716,3 +1716,14 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   `B70CE221AC5D841CA27400BC1998813FC57086960006CF478A51A347B20DB25C`).
 - `vscode.html` now links and describes 0.1.19.
 
+# 2026-11-18 - CLI builds complete multifile MegaCart ROMs
+
+- `tools/amyc.mjs project.amy.json --output game.rom` now compiles one Amy
+  fixed bank plus Amy, Z80 assembly, and binary-asset switchable banks.
+- Exported bank procedures resolve `call bank N, Name`; generated fixed-bank
+  trampolines select the requested bank and restore the previous mapper state.
+- Optional ASM, optimized-ASM, JSON-report, and bank-qualified symbol outputs
+  remain available for project builds.
+- `test-megacart-cli-project-runtime.mjs` validates the final image, Amy and ASM
+  calls, mapper restoration, and exact asset bytes at all five profiles.
+

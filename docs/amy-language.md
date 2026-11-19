@@ -4201,6 +4201,17 @@ This places the ordinary program in the final fixed 16 KB bank and leaves the
 switchable banks empty. Use a multifile MegaCart project when code or assets
 must occupy those switchable banks.
 
+The command-line compiler accepts that project manifest directly:
+
+```text
+node tools/amyc.mjs megacart-game.amy.json --output megacart-game.rom --opt balanced
+```
+
+It compiles Amy and assembly bank sources, embeds binary asset banks, resolves
+exported bank symbols, emits fixed-bank import trampolines, and produces one
+complete ROM. See `docs/amy-compiler-cli.md` and
+`studio/examples-src/megacart-bank-demo.amy.json` for the manifest layout.
+
 MegaCart declarations intentionally follow the established CVBasic vocabulary so ports do not need a second spelling:
 
 ```amy
