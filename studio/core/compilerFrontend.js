@@ -116,6 +116,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const needsTextVdpGuard =
     /^\s*put\s+char\b/im.test(codeText) ||
     /=\s*get\s+char\s+at\b/im.test(codeText) ||
+    /^\s*v(?:poke|peek)\b/im.test(codeText) ||
     /^\s*fill(?:\s+.+?\s+count\s+.+?\s+at\b|\s+at\b)/im.test(codeText) ||
     /^\s*update\s+sprites\b/im.test(codeText) ||
     /\bAMY_(?:PUT_CHAR_AT|GET_CHAR_AT|FILL_AT|PRINT_AT|UPDATE_SPRITES(?:_PARTIAL|_FLICKER)?|RELEASE_VDP_GUARD)\b/i.test(text);
@@ -201,6 +202,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsFrameCounter,
     usesVblankHook,
     needsVdpStatusShadow,
+    needsVdpGuardPending: needsTextVdpGuard,
     needsTinySound,
     needsExomizer,
     needsVoiceQueue,

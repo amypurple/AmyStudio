@@ -1417,6 +1417,8 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
   const needsFrameCounter = usesFrameCounter || usesTinySound;
   const needsNmiFlagShadow = !nativeEosTarget && usesNmiFlagShadow;
   const needsVdpStatusShadow = usesVdpStatusShadow;
+  const needsVdpGuardPending = /\bAMY_RELEASE_VDP_GUARD\b/.test(asmBody)
+    || sourceMemoryCaps.needsVdpGuardPending;
   const needsSound = usesSoundApi || usesMusicApi;
   const needsMusic = usesMusicApi;
   const needsTinySound = usesTinySound;
@@ -1445,6 +1447,7 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
     usesScreenOnNmi,
     needsNmiFlagShadow,
     needsVdpStatusShadow,
+    needsVdpGuardPending,
     needsSound,
     needsMusic,
     needsTinySound,
@@ -1702,6 +1705,9 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
       lines.push(`NO_NMI          EQU ${hex16(addr.no_nmi)}`);
       lines.push(`VDP_STATUS      EQU ${hex16(addr.vdp_status)}`);
       lines.push(`NMI_FLAG        EQU ${hex16(addr.nmi_flag)}`);
+      if (caps.needsVdpGuardPending) {
+        lines.push(`VDP_GUARD_PENDING EQU ${hex16(addr.vdp_guard_pending)}`);
+      }
     }
     if (needsControllers) {
       if (addr.joypad_1 !== undefined) lines.push(`JOYPAD_1        EQU ${hex16(addr.joypad_1)}`);
@@ -1851,9 +1857,8 @@ function emitLegacyRuntime(lines, caps) {
     lines.push("        ld a,($701F)");
     lines.push("        cp $A5");
     lines.push(`        jr nz,${continueLabel}`);
-    // CP preserves A, and $A5 complemented is the deferred-ack marker $5A.
-    lines.push("        cpl");
-    lines.push("        ld ($701F),a");
+    lines.push("        ld a,1");
+    lines.push("        ld (VDP_GUARD_PENDING),a");
     if (caps.needsSpinner) {
       const noEiLabel = `${continueLabel}_NO_EI`;
       lines.push("        ld a,(SPINNER_ENABLED)");
@@ -1939,9 +1944,11 @@ function emitLegacyRuntime(lines, caps) {
   if (caps.needsNmiAckOnly) {
     lines.push("        push af");
     const needsAckOnlySuppression = caps.needsSpinner || caps.needsFrameCounter;
-    emitVdpGuardEarlyReturn(needsAckOnlySuppression
-      ? "AMY_NMI_ACK_ONLY_CHECK_REENTRANCY"
-      : "AMY_NMI_ACK_ONLY_READ_STATUS");
+    if (caps.needsVdpGuardPending) {
+      emitVdpGuardEarlyReturn(needsAckOnlySuppression
+        ? "AMY_NMI_ACK_ONLY_CHECK_REENTRANCY"
+        : "AMY_NMI_ACK_ONLY_READ_STATUS");
+    }
     if (needsAckOnlySuppression) emitNoNmiEarlyReturn("AMY_NMI_ACK_ONLY_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
@@ -1987,7 +1994,7 @@ function emitLegacyRuntime(lines, caps) {
 
   if (needsOnlyUserHook) {
     lines.push("        push af");
-    emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CHECK_REENTRANCY");
+    if (caps.needsVdpGuardPending) emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CHECK_REENTRANCY");
     emitNoNmiEarlyReturn("AMY_NMI_COMPACT_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
@@ -2037,7 +2044,7 @@ function emitLegacyRuntime(lines, caps) {
 
   if (needsOnlyCompactControllers) {
     lines.push("        push af");
-    emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_CHECK_REENTRANCY");
+    if (caps.needsVdpGuardPending) emitVdpGuardEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_CHECK_REENTRANCY");
     emitNoNmiEarlyReturn("AMY_NMI_COMPACT_CONTROLLERS_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
     if (caps.needsNmiFlagShadow) {
@@ -2184,7 +2191,7 @@ function emitLegacyRuntime(lines, caps) {
   }
 
   lines.push("        push af");
-    emitVdpGuardEarlyReturn("AMY_NMI_CHECK_REENTRANCY");
+    if (caps.needsVdpGuardPending) emitVdpGuardEarlyReturn("AMY_NMI_CHECK_REENTRANCY");
     emitNoNmiEarlyReturn("AMY_NMI_READ_STATUS");
     lines.push("        in a,(VDP_CTRL_PORT)");
   if (caps.needsControllers || caps.needsNmiFlagShadow) {

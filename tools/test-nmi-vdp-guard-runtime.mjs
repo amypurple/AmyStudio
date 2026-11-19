@@ -66,7 +66,7 @@ try {
     assert.equal(build.status, 0, `${profile}: ${build.error?.stack || ""}${build.stdout || ""}${build.stderr || ""}`);
     const assembly = readFileSync(asm, "utf8");
     assert.match(assembly,
-      /Nmi:\s+push af\s+ld a,\(\$701F\)\s+cp \$A5\s+jr nz,AMY_NMI_[A-Z_]*READ_STATUS\s+cpl\s+ld \(\$701F\),a\s+pop af\s+ret\s+AMY_NMI_[A-Z_]*READ_STATUS:\s+in a,\(VDP_CTRL_PORT\)/i,
+      /Nmi:\s+push af\s+ld a,\(\$701F\)\s+cp \$A5\s+jr nz,AMY_NMI_[A-Z_]*READ_STATUS\s+ld a,1\s+ld \(VDP_GUARD_PENDING\),a\s+pop af\s+ret\s+AMY_NMI_[A-Z_]*READ_STATUS:\s+in a,\(VDP_CTRL_PORT\)/i,
       `${profile}: NMI must test the VDP guard before reading status`);
     assert.doesNotMatch(assembly, /AMY_NMI_ACK_ONLY_CHECK_REENTRANCY/,
       `${profile}: ack-only NMI without periodic work must not retain a redundant NO_NMI branch`);
@@ -74,6 +74,7 @@ try {
 
   const assembly = readFileSync(join(temp, "balanced.asm"), "utf8");
   const passedAddress = addressOf(assembly, "AMY_UVAR_Passed");
+  const pendingAddress = addressOf(assembly, "VDP_GUARD_PENDING");
   const core = await GearcolecoTestCore.create({ seed: 0x701f5a });
   try {
     core.loadBios(readFileSync(resolve(root, "studio/bios/colecovision.rom")));
@@ -82,6 +83,7 @@ try {
     assert.equal(core.readRam(passedAddress, 1)[0], 1, "deferred acknowledgement did not resume later frames");
     assert.equal(core.readVram(0x1800, 1)[0], 0x5A, "NMI corrupted the split VDP address write");
     assert.equal(core.readRam(0x701F, 1)[0], 0, "VDP critical-section marker was not released");
+    assert.equal(core.readRam(pendingAddress, 1)[0], 0, "deferred VDP acknowledge remained pending");
   } finally {
     core.destroy();
   }

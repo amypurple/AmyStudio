@@ -234,6 +234,7 @@ const tests = [
   { file: "test-inline-if-elseif-codegen.mjs", area: "inline-conditionals", evidence: "compile+assemble" },
   { file: "test-nmi-prologue-codegen.mjs", area: "nmi-prologue", evidence: "compile+assemble" },
   { file: "test-nmi-vdp-guard-runtime.mjs", area: "nmi-vdp-critical-section", evidence: "rom" },
+  { file: "test-vdp-guard-release-race.mjs", area: "nmi-vdp-guard-release-race", evidence: "rom" },
   { file: "test-sprite-update-nmi-guard.mjs", area: "sprite-update-vdp-critical-section", evidence: "rom" },
   { file: "test-screen-nmi-codegen.mjs", area: "screen-nmi-state", evidence: "compile+assemble" },
   { file: "test-compile-time-conditionals.mjs", area: "conditional-compilation", evidence: "compile+assemble" },

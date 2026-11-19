@@ -160,7 +160,7 @@ export const alexisRuntimeCatalog = {
   "AMY_RELEASE_VDP_GUARD": {
     "group": "vdp",
     "sourcePath": "src/alexis_lib/coleco_vdp_guard.asm",
-    "asm": "AMY_RELEASE_VDP_GUARD:\n    ld a,($701F)\n    cp $5A\n    jr nz,AMY_RELEASE_VDP_GUARD_CLEAR\n    in a,(VDP_CTRL_PORT)\n    ld (NMI_FLAG),a\n    ld (VDP_STATUS),a\nAMY_RELEASE_VDP_GUARD_CLEAR:\n    xor a\n    ld ($701F),a\n    ret",
+    "asm": "AMY_RELEASE_VDP_GUARD:\n    xor a\n    ld ($701F),a\n    ld a,(VDP_GUARD_PENDING)\n    or a\n    ret z\n    xor a\n    ld (VDP_GUARD_PENDING),a\n    in a,(VDP_CTRL_PORT)\n    ld (NMI_FLAG),a\n    ld (VDP_STATUS),a\n    ret",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_vdp_guard.asm",
     "extractedFromLabel": "AMY_RELEASE_VDP_GUARD"

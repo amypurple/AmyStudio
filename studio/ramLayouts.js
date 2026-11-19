@@ -66,6 +66,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsNmi = !!caps.needsNmi;
   const needsNmiFlagShadow = !!caps.needsNmiFlagShadow;
   const needsVdpStatusShadow = !!caps.needsVdpStatusShadow;
+  const needsVdpGuardPending = !!caps.needsVdpGuardPending;
   const needsUserFrameHook = !!caps.needsUserFrameHook;
   const needsAmyTimers = !!caps.needsAmyTimers;
   const needs120c = !!caps.needs120c;
@@ -127,8 +128,15 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     addresses.no_nmi = current;
     addresses.vdp_status = current + 1;
     addresses.nmi_flag = current + 2;
-    reserved.push({ start: current, endExclusive: current + 3, label: "Amy runtime state" });
     current += 3;
+    if (needsVdpGuardPending) {
+      addresses.vdp_guard_pending = current++;
+    }
+    reserved.push({
+      start: addresses.no_nmi,
+      endExclusive: current,
+      label: needsVdpGuardPending ? "Amy runtime state + VDP guard pending" : "Amy runtime state"
+    });
   }
 
   if (needsBackdropShadow) {
