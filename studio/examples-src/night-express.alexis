@@ -1,0 +1,5947 @@
+cartridge "NIGHT EXPRESS/AMY & CLAUDE/2026"
+' merged single-file source (main.alexis + generated art/sound), built 2026-11-17 16:34 EST America/Toronto (r12.1, --opt balanced)
+
+' NIGHT EXPRESS - an original game by Amy & Claude for
+' Amy Studio, 2026, in Amy. The thief from NIGHT ROUNDS escapes across the
+' roofs of a night express; the guard chases him car by car to the engine.
+'
+' Controls (controller 1): stick left/right runs (it takes a few steps to
+' reach full speed and to stop), UP or the RIGHT button jumps, DOWN ducks
+' (and crawls), the LEFT button grabs (a lunge: 14 px in 8 frames, then 20
+' frames to recover on the roof; in the air the jump goes on).
+' Rules:
+' - each run starts on the last coach; the thief is ahead. Reach the
+'   engine (he is cornered: 200) or grab him (500) and the run is won:
+'   bonus, next level (LV).
+' - grabbing (v3, 2026-11-17): he sprints away from a guard close behind,
+'   but he is OFF BALANCE (his stripes turn yellow, GRAB! shows when you
+'   are near) for a moment after every landing (25 frames at LV 1, 1 less
+'   a level) and after throwing coal; he is yellow too while he ducks or
+'   throws. Only a yellow thief can be caught: a lunge that reaches him
+'   (18 px from the guard's x + 4, on every frame of the lunge) catches him.
+'   Off balance he moves at 1/8 of his pace and does not jump (he waits at
+'   the edge). A missed lunge costs 20 frames: mashing does not pay.
+' - falling between the cars costs a life (icons). When the time bar runs
+'   out the thief escapes over the engine: that also costs a life.
+' - low bridges and signal gantries come over the train: duck under them.
+'   Coal thrown back from the tender rolls along the roof and luggage sits
+'   on the roofs: jump them. Any of these knocks you down for a moment.
+' - the train: 4 coaches at LV 1-2, 5 at LV 3-4, 6 at LV 5-6, 7 at LV 7,
+'   8 from LV 8 (TrainCars), then the tender and the engine; "n CARS  GET
+'   READY" at the start of a run, and the map in the HUD (row 2: the train,
+'   the guard cyan, the thief white). Every gap is 16 or 24 px (a running
+'   jump flies 32 px; the thief jumps at 20/16 px a frame at least: 41 px),
+'   and the guard can reach the engine on every level's train well inside
+'   its time (tools: prove.py).
+' - each level: the thief is faster (his pace 11-15, never over the
+'   guard's 16; his sprint 17-25), obstacles come more often, the time is
+'   shorter: 38 s at LV 1, 2 s less a level, 1 s less a level after LV 8,
+'   3 s more for each coach over 4: 38 36 | 37 35 | 36 34 | 35 | 36 35 34 s;
+'   the rest stops rising at LV 8.
+'   3 lives, one more every 2 levels (max 5).
+' - LV 10 is the last run: win it and the game is over, won: 500 points for
+'   each life left, dawn comes up over the line, THE END and the credits; a
+'   press (after 2 s) returns to the title.
+' - knocked down by luggage: pushed back up to 22 px along the roof; a jump
+'   pressed while getting up is done on the first frame back up.
+'
+' House frame: title menu START / HOW TO PLAY / CREDITS over the running
+' train (a demo chase); HOW TO PLAY pages over the demo; game over: one
+' press returns to the title. Text and HUD are written in the sky (rows
+' 1-7) through a buffer, one row a frame. Nothing flashes over 3 Hz.
+'
+' The train strip holds the longest train (8 coaches: E3, E4 (copies of
+' C3, C4), E1, E2, then the 4 first ones): x is along that strip for every
+' level. A level's train is its last coaches: the tender (832) and the
+' engine (888) never move, the rear does (TrainL; the camera from CamMin).
+' Surf, the strip's names (smoke, cab, body, wheels) and the R tables are in
+' ROM; the rear end on screen (sky, then the last coach's end, 4 cells)
+' comes from the strip's own first cells (NxOutT); the R tables start at the
+' cell ExtraC + RSkip (every row before is alike: TrRow, row 0 below).
+'
+' Screen (24 rows; columns 2-29 and rows 1-22 visible, CRT safe area):
+'   rows 1-7    sky, moon, stars; the text/HUD rows 1, 3, 5 (and 2, 4, 6)
+'   rows 8-10   far hills, 1/4 of the ground speed
+'   rows 11-12  forest and mist, 1/2
+'   rows 13-14  telegraph poles, fence, bushes: full ground speed
+'   rows 15-20  the train (smoke, cab, roofs, windows, wheels): the camera
+'   rows 21-22  rails and ballast: full ground speed
+' The ground moves 1 pixel a frame and the camera at most 1, so the near
+' layer moves at most 2 pixels a frame. Bridges and gantries are drawn with
+' their own tiles (NxObs): the span over the track in rows 13-15, the leg or
+' pier behind the train in row 16 and its footing beside the track in row 21;
+' coal in row 16. The gantry is a moonlit lattice truss over the track (rows
+' 14-15) with a lamp on its mast (row 16). The only sprites are the guard (2) and the thief (2): never
+' more than 4 on a line.
+'
+' Frame: wait for the vertical blank (the NMI runs only during the wait and
+' only flags the frame: NO_NMI), then NxFrame writes the sprite table, every
+' band that moved, the obstacle overlay and one dirty text row, starting at
+' once in the blank; then the NMI's own work (controller, sound: NxLate),
+' then the logic of the next frame. Frame budget rules (0 lost frames in the
+' bots): the camera moves every other frame by the engine and while a bridge
+' or gantry is on screen; in a frame where the camera crosses a cell the mid
+' band waits a frame (NxLayers).
+
+const TrainW = 1008
+const CamMax = 776
+const PadL = 32
+const LocoX = 888
+const LocoEnd = 976
+const NTwk = 6
+const SkyN = 128
+const SprBytes = 1280
+const SpGR = 0
+const SpGL = 72
+const SpTR = 144
+const ChDigit = 82
+const ChCursor = 97
+const ChLife = 119
+const ChBarG = 121
+const ChBarY = 123
+const ChBarR = 125
+const ChBarE = 127
+const ObW1 = 24
+const ObW2 = 40
+const TendX = 832
+const TendEnd = 880
+' the pool train's cells in front of the original 4 coaches (coaches E1, E2)
+const ExtraC = 50
+' the R tables' rows start at the cell ExtraC + RSkip (all the rows before
+' are alike: dropped, 2026-11-17)
+const RSkip = 25
+' the camera from which the engine's animated bands are on screen
+const CamEng = 696
+const MsgReady = 0
+const MsgGo = 1
+const MsgCaught = 2
+const MsgCornered = 3
+const MsgAway = 4
+const MsgFell = 5
+const MsgOver = 6
+const LugY = 135
+const SndTitleA = 1
+const SndTitleB = 2
+const SndTitleC = 3
+const SndTitleD = 4
+const SndRunA = 5
+const SndRunB = 6
+const SndRunDrum = 7
+const SndWinA = 8
+const SndWinB = 9
+const SndLoseA = 10
+const SndLoseB = 11
+const SndGrab = 12
+const SndThud = 13
+const SndThrow = 14
+const SndJump = 15
+const SndClick = 16
+const SndFall = 17
+const SndTaunt = 18
+const SndTick = 19
+const SndWhistle = 20
+const TitleFrames = 640
+const WinFrames = 76
+const LoseFrames = 76
+const GuardSX = 88
+' the ending's bonus for each life left
+const EndLife = 500
+' grab: the reach from the guard's x + 4, checked on every frame of the
+' lunge (8 frames, 28/16 px a frame: 14 px); then 20 frames to recover
+' (on the roof: no run; a missed grab costs time)
+const GrabR = 18
+const GrabLen = 29
+const GrabRec = 20
+' the map in the HUD (row 2): tiles (bank 0, 128-134), its first cell
+const MapC = 30
+const TlGuard = 133
+const TlThief = 134
+const MsgGrab = 7
+' the thief's colour: white stripes, yellow while he is off balance
+const ColT = 15
+const ColOff = 11
+const ObCut = 518
+const RunMax = 16
+const JumpV = 66
+const Grav = 4
+const MaxFall = 96
+const DeadY = 2368
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+const StEnd = 10
+const StStart = 11
+' the last level: its won run is the ending
+const FinalLv = 10
+' run phases
+const PhReady = 0
+const PhChase = 1
+const PhWin = 2
+const PhFell = 3
+const PhAway = 4
+' thief states
+const TsRun = 0
+const TsWait = 1
+const TsTaunt = 2
+const TsDuck = 3
+const TsThrow = 4
+const TsDodge = 5
+const TsCaught = 6
+const TsEscape = 7
+const TsGone = 8
+
+' the coaches of the train by level (LV 1-8, then as LV 8): 4 to 8
+data TrainCars bytes 4,4,5,5,6,6,7,8
+
+data Surf bytes 0,0,0,0,0,0,0,0,137,136,136,136,136,134,136,136,136,136,136,136,136,136,134,136,136,136,135,135,153,153,153,153,137,136,136,136,136,134,136,136,136,136,135,135,136,136,134,136,136,136,136,137,153,153,153,153,153,153,137,136,136,136,136,134,136,136,135,135,136,136,134,136,136,136,136,136,136,137,153,153,153,153,137,136,136,136,136,134,136,136,136,136,136,136,135,135,136,136,134,136,136,137,153,153,153,153,153,153,137,136,136,136,136,134,136,136,136,136,135,135,136,136,134,136,136,136,136,137,153,153,153,153,137,136,136,136,136,134,136,136,135,135,136,136,136,136,134,136,136,136,136,137,153,153,153,153,153,153,137,136,136,136,136,134,136,136,136,136,136,136,136,136,134,136,136,136,135,135,153,153,153,153,137,136,136,136,136,134,136,136,136,136,135,135,136,136,134,136,136,136,136,137,153,153,153,153,153,153,133,133,133,133,133,133,133,133,133,133,133,133,153,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,138,153,153,0,0,0,0,0,0,0,0,0,0,0,0
+
+' engine state (read by the asm)
+u16 OffFar = 0
+u16 OffMid = 0
+u16 OffNear = 0
+u16 OffTrain = 0
+' the train bands' shift (low) and cell (high), from OffTrain (NxLayers)
+u16 TrDE = 0
+u16 OffRail = 0
+u8 AnimSmoke = 0
+u8 AnimWheel = 0
+u8 NxSt[24]
+u8 NxFl = 0
+u16 NxBud = 0
+u8 NxLt = 0
+u8 Sat[17]
+u8 TwT = 0
+u8 TwK = 0
+u8 NxNoTw = 0
+' text rows 1-7 (columns 2-29) and which rows still need writing
+u8 TxBuf[196]
+u8 TxDirty = 0
+' obstacle overlay (asm side)
+u8 ObT = 0
+i16 ObX = 0
+u8 ObClr = 0
+u8 ObPT = 0
+u8 LmOn = 0
+i16 LmSX = 0
+u8 LmClr = 0
+u8 OvMd = 0
+i16 OvOX = 0
+i16 OvDX = 0
+i16 OvUX = 0
+i16 OvLX = 0
+i16 OvLD = 0
+i16 OvCX = 0
+u8 OvXc = 0
+u8 OvXf = 0
+u8 OvWr = 0
+u8 OvFo = 0
+u8 OvIx = 0
+u16 OvRP = 0
+u8 OvRN = 0
+u8 OvRI = 0
+u8 OvSt = 0
+u8 OvCoA = 0
+u8 OvF16 = 0
+u8 OvSv[18]
+u8 OvPh = 0
+u8 OvCo = 0
+u8 OvLmC = 0
+u8 ObN1 = 0
+u8 ObN2 = 0
+u8 OvC1 = 0
+u8 OvC2 = 0
+u8 OvBuf[32]
+' the cab row (16) as on screen: luggage, sky; the rear end like NxOutT
+u8 CabRow[29]
+' its cell (low byte) and TrPre when built (NxLayers, while TrPre < 4)
+u16 CabK = 65535
+u8 OvSL = 0
+u8 OvCL = 0
+u8 OvCR = 0
+u8 OvCS = 0
+u8 OvCE = 0
+u8 OvCd = 0
+u8 OvCm = 0
+u8 OvRw = 0
+u8 OvX1 = 0
+u16 OvP = 0
+u16 OvXp = 0
+u16 OvRT = 0
+u16 BP = 0
+u16 BQ = 0
+u8 BA = 0
+' world
+u16 Ground = 0
+u16 CamX = 0
+' this run's train: its rear (x of the last coach), the camera's least x and
+' its cell (the asm: the rear end names), the number of coaches
+u16 TrainL = 232
+u16 CamMin = 200
+u8 CamC = 25
+u8 Cars = 4
+u8 NxTk = 0
+u8 TrPre = 0
+u16 TrRow = 0
+' (and its limits: the guard's least x (1/16 px), no push back behind
+' BackMin, the coal lump gone behind CoalMin)
+u16 GxMin = 3744
+u16 BackMin = 244
+u16 CoalMin = 240
+u16 P = 0
+u8 Tick = 0
+u8 SmT = 0
+u8 State = 0
+u8 Ph = 0
+u16 PhT = 0
+u8 Demo = 0
+u8 CurSv[3]
+u8 Menu = 0
+u8 Page = 0
+u16 Waited = 0
+u8 Level = 1
+u8 Lives = 3
+u16 Score = 0
+u8 HalfLeft = 36
+u8 HalfT = 0
+u8 HalfLen = 0
+u8 MsgT = 0
+' the guard: x along the train strip and feet y on screen, 1/16 pixel
+u16 Gx = 0
+i16 Gy = 0
+i16 Gvy = 0
+u8 GAir = 0
+u8 GDir = 0
+u8 GPose = 0
+u16 GDist = 0
+u8 GSp = 0
+u8 GDuck = 0
+u8 GStun = 0
+u8 GGrab = 0
+u8 GJb = 0
+u8 GWant = 0
+u16 GSafe = 0
+' the thief
+u16 Tx = 0
+i16 Ty = 0
+i16 Tvy = 0
+u8 TAir = 0
+u8 TPose = 0
+u16 TDist = 0
+u8 TSp = 0
+u8 TSt = 0
+u8 TT = 0
+u8 TCool = 0
+u8 TV = 0
+u8 TFast = 0
+' the thief off balance (frames): after a landing (TStm) and after a throw
+' (TStm + 12); slow, yellow (TCol): the grab window
+u8 TOff = 0
+u8 TStm = 0
+u8 TCol = 15
+' the map's guard and thief cells (255: none drawn)
+u8 MapG = 255
+u8 MapH = 255
+' obstacles: ground-locked x (ObG - P = screen x), width, next spawn
+u16 ObG = 0
+u8 ObW = 0
+u8 ObHit = 0
+u16 ObNext = 0
+u16 ObGap = 0
+' coal lump: x along the train, flight frames
+u16 LmX = 0
+u8 LmAir = 0
+u8 LmCool = 0
+u8 CoalGap = 0
+' input
+u8 Pad = 0
+u8 PadE = 0
+u8 PadW = 0
+' sound
+u8 MuMode = 0
+u8 StingN = 0
+u8 MuNext = 0
+u8 MuF = 0
+u16 MuT = 0
+' scratch (never kept across a sub call)
+u16 W = 0
+u16 Fx = 0
+u8 S0 = 0
+u8 S1 = 0
+u8 Sx = 0
+u8 Ci = 0
+i16 Q = 0
+
+  mode 2 screen
+  sprites 16x16
+  screen off
+  backdrop black
+  set sound table NxSoundTable areas 8
+  call asm NxInit
+  decompress zx0 NxZPat to vram.pattern
+  decompress zx0 NxZCol to vram.color
+  call asm NxMapInit
+  GoTitle
+  Logic
+  screen on
+  nmi off
+
+frame_loop:
+  Frame1
+  call asm NxFrame
+  inc Tick
+  Logic
+  goto frame_loop
+
+' ---------------------------------------------------------------------------
+' one frame of logic: input, music, the screen state, the chase
+sub Logic:
+  call asm NxPad
+  MusicTick
+  if State = StPlay then
+    PlayStep
+  else
+    MenuStep
+  end if
+  Chase
+  return
+end sub
+
+' title, HOW TO PLAY, credits, game over (the demo chase runs underneath)
+sub MenuStep:
+  inc Waited
+  if State = StStart then
+    if TxDirty = 0 then StartGame
+    return
+  end if
+  if State = StTitle then
+    S0 = PadE & 3
+    if S0 > 0 then
+      S1 = Menu
+      if (PadE & 1) > 0 then
+        if Menu > 0 then dec Menu
+      else
+        if Menu < 2 then inc Menu
+      end if
+      if S1 <> Menu then
+        play sound SndClick
+        DrawCursor
+      end if
+    end if
+    if (PadE & 192) > 0 then
+      play sound SndClick
+      if Menu = 0 then
+        StartGame
+      else
+        if Menu = 1 then
+          State = StHow
+          Page = 1
+          Waited = 0
+          call asm TxPage with a = 1
+        else
+          State = StCredits
+          Waited = 0
+          call asm TxPage with a = 6
+        end if
+      end if
+    end if
+  else
+    S0 = 0
+    if (PadE & 192) > 0 then S0 = 1
+    if Waited > 1800 then S0 = 2
+    if State = StOver then
+      if Waited < 30 then S0 = 0
+    end if
+    if State = StEnd then
+      EndStep
+      if Waited < 120 then S0 = 0
+    end if
+    if S0 > 0 then
+      play sound SndClick
+      if State = StHow then
+        if S0 = 1 then
+          if Page < 5 then
+            inc Page
+            Waited = 0
+            call asm TxPage with a = Page
+            S0 = 0
+          end if
+        end if
+      end if
+      if S0 > 0 then GoTitle
+    end if
+  end if
+  return
+end sub
+
+sub GoTitle:
+  if State = StEnd then
+    call asm NxDawn with a = 0
+  end if
+  State = StTitle
+  Menu = 0
+  Waited = 0
+  call asm TxPage with a = 0
+  CurSv[0] = TxBuf[59]
+  CurSv[1] = TxBuf[115]
+  CurSv[2] = TxBuf[171]
+  DrawCursor
+  MusicTitle
+  if Demo = 0 then
+    Demo = 1
+    NewDemo
+  end if
+  return
+end sub
+
+' the ending: the thief is held, dawn comes up, the final score (a life
+' bonus), then THE END and the credits; a press returns to the title
+sub GoEnd:
+  State = StEnd
+  Waited = 0
+  W = Lives
+  W = W * EndLife
+  Score = Score + W
+  call asm TxPage with a = 8
+  call asm NumOut with hl = Score
+  Ci = 0
+  while Ci < 5
+    TxBuf[68 + Ci] = TxBuf[Ci]
+    TxBuf[Ci] = 0
+    inc Ci
+  end while
+  MusicTitle
+  return
+end sub
+
+sub EndStep:
+  if Waited = 2 then
+    call asm NxDawn with a = 1
+  end if
+  if Waited = 90 then
+    call asm NxDawn with a = 2
+  end if
+  if Waited = 180 then
+    call asm NxDawn with a = 3
+  end if
+  if Waited = 360 then
+    call asm TxPage with a = 9
+  end if
+  return
+end sub
+
+sub DrawCursor:
+  TxBuf[59] = CurSv[0]
+  TxBuf[115] = CurSv[1]
+  TxBuf[171] = CurSv[2]
+  S0 = Menu * 56 + 59
+  TxBuf[S0] = ChCursor
+  TxDirty = TxDirty | 84
+  return
+end sub
+
+sub NewDemo:
+  Level = 1
+  Lives = 3
+  NewRun
+  return
+end sub
+
+' START: the HUD page is written (one row a frame) before play begins
+' (StStart), so no title text is left on screen in play
+sub StartGame:
+  if State = StTitle then
+    State = StStart
+    call asm TxPage with a = 7
+    return
+  end if
+  State = StPlay
+  Demo = 0
+  Score = 0
+  Level = 1
+  Lives = 3
+  MusicOff
+  NewRun
+  return
+end sub
+
+' play: the run's phases, the timer
+sub PlayStep:
+  if Ph = PhChase then
+    if HalfT > 0 then
+      dec HalfT
+    else
+      HalfT = HalfLen
+      if HalfLeft > 0 then
+        dec HalfLeft
+        BarCell
+        if HalfLeft < 6 then play sound SndTick
+      end if
+      if HalfLeft = 0 then
+        Ph = PhAway
+        PhT = 0
+        TSt = TsEscape
+        call asm TxMsg with a = MsgAway
+        Sting(SndLoseA)
+      end if
+    end if
+  end if
+  ' (a run's end message stays: no time-out after the chase)
+  if Ph <> PhChase then MsgT = 0
+  if MsgT > 0 then
+    dec MsgT
+    if MsgT = 0 then
+      call asm TxMsg with a = 255
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the chase (also the demo): phases, then the guard, the thief, obstacles,
+' coal, the camera, the layers, the sprites
+sub Chase:
+  inc PhT
+  if Ph = PhReady then
+    ' the HUD a frame after the new run (the camera's jump back to the last
+    ' coach rewrites every band that frame)
+    if PhT = 1 then
+      if State = StPlay then
+        HudAll
+        ' "n CARS  GET READY"
+        call asm TxMsg with a = MsgReady
+        TxBuf[117] = ChDigit + Cars
+      end if
+    end if
+    if PhT = 90 then
+      Ph = PhChase
+      if State = StPlay then
+        call asm TxMsg with a = MsgGo
+        MsgT = 40
+        MusicRun
+      end if
+    end if
+  end if
+  if Ph = PhWin then
+    S0 = 0
+    if PhT = 150 then S0 = 1
+    if State = StEnd then S0 = 0
+    if S0 = 1 then
+      if State = StPlay then
+        if Level >= FinalLv then S0 = 2
+      end if
+    end if
+    if S0 = 2 then GoEnd
+    if S0 = 1 then
+      inc Level
+      S0 = Level & 1
+      if S0 = 1 then
+        if Lives < 5 then inc Lives
+      end if
+      NewRun
+    end if
+  end if
+  if Ph >= PhFell then
+    if PhT = 120 then LoseLife
+  end if
+  MoveGuard
+  MoveThief
+  Obstacles
+  Coal
+  MoveCamera
+  call asm NxMapTick
+  call asm NxLayers
+  call asm NxSat
+  return
+end sub
+
+sub LoseLife:
+  dec Lives
+  if Lives = 0 then
+    if State = StPlay then
+      State = StOver
+      Waited = 0
+      call asm TxMsg with a = MsgOver
+      HudLives
+    else
+      NewDemo
+    end if
+  else
+    if Ph = PhAway then
+      NewRun
+    else
+      Respawn
+    end if
+    if State = StPlay then HudLives
+  end if
+  return
+end sub
+
+' a new run of the current level: positions, level parameters
+sub NewRun:
+  Ph = PhReady
+  PhT = 0
+  S0 = Level
+  if S0 > 8 then S0 = 8
+  ' the train of this level: its last coaches (TrainCars) of the 8 in the
+  ' strip; the engine end stays where it is, the rear moves back (the
+  ' coaches with their gap are 96 and 104 px long, in turn from the rear)
+  Cars = TrainCars[S0 - 1]
+  TrainL = (8 - Cars) * 100 + PadL
+  if (Cars & 1) = 1 then TrainL = TrainL - 4
+  CamMin = TrainL - PadL
+  CamC = CamMin >> 3
+  GxMin = (TrainL + 2) * 16
+  BackMin = TrainL + 12
+  CoalMin = TrainL + 8
+  NxSt[12] = 255
+  NxSt[15] = 255
+  NxSt[18] = 255
+  Gx = (TrainL + 8) * 16
+  GSafe = Gx
+  Tx = (TrainL + 104) * 16
+  Ty = 136 * 16
+  TAir = 0
+  TSt = TsRun
+  TCool = 60
+  CamX = CamMin
+  ' his pace (1/16 px a frame): never over the guard's (16) unless he
+  ' sprints (the guard close behind): 11-15, sprint 17-25
+  TV = 11 + (S0 >> 1)
+  TFast = TV + 6 + (S0 >> 1)
+  ' off balance after a landing: 25 frames at LV 1, 1 less a level (18)
+  TStm = 26 - S0
+  TOff = 0
+  ' the clock: 38 s at LV 1, 2 s less a level to 24 s at LV 8, then 1 s
+  ' less a level (the rest stops rising at LV 8); 3 s more for each coach
+  ' over 4 (the longer trains): 38 36 34 32 | 33 31 29 | 30 29 28 s
+  S1 = 40 - S0 * 2
+  if Level > 8 then
+    Sx = Level - 8
+    if Sx > 6 then Sx = 6
+    S1 = S1 - Sx
+  end if
+  S1 = S1 + (Cars - 4) * 3
+  ' a half cell of the time bar lasts S1 * 60 / 36 frames
+  HalfLen = S1 * 5 / 3
+  HalfLeft = 36
+  HalfT = HalfLen
+  ObGap = 330 - S0 * 25
+  CoalGap = 130 - S0 * 10
+  ClearThings
+  ObNext = ObGap
+  GuardReset
+  if State = StPlay then
+    play sound SndWhistle
+    MusicOff
+  end if
+  return
+end sub
+
+sub GuardReset:
+  Gy = 136 * 16
+  Gvy = 0
+  GAir = 0
+  GDir = 0
+  GSp = 0
+  GStun = 0
+  GGrab = 0
+  GDuck = 0
+  return
+end sub
+
+' back on the roof where he last stood, a little behind
+sub Respawn:
+  W = GSafe >> 4
+  S0 = 0
+  while S0 < 6
+    Fx = (W - 4) >> 2
+    if Surf[Fx] < 150 then W = W - 4
+    inc S0
+  end while
+  Gx = W * 16
+  GuardReset
+  ClearThings
+  ObNext = 120
+  Ph = PhChase
+  PhT = 0
+  if TSt <> TsEscape then TSt = TsTaunt
+  TT = 50
+  return
+end sub
+
+sub ClearThings:
+  if ObT > 0 then
+    ObT = 0
+    ObClr = 1
+  end if
+  if LmOn > 0 then
+    LmOn = 0
+    LmClr = 1
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the guard
+sub MoveGuard:
+  if Demo = 1 then DemoPad
+  if Ph <> PhChase then
+    Pad = 0
+    PadE = 0
+  end if
+  if Ph = PhChase then
+    if State = StOver then Pad = 0
+  end if
+  if GStun > 0 then
+    dec GStun
+    ' a jump pressed while getting up (last 12 frames) is kept for the first
+    ' frame back on the feet: a trunk right ahead can be cleared at once
+    if GStun < 12 then
+      if (PadE & 65) > 0 then GJb = 1
+    end if
+    Pad = 0
+    GSp = 0
+    if GStun = 0 then
+      if GJb = 1 then PadE = PadE | 1
+    end if
+  end if
+  if GStun = 0 then GJb = 0
+  ' what the stick asks: 0 nothing, 1 right, 2 left
+  GWant = 0
+  if (Pad & 8) > 0 then GWant = 1
+  if (Pad & 4) > 0 then GWant = 2
+  GDuck = 0
+  if (Pad & 2) > 0 then
+    if GAir = 0 then GDuck = 1
+  end if
+  S1 = RunMax
+  if GDuck = 1 then S1 = 4
+  ' the lunge (8 frames: on, reaching), then the recovery (no run on the
+  ' roof; in the air the jump goes on)
+  if GGrab > 0 then
+    dec GGrab
+    if GGrab > GrabRec then
+      GWant = 0
+      Gx = Gx + 20
+      GSp = 8
+      TryGrab
+    else
+      if GAir = 0 then GWant = 0
+    end if
+  end if
+  if GWant > 0 then
+    S0 = GWant - 1
+    if S0 = GDir then
+      if GSp < S1 then GSp = GSp + 2
+      if GSp > S1 then GSp = GSp - 3
+    else
+      ' turning: slow down first, turn when stopped
+      if GSp > 3 then
+        GSp = GSp - 3
+      else
+        GSp = 0
+        GDir = S0
+      end if
+    end if
+  else
+    if GSp > 3 then
+      GSp = GSp - 3
+    else
+      GSp = 0
+    end if
+  end if
+  if GSp > 0 then
+    if GDir = 0 then
+      if Gx < (LocoEnd - 18) * 16 then Gx = Gx + GSp
+    else
+      if Gx > GxMin then Gx = Gx - GSp
+    end if
+  end if
+  ' jump: UP or the right button, on the roof
+  ' (3 frames of grace after stepping off an edge)
+  S0 = 0
+  if GAir < 4 then
+    if Gvy >= 0 then S0 = 1
+  end if
+  if S0 = 1 then
+    if (PadE & 65) > 0 then
+      if GDuck = 0 then
+        if GStun = 0 then
+          Gvy = 0 - JumpV
+          GAir = 1
+          play sound SndJump
+        end if
+      end if
+    end if
+  end if
+  ' grab: the left button
+  if (PadE & 128) > 0 then
+    if GGrab = 0 then
+      if GStun = 0 then
+        GGrab = GrabLen
+        GDir = 0
+        play sound SndGrab
+      end if
+    end if
+  end if
+  ' the roof under the feet (centre of the sprite)
+  W = Gx >> 4
+  S0 = Surf[(W + 8) >> 2]
+  Q = S0 * 16
+  if Ph = PhFell then Q = DeadY + 400
+  call asm NxBody with hl = address of Gy, de = Q
+  if GAir = 0 then
+    if S0 < 150 then GSafe = Gx
+  end if
+  ' fallen between the cars
+  if Ph = PhChase then
+    if Gy >= 148 * 16 then
+      Ph = PhFell
+      PhT = 0
+      play sound SndFall
+      if State = StPlay then
+        call asm TxMsg with a = MsgFell
+        Sting(SndLoseA)
+      end if
+      if TSt < TsDodge then
+        TSt = TsTaunt
+        TT = 60
+      end if
+    end if
+  end if
+  ' luggage: a trip when the feet are low
+  if GStun = 0 then
+    if Gy > 129 * 16 then
+      S0 = Surf[(W + 6) >> 2]
+      S1 = Surf[(W + 10) >> 2]
+      if S1 = LugY then S0 = LugY
+      if S0 = LugY then
+        if GAir = 0 then
+          Knock(30)
+          ' back from the trunk (up to 16 px more, never over a gap): the
+          ' guard gets up with room to take a run-up and jump
+          S0 = 0
+          while S0 < 4
+            W = Gx >> 4
+            Fx = (W + 4) >> 2
+            if W > BackMin then
+              if Surf[Fx] < 150 then Gx = Gx - 64
+            end if
+            inc S0
+          end while
+        end if
+      end if
+    end if
+  end if
+  ' cornered: on the engine
+  if Ph = PhChase then
+    if W >= LocoX + 8 then
+      if GAir = 0 then Won(0)
+    end if
+  end if
+  GuardPose
+  return
+end sub
+
+' pose: 0 stand, 1-4 run (distance-driven), 5 air, 6 duck, 7 grab, 8 down.
+' Stopping finishes the stride on a legs-together pose, never a snap.
+sub GuardPose:
+  if GStun > 0 then
+    GPose = 8
+  else
+    if GGrab > GrabRec then
+      GPose = 7
+    else
+      if GAir > 3 then
+        GPose = 5
+      else
+        if GDuck = 1 then
+          GPose = 6
+        else
+          if GSp > 0 then
+            GDist = GDist + GSp
+            GPose = 1 + ((GDist >> 7) & 3)
+          else
+            S0 = (GDist >> 7) & 3
+            if S0 = 1 then
+              GPose = 0
+            else
+              if S0 = 2 then
+                GPose = 0
+              else
+                GDist = GDist + 16
+                GPose = 1 + S0
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+sub Knock(u8 n):
+  GStun = n
+  GSp = 0
+  GGrab = 0
+  W = Gx >> 4
+  if W > BackMin then
+    if Surf[(W + 2) >> 2] < 150 then Gx = Gx - 96
+  end if
+  play sound SndThud
+  if TSt < TsThrow then
+    TSt = TsTaunt
+    TT = 40
+  end if
+  return
+end sub
+
+' each frame of the lunge: reached him, on the roof and off balance (yellow,
+' as drawn: TCol): caught (the old dodge rule never fired in play: removed
+' 2026-11-12; TsDodge stays only as a state-number boundary)
+sub TryGrab:
+  if Ph = PhChase then
+    W = Tx >> 4
+    Fx = (Gx >> 4) + 4
+    if W > Fx then
+      W = W - Fx
+      if W < GrabR then
+        if TAir = 0 then
+          if TCol = ColOff then Won(1)
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the run is won: 1 grabbed, 0 cornered at the engine
+sub Won(u8 how):
+  Ph = PhWin
+  PhT = 0
+  TSt = TsCaught
+  GSp = 0
+  GGrab = 0
+  TOff = 0
+  if State = StPlay then
+    W = HalfLeft * 10
+    Score = Score + W
+    if how = 1 then
+      Score = Score + 500
+      call asm TxMsg with a = MsgCaught
+    else
+      Score = Score + 200
+      call asm TxMsg with a = MsgCornered
+    end if
+    HudScore
+    Sting(SndWinA)
+  end if
+  return
+end sub
+
+' the demo player (title, HOW TO PLAY): runs on, jumps gaps, luggage and
+' coal, ducks under what comes over, grabs when close
+sub DemoPad:
+  Pad = 8
+  PadE = 0
+  W = Gx >> 4
+  if GAir = 0 then
+    S0 = Surf[(W + 8) >> 2]
+    S1 = Surf[(W + 18) >> 2]
+    Sx = S1 - S0
+    if Sx > 2 then
+      if Sx < 128 then PadE = 1
+    end if
+    Sx = S0 - S1
+    if Sx > 3 then
+      if Sx < 128 then PadE = 1
+    end if
+    S0 = Surf[(W + 20) >> 2]
+    if S0 = LugY then PadE = 1
+    if LmOn > 0 then
+      Fx = LmX - W
+      if Fx < 26 then
+        if Fx > 12 then PadE = 1
+      end if
+    end if
+  end if
+  if ObT > 0 then
+    Q = W + 40 - CamX
+    if ObX < Q then
+      Q = Q - ObW
+      Q = Q - 24
+      if ObX > Q then
+        Pad = 2
+        PadE = 0
+      end if
+    end if
+  end if
+  if TCol = ColOff then
+    W = Tx >> 4
+    Fx = (Gx >> 4) + 4
+    if W > Fx then
+      W = W - Fx
+      if W < 32 then PadE = PadE | 128
+    end if
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the thief: an opponent, not a runner on rails. He keeps ahead, stops to
+' taunt when far ahead or when the guard falls or is knocked down, ducks
+' under what comes over, throws coal back from the tender, and makes for the front of the engine when time is up.
+sub MoveThief:
+  W = Tx >> 4
+  Fx = Gx >> 4
+  S1 = 0
+  if W > Fx then S1 = 1
+  TSp = 0
+  if TCool > 0 then dec TCool
+  if TT > 0 then dec TT
+  if TOff > 0 then dec TOff
+  if Ph = PhReady then TSt = TsWait
+  if TSt = TsWait then
+    if Ph = PhChase then TSt = TsRun
+  end if
+  if TSt = TsRun then
+    TSp = TV
+    if S1 = 1 then
+      Fx = W - Fx
+      if Fx < 44 then TSp = TFast
+      if Fx > 110 then
+        TSp = 0
+        if TCool = 0 then
+          TSt = TsTaunt
+          TT = 48
+        end if
+      end if
+    else
+      TSp = TFast
+    end if
+    ' off balance: an eighth of his pace
+    if TOff > 0 then TSp = TV >> 3
+    ' cornered at the front of the engine: waits there
+    if W >= LocoEnd - 34 then TSp = 0
+    ' coal: from the tender, when the guard is behind
+    if W >= TendX then
+      if W < TendEnd - 12 then
+        if LmOn = 0 then
+          if LmCool = 0 then
+            if TAir = 0 then
+              TSt = TsThrow
+              TT = 20
+            end if
+          end if
+        end if
+      end if
+    end if
+    ThiefDuckCheck
+  else
+    if TSt = TsTaunt then
+      if TT = 0 then
+        TSt = TsRun
+        TCool = 200
+      end if
+      if S1 = 1 then
+        Fx = W - Fx
+        if Fx < 50 then TSt = TsRun
+      end if
+      ThiefDuckCheck
+    else
+      if TSt = TsDuck then
+        ' stays down until it has passed
+        TSp = 0
+        S0 = 0
+        if ObT > 0 then
+          Q = W + 12 - CamX
+          Q = Q - ObW
+          if ObX > Q then S0 = 1
+        end if
+        if S0 = 0 then TSt = TsRun
+      else
+        if TSt = TsThrow then
+          if TT = 8 then
+            LmOn = 1
+            LmX = TendX - 4
+            LmAir = 14
+            LmCool = CoalGap
+            play sound SndThrow
+          end if
+          if TT = 0 then
+            TSt = TsRun
+            S0 = TStm + 12
+            call asm NxOffBal with a = S0
+          end if
+        else
+          if TSt = TsEscape then
+            TSp = TFast + 8
+            if W > LocoEnd - 30 then
+              if TAir = 0 then
+                Tvy = 0 - 56
+                TAir = 1
+              end if
+            end if
+            if W > TrainW - 24 then TSt = TsGone
+          end if
+        end if
+      end if
+    end if
+  end if
+  if TSt = TsTaunt then
+    if TT = 47 then play sound SndTaunt
+    if TT = 29 then play sound SndTaunt
+  end if
+  if TAir > 0 then
+    if TSp < 20 then TSp = 20
+  end if
+  Tx = Tx + TSp
+  W = Tx >> 4
+  S0 = Surf[(W + 8) >> 2]
+  if TSt = TsEscape then S0 = 140
+  if TSt = TsGone then S0 = 140
+  if TAir = 0 then
+    if TSp > 0 then
+      S1 = Surf[(W + 20) >> 2]
+      Sx = 0
+      Ci = S1 - S0
+      if Ci > 2 then
+        if Ci < 128 then Sx = 1
+      end if
+      Ci = S0 - S1
+      if Ci > 3 then
+        if Ci < 128 then Sx = 1
+      end if
+      S1 = Surf[(W + 22) >> 2]
+      if S1 = LugY then Sx = 1
+      if Sx = 1 then
+        if TOff > 0 then
+          Tx = Tx - TSp
+        else
+          Tvy = 0 - JumpV
+          TAir = 1
+        end if
+      end if
+    end if
+  end if
+  Q = S0 * 16
+  Sx = TAir
+  call asm NxBody with hl = address of Ty, de = Q
+  ' landed from a jump: off balance
+  if Sx > 3 then
+    if TAir = 0 then
+      if TSt = TsRun then
+        if S0 < 150 then
+          call asm NxOffBal with a = TStm
+        end if
+      end if
+    end if
+  end if
+  ThiefPose
+  return
+end sub
+
+
+
+' a bridge or gantry close ahead (or over him): duck
+sub ThiefDuckCheck:
+  if ObT > 0 then
+    if TAir = 0 then
+      Q = W + 38 - CamX
+      if ObX < Q then
+        Q = Q - ObW
+        Q = Q - 26
+        if ObX > Q then
+          TSt = TsDuck
+          TSp = 0
+        end if
+      end if
+    end if
+  end if
+  return
+end sub
+
+' 0 stand, 1-4 run, 5 air, 6 duck (facing right); 7 throw, 8-9 taunt,
+' 10 caught (facing back, to the left)
+sub ThiefPose:
+  if TAir > 3 then
+    TPose = 5
+  else
+    if TSp > 0 then
+      TDist = TDist + TSp
+      TPose = 1 + ((TDist >> 7) & 3)
+    else
+      TPose = 0
+    end if
+  end if
+  if TSt = TsDuck then TPose = 6
+  if TOff > 0 then
+    if TAir = 0 then TPose = 6
+  end if
+  if TSt = TsThrow then TPose = 7
+  if TSt = TsTaunt then
+    TPose = 8
+    S0 = Tick & 16
+    if S0 > 0 then TPose = 9
+  end if
+  if TSt = TsCaught then TPose = 10
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' bridges and gantries: ground-locked (they come at the ground speed plus
+' the camera's), drawn by NxObs; spawned on the right, gone on the left
+sub Obstacles:
+  if ObT > 0 then
+    ObX = ObG - P
+    W = ObW
+    Q = ObX + W
+    if Q < 12 then
+      ObT = 0
+      ObClr = 1
+      if ObHit = 0 then
+        if State = StPlay then
+          if Ph = PhChase then
+            Score = Score + 25
+            HudScore
+          end if
+        end if
+      end if
+    else
+      ' the guard under it, not ducking (or in the air): knocked down
+      if ObHit = 0 then
+        Q = (Gx >> 4) + 28 - CamX
+        if ObX < Q then
+          Q = Q - 8
+          Q = Q - W
+          if ObX > Q then
+            S0 = 1
+            if GDuck = 1 then S0 = 0
+            if GStun > 0 then S0 = 0
+            if Ph <> PhChase then S0 = 0
+            if S0 = 1 then
+              ObHit = 1
+              Knock(50)
+            end if
+          end if
+        end if
+      end if
+    end if
+  else
+    if ObNext > 0 then
+      dec ObNext
+    else
+      ' none near the engine: there the coal is the danger (and the
+      ' animated smoke, cab and wheels already fill the frame's VRAM time)
+      ' (it lives up to ~140 frames; the camera moves at most 1 px a frame,
+      ' so one spawned at CamX < ObCut is gone before CamX 656, where the
+      ' engine's animated bands and the overlay together overrun the frame)
+      S0 = Ph
+      if CamX >= ObCut then S0 = 0
+      if S0 = PhChase then
+        ' the screen x + P must be 7 mod 8: its cells step with the near band
+        ObG = (P + 248) | 7
+        ObX = ObG - P
+        ObT = 1
+        ObW = ObW1
+        if Level > 1 then
+          S0 = random(3)
+          if S0 = 0 then
+            ObT = 2
+            ObW = ObW2
+          end if
+        end if
+        ObHit = 0
+        ObNext = ObGap + random(90)
+      end if
+    end if
+  end if
+  return
+end sub
+
+' the coal lump: flies over the gap behind the tender, then rolls back
+' along the roof; a gap swallows it
+sub Coal:
+  if LmCool > 0 then
+    if LmOn = 0 then dec LmCool
+  end if
+  if LmOn > 0 then
+    LmX = LmX - 2
+    if LmAir > 0 then
+      dec LmAir
+    else
+      S0 = Surf[(LmX + 3) >> 2]
+      if S0 > 149 then
+        LmOn = 0
+        LmClr = 1
+      end if
+    end if
+    if LmX < CoalMin then
+      LmOn = 0
+      LmClr = 1
+    end if
+    if LmOn > 0 then
+      ' the guard's feet low on it: knocked down
+      if GStun = 0 then
+        if Gy > 130 * 16 then
+          W = Gx >> 4
+          Fx = LmX + 2
+          if Fx > W then
+            Fx = Fx - W
+            if Fx < 10 then
+              LmOn = 0
+              LmClr = 1
+              Knock(30)
+            end if
+          end if
+        end if
+      end if
+    end if
+    Q = LmX + 16 - CamX
+    LmSX = Q
+    if Q < 4 then
+      LmOn = 0
+      LmClr = 1
+    end if
+  end if
+  return
+end sub
+
+' the camera follows the guard, at most 1 pixel a frame (asm: NxCam)
+' - the train's tiles step when the camera crosses a cell: not in a frame
+'   where the near band steps too (it waits a frame; the heaviest VRAM frames
+'   never pile up)
+' - by the engine (CamX >= CamEng: the animated smoke, cab and wheels), while
+'   the coal lump is out and while a bridge or gantry is on screen (its overlay is redrawn
+'   every frame), the camera moves every other frame only, on the frames
+'   where the far band does not step (Tick odd); it catches up afterwards
+' - it holds on an obstacle's or the coal's clean-up and once the run is won
+sub MoveCamera:
+  call asm NxCam
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' HUD (play): row 1 score, LV n, lives; row 3 the clock and the time bar
+sub HudAll:
+  call asm TxPage with a = 7
+  HudScore
+  if Level < 10 then
+    TxBuf[10] = ChDigit + Level
+  else
+    TxBuf[10] = ChDigit + Level / 10
+    TxBuf[11] = ChDigit + Level % 10
+  end if
+  HudLives
+  Ci = 0
+  while Ci < 18
+    S1 = Ci * 2
+    BarDraw
+    inc Ci
+  end while
+  call asm NxMapDraw
+  return
+end sub
+
+sub HudScore:
+  call asm NumOut with hl = Score
+  TxDirty = TxDirty | 1
+  return
+end sub
+
+sub HudLives:
+  Ci = 0
+  while Ci < 5
+    S0 = 0
+    if Ci < Lives then S0 = ChLife
+    TxBuf[13 + Ci] = S0
+    inc Ci
+  end while
+  TxDirty = TxDirty | 1
+  return
+end sub
+
+' the bar cell that just changed (or all of them when the colour changes)
+sub BarCell:
+  if HalfLeft = 18 then call asm NxBarRecol
+  if HalfLeft = 9 then call asm NxBarRecol
+  Ci = HalfLeft >> 1
+  BarDraw
+  return
+end sub
+
+' cell Ci: full, half or empty, in the bar's colour
+sub BarDraw:
+  S0 = ChBarG
+  if HalfLeft <= 18 then S0 = ChBarY
+  if HalfLeft <= 9 then S0 = ChBarR
+  S1 = Ci * 2
+  if HalfLeft <= S1 then
+    S0 = ChBarE
+  else
+    S1 = S1 + 1
+    if HalfLeft = S1 then S0 = S0 + 1
+  end if
+  TxBuf[58 + Ci] = S0
+  TxDirty = TxDirty | 4
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' music: the title tune once; in play the run loop with the wheels' rhythm
+' (the drum bar is replayed on each 96-frame bar line); stings in between
+sub MusicTick:
+  if StingN > 0 then
+    play sound StingN
+    S0 = StingN + 1
+    play sound S0
+    StingN = 0
+  end if
+  if MuT > 0 then
+    dec MuT
+    if MuT = 0 then
+      if MuMode = 1 then
+        MusicOff
+      else
+        if MuNext = 2 then
+          MusicRun
+        else
+          MuMode = 0
+        end if
+      end if
+    end if
+  end if
+  if MuMode = 2 then
+    inc MuF
+    if MuF >= 96 then
+      MuF = 0
+      play sound SndRunDrum
+    end if
+  end if
+  return
+end sub
+
+sub MusicTitle:
+  MusicOff
+  play sound SndTitleC
+  play sound SndTitleD
+  play sound SndTitleA
+  play sound SndTitleB
+  MuMode = 1
+  MuT = TitleFrames
+  return
+end sub
+
+sub MusicRun:
+  play sound SndRunA
+  play sound SndRunB
+  play sound SndRunDrum
+  MuF = 0
+  MuT = 0
+  MuMode = 2
+  return
+end sub
+
+' a sting: the music stops now, the sting starts next frame (MusicTick):
+' stopping and starting the sounds in one frame overran a heavy frame
+sub Sting(u8 n):
+  MusicOff
+  StingN = n
+  MuMode = 3
+  MuT = WinFrames + 1
+  MuNext = 0
+  if n = SndWinA then MuNext = 2
+  return
+end sub
+
+' only the group that can be playing is stopped (title tune or run loop)
+sub MusicOff:
+  if MuMode <> 2 then
+    stop sound SndTitleA
+    stop sound SndTitleB
+    stop sound SndTitleC
+    stop sound SndTitleD
+  end if
+  if MuMode <> 1 then
+    stop sound SndRunA
+    stop sound SndRunB
+    stop sound SndRunDrum
+  end if
+  MuMode = 0
+  MuT = 0
+  return
+end sub
+
+' one frame: the NMI runs only during the wait
+sub Frame1:
+  call asm NxClrF
+  call asm NxPoll
+  nmi off
+  return
+end sub
+
+asm {
+; the NMI only flags the frame (NO_NMI = 1: the runtime's handler reads the
+; status and returns): the frame's VRAM work starts at once in the blank; the
+; handler's own work (controllers, sound) runs after it (NxLate)
+; If the frame flag is already up, the last frame's logic ran into this
+; frame's blank (rare: a heavy frame): no wait, the frame is late, not lost,
+; and it gets no fast-write budget (NxLt, NX_LATEBUD 0): all its writes are
+; paced, safe while the screen is drawn.
+; v4: no status read here any more (nor the one 'nmi on' does after setting
+; IE): a status read in the very cycle the frame flag rises clears it with
+; no NMI, and the frame wait then lost a whole frame (seen in the bots,
+; human 2 / 7). IE is set alone: a flag already up fires the NMI at once,
+; its handler reads the status and sets NMI_FLAG: that frame is late.
+NxClrF:
+    xor a
+    ld (NMI_FLAG),a
+    ld (AMY_UVAR_NxLt),a
+    inc a
+    ld (NO_NMI),a
+    ld a,($73C4)
+    or $20
+    ld ($73C4),a
+    ld c,a
+    ld b,1
+    call WRITE_REGISTER
+    ld a,(NMI_FLAG)
+    ld (AMY_UVAR_NxLt),a
+    ret
+NxLate:
+    xor a
+    ld (NO_NMI),a
+    push ix
+    push iy
+    call UPDATE_CONTROLLERS
+    ld a,($73EE)
+    and $4F
+    ld (JOYPAD_1),a
+    ld a,($73F0)
+    and $4F
+    ld (JOYPAD_1+1),a
+    ld ix,JOYPAD_1
+    call AMY_DECODE_CONTROLLER
+    ld hl,AMY_FRAME_COUNTER
+    inc (hl)
+    jr nz,NxLt1
+    inc hl
+    inc (hl)
+NxLt1:
+    ld a,(AMY_SOUND_ENABLED)
+    or a
+    jr z,NxLt2
+    call PLAY_SOUNDS
+    call UPDATE_SOUND_ADDR
+NxLt2:
+    pop iy
+    pop ix
+    ret
+NxPoll:
+    ld a,(NMI_FLAG)
+    or a
+    jr z,NxPoll
+    ret
+
+; the pad: Pad = held (1 up, 2 down, 4 left, 8 right, 64 right button,
+; 128 left button), PadE = newly pressed this frame
+NxPad:
+    ld a,(JOYPAD_1)
+    ld b,a
+    and $C1
+    bit 1,b
+    jr z,NxPd1
+    or 8
+NxPd1:
+    bit 2,b
+    jr z,NxPd2
+    or 2
+NxPd2:
+    bit 3,b
+    jr z,NxPd3
+    or 4
+NxPd3:
+    ld b,a
+    ld a,(AMY_UVAR_PadW)
+    cpl
+    and b
+    ld (AMY_UVAR_PadE),a
+    ld a,b
+    ld (AMY_UVAR_PadW),a
+    ld (AMY_UVAR_Pad),a
+    ret
+
+; VDP: NxSetW sets the write address DE.
+; NxOutF: BC bytes from HL, unrolled OUTI (16 cycles a byte): only in the
+; vertical blank or with the display off.
+; NxOutS: BC bytes from HL, 30 cycles a byte: safe while the screen is drawn
+; (the TMS9918A needs about 8 us between accesses in graphics mode 2).
+; NxOut: fast while the frame's blank budget lasts, else slow. NxBud counts
+; CYCLES left in the vertical blank (from NxFrame's start): a fast copy costs
+; 16 a byte + NX_FASTOH (the band code around it), the slow writers charge
+; theirs too (NxOutA, OvFast), so no fast write lands after the blank.
+NxSetW:
+    ld a,e
+    out ($BF),a
+    ld a,d
+    or $40
+    out ($BF),a
+    ret
+NxOut:
+    push hl
+    push de
+    ld h,b
+    ld l,c
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,NX_FASTOH
+    add hl,de
+    ex de,hl
+    ld hl,(AMY_UVAR_NxBud)
+    or a
+    sbc hl,de
+    jr c,NxOut1
+    ld (AMY_UVAR_NxBud),hl
+    pop de
+    pop hl
+    jr NxOutF
+NxOut1:
+    ld hl,0
+    ld (AMY_UVAR_NxBud),hl
+    pop de
+    pop hl
+    jr NxOutS
+; NxChg: the blank budget (cycles) less DE (not below 0); keeps BC, HL
+NxChg:
+    push hl
+    ld hl,(AMY_UVAR_NxBud)
+    or a
+    sbc hl,de
+    jr nc,NxCh1
+    ld hl,0
+NxCh1:
+    ld (AMY_UVAR_NxBud),hl
+    pop hl
+    ret
+NxOutF:
+    call NxSetW
+    ld a,c
+    sla a
+    rl b
+    srl a
+    ld d,b
+    ld c,$BE
+    or a
+    jr z,NxOF2
+    push iy
+    neg
+    add a,128
+    ld e,a
+    ld a,d
+    ld d,0
+    ld iy,NxChain
+    add iy,de
+    add iy,de
+    ld d,a
+    call NxJpIY
+    pop iy
+NxOF2:
+    ld a,d
+    or a
+    ret z
+    dec d
+    call NxChain
+    jr NxOF2
+NxJpIY:
+    jp (iy)
+NxOutS:
+    call NxSetW
+    ld a,c
+    ld d,b
+    ld c,$BE
+    ld b,a
+    or a
+    jr z,NxOutS2
+NxOutS1:
+    outi
+    nop
+    jp nz,NxOutS1
+NxOutS2:
+    ld a,d
+    or a
+    ret z
+    dec d
+    jr NxOutS1
+
+; NxOutA: B names from HL plus C (a resident band's shift), at DE; ~41
+; cycles a byte, safe while the screen is drawn
+NxOutA:
+    push hl
+    push de
+    ld l,b
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    push hl
+    add hl,hl
+    add hl,hl
+    pop de
+    add hl,de
+    ld de,NX_FASTOH
+    add hl,de
+    ex de,hl
+    call NxChg
+    pop de
+    pop hl
+    call NxSetW
+NxOA1:
+    ld a,(hl)
+    add a,c
+    out ($BE),a
+    inc hl
+    djnz NxOA1
+    ret
+
+; the frame's VRAM work, first thing after the frame wait
+NxFrame:
+    ld hl,NX_BUDGET
+    ld a,(AMY_UVAR_NxLt)
+    or a
+    jr z,NxFr1
+    ld hl,NX_LATEBUD
+NxFr1:
+    ld (AMY_UVAR_NxBud),hl
+    ld hl,AMY_UVAR_Sat
+    ld de,$1B00
+    ld bc,17
+    ; a late frame (NxLt, flags of the or above) may already be in the
+    ; display: its sprite table goes out paced (seen 2026-11-17 by the VDP
+    ; checker on the ending's return to the title: 7 drops in the SAT)
+    jr nz,NxFr2
+    call NxOutF
+    jr NxFr3
+NxFr2:
+    call NxOutS
+NxFr3:
+    call NxBands
+    call NxTwinkle
+    call NxText
+    jp NxLate
+
+; one dirty text row (rows 1-7, from TxBuf), after the beam has passed it
+NxText:
+    ld a,(AMY_UVAR_TxDirty)
+    or a
+    ret z
+    ld c,a
+    ld b,1
+    ld hl,AMY_UVAR_TxBuf
+    ld de,$1822
+NxTx1:
+    ld a,c
+    and b
+    jr nz,NxTx2
+    push bc
+    ld bc,28
+    add hl,bc
+    ex de,hl
+    ld c,32
+    add hl,bc
+    ex de,hl
+    pop bc
+    sla b
+    jr NxTx1
+NxTx2:
+    ld a,b
+    cpl
+    and c
+    ld (AMY_UVAR_TxDirty),a
+    ld bc,28
+    jp NxOutS
+
+; TxPage: A = page (0 title, 1-5 how to play, 6 credits, 7 HUD, 8-9 the end): rows 1-7
+; from the sky, then the page's text records; all six rows dirty
+TxPage:
+    push af
+    ld hl,NxSkyName+34
+    ld de,AMY_UVAR_TxBuf
+    ld b,7
+TxP1:
+    push bc
+    ld bc,28
+    ldir
+    ld c,4
+    add hl,bc
+    pop bc
+    djnz TxP1
+    pop af
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,NxPages
+    add hl,de
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+TxP2:
+    ld a,(hl)
+    cp $FF
+    jr z,TxP3
+    call TxRec
+    jr TxP2
+TxP3:
+    ld a,$7F
+    ld (AMY_UVAR_TxDirty),a
+    ret
+
+; one text record at HL (row, column - 2, length, codes): into TxBuf
+TxRec:
+    ld a,(hl)
+    inc hl
+    dec a
+    ld b,a
+    add a,a
+    add a,a
+    ld c,a
+    add a,a
+    add a,a
+    add a,a
+    sub c
+    ld e,a
+    ld d,0
+    ld a,(hl)
+    inc hl
+    add a,e
+    ld e,a
+    push hl
+    ld hl,AMY_UVAR_TxBuf
+    add hl,de
+    ex de,hl
+    pop hl
+    ld c,(hl)
+    inc hl
+    ld b,0
+    ldir
+    ret
+
+; TxMsg: A = message (255: none): row 5 back to the sky, then the message
+TxMsg:
+    push af
+    ld hl,NxSkyName+5*32+2
+    ld de,AMY_UVAR_TxBuf+4*28
+    ld bc,28
+    ldir
+    ld a,(AMY_UVAR_TxDirty)
+    or 16
+    ld (AMY_UVAR_TxDirty),a
+    pop af
+    cp 255
+    ret z
+    ld hl,NxMsgs
+    or a
+    jr z,TxM2
+    ld b,a
+TxM1:
+    inc hl
+    inc hl
+    ld a,(hl)
+    inc hl
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    djnz TxM1
+TxM2:
+    jp TxRec
+
+; NxBody: gravity, landing and walking off a roof for a body: HL = its feet
+; y (i16, then vy i16, then air u8), DE = the roof under it (1/16 px)
+NxBody:
+    ld (AMY_UVAR_BP),hl
+    ld (AMY_UVAR_BQ),de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_BA),a
+    or a
+    jr nz,NxB2
+    ld hl,(AMY_UVAR_BQ)
+    or a
+    sbc hl,de
+    jr c,NxB5
+    jr z,NxB9
+    ld bc,0
+NxB2:
+    ld a,(AMY_UVAR_BA)
+    cp 200
+    jr nc,NxB3
+    inc a
+    ld (AMY_UVAR_BA),a
+NxB3:
+    ld hl,AMY_UCONST_Grav
+    add hl,bc
+    ld b,h
+    ld c,l
+    bit 7,h
+    jr nz,NxB4
+    ld hl,AMY_UCONST_MaxFall
+    or a
+    sbc hl,bc
+    jr nc,NxB4
+    ld bc,AMY_UCONST_MaxFall
+NxB4:
+    ex de,hl
+    add hl,bc
+    ex de,hl
+    bit 7,b
+    jr nz,NxB9
+    ld hl,(AMY_UVAR_BQ)
+    or a
+    sbc hl,de
+    jr z,NxB5
+    jr nc,NxB9
+NxB5:
+    ld de,(AMY_UVAR_BQ)
+    ld bc,0
+    xor a
+    ld (AMY_UVAR_BA),a
+NxB9:
+    ld hl,(AMY_UVAR_BP)
+    ld (hl),e
+    inc hl
+    ld (hl),d
+    inc hl
+    ld (hl),c
+    inc hl
+    ld (hl),b
+    inc hl
+    ld a,(AMY_UVAR_BA)
+    ld (hl),a
+    ret
+
+; NxLayers: the ground moves 1 pixel a frame; P = ground + camera; every
+; band's offset; the wheels turn with the ground, the smoke has 3 frames
+NxLayers:
+    ld hl,(AMY_UVAR_Ground)
+    inc hl
+    ld (AMY_UVAR_Ground),hl
+    ld a,l
+    rra
+    rra
+    rra
+    and 3
+    ld (AMY_UVAR_AnimWheel),a
+    ld de,(AMY_UVAR_CamX)
+    ; a frame where the camera crosses a cell (the train's names are all
+    ; rewritten): the mid band waits a frame (B = 1), so the two never pile up
+    ld a,(AMY_UVAR_OffTrain)
+    xor e
+    and $F8
+    ld b,a
+    ld a,(AMY_UVAR_OffTrain+1)
+    xor d
+    or b
+    ld b,a
+    ld (AMY_UVAR_OffTrain),de
+    add hl,de
+    ld (AMY_UVAR_P),hl
+    ld a,l
+    ld (AMY_UVAR_OffNear),a
+    and 31
+    ld (AMY_UVAR_OffRail),a
+    xor a
+    ld (AMY_UVAR_OffNear+1),a
+    ld (AMY_UVAR_OffRail+1),a
+    ld (AMY_UVAR_OffMid+1),a
+    srl h
+    rr l
+    ld a,b
+    or a
+    jr nz,NxLy0
+    ld a,l
+    add a,3
+    ld (AMY_UVAR_OffMid),a
+NxLy0:
+    ld a,(AMY_UVAR_Tick)
+    rra
+    jr c,NxLy1
+    srl h
+    rr l
+    ld a,l
+    add a,5
+    ld (AMY_UVAR_OffFar),a
+    xor a
+    ld (AMY_UVAR_OffFar+1),a
+NxLy1:
+    ld hl,AMY_UVAR_SmT
+    inc (hl)
+    ld a,(hl)
+    cp 18
+    jr c,NxLy2
+    xor a
+    ld (hl),a
+NxLy2:
+    ld b,0
+NxLy3:
+    sub 6
+    jr c,NxLy4
+    inc b
+    jr NxLy3
+NxLy4:
+    ld a,b
+    ld (AMY_UVAR_AnimSmoke),a
+    ; the train's cell (CamX / 8): TrPre = cell - CamC (the rear end shows
+    ; while it is under 4; 255 with the whole strip, CamC 0: the strip's own
+    ; rear), TrRow = (cell - ExtraC - RSkip, not below 0) * 8
+    ld hl,(AMY_UVAR_OffTrain)
+    ld a,l
+    srl h
+    rra
+    srl h
+    rra
+    srl h
+    rra
+    ld b,a
+    ; the 4 train bands' cell (D) and shift (E), once here: TrDE (v4, the
+    ; frame time back for the rear-end checks)
+    ld a,(AMY_UVAR_OffTrain)
+    and 7
+    ld (AMY_UVAR_TrDE),a
+    ld a,b
+    ld (AMY_UVAR_TrDE+1),a
+    ld hl,AMY_UVAR_CamC
+    sub (hl)
+    inc (hl)
+    dec (hl)
+    jr nz,NxLy6
+    ld a,255
+NxLy6:
+    ld (AMY_UVAR_TrPre),a
+    ; while the rear end shows (TrPre < 4): the cab row (16) as on screen in
+    ; CabRow, for the overlays (OvCab), when its cell or TrPre moved (here,
+    ; in the frame's logic: no blank time; the band itself uses NxOutT)
+    cp 4
+    jr nc,NxCb2
+    ld c,a
+    ld hl,(AMY_UVAR_CabK)
+    ld a,b
+    cp l
+    jr nz,NxCb0
+    ld a,c
+    cp h
+    jr z,NxCb2
+NxCb0:
+    push bc
+    ld l,b
+    ld h,c
+    ld (AMY_UVAR_CabK),hl
+    ld a,b
+    ld hl,Nx_cab_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ; into CabRow (29: the overlay reads the cell right of column 29), the
+    ; rear end (TrPre < 4) from the strip's own cells TrPre..3 as NxOutT:
+    ; the strip behind a shorter train is the removed coaches' (luggage)
+    push hl
+    ld de,AMY_UVAR_CabRow
+    ld bc,29
+    ldir
+    pop hl
+    ld a,(AMY_UVAR_TrPre)
+    ld b,a
+    ld a,4
+    sub b
+    push af
+    ld a,(AMY_UVAR_CamC)
+    cpl
+    ld c,a
+    ld b,$FF
+    inc bc
+    add hl,bc
+    pop af
+    ld c,a
+    ld b,0
+    ld de,AMY_UVAR_CabRow
+    ldir
+    pop bc
+NxCb2:
+    ld a,b
+    sub AMY_UCONST_ExtraC+AMY_UCONST_RSkip
+    jr nc,NxLy5
+    xor a
+NxLy5:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld (AMY_UVAR_TrRow),hl
+    ret
+
+; NxSat: the sprite table: guard face (light red), coat (cyan), thief
+; stripes (TCol: white, yellow off balance), body (black), end. Hidden at Y 192 (never 208).
+NxSat:
+    ld hl,(AMY_UVAR_Gx)
+    ld de,(AMY_UVAR_Gy)
+    call NxSx
+    ld a,(AMY_UVAR_GDir)
+    or a
+    ld a,0
+    jr z,NxSa1
+    ld a,AMY_UCONST_SpGL
+NxSa1:
+    ld b,a
+    ld a,(AMY_UVAR_GPose)
+    add a,a
+    add a,a
+    add a,a
+    add a,b
+    ld hl,AMY_UVAR_Sat
+    ld b,9
+    call NxSp2
+    ld hl,(AMY_UVAR_Tx)
+    ld de,(AMY_UVAR_Ty)
+    call NxSx
+    ld a,(AMY_UVAR_TSt)
+    cp AMY_UCONST_TsGone
+    jr nz,NxSa2
+    ld c,192
+NxSa2:
+    ; the thief's stripes: yellow while off balance, ducking or throwing
+    ld b,AMY_UCONST_ColT
+    ld a,(AMY_UVAR_TOff)
+    or a
+    jr nz,NxSa4
+    ld a,(AMY_UVAR_TSt)
+    sub AMY_UCONST_TsDuck
+    cp 2
+    jr nc,NxSa3
+NxSa4:
+    ld b,AMY_UCONST_ColOff
+NxSa3:
+    ld a,b
+    ld (AMY_UVAR_TCol),a
+    ld a,(AMY_UVAR_TPose)
+    add a,a
+    add a,a
+    add a,a
+    add a,AMY_UCONST_SpTR
+    ld hl,AMY_UVAR_Sat+8
+    call NxSp2
+    ld (hl),208
+    ret
+; HL = x (1/16 px along the train), DE = feet y (1/16 px): D = screen x,
+; C = sprite y (192: hidden, out of the view or fallen below the roofs)
+NxSx:
+    call NxD16
+    ld bc,16
+    add hl,bc
+    ld bc,(AMY_UVAR_CamX)
+    or a
+    sbc hl,bc
+    push hl
+    ex de,hl
+    call NxD16
+    ld a,l
+    sub 17
+    ld c,a
+    cp 158-17
+    jr c,NxSx1
+    ld c,192
+NxSx1:
+    pop hl
+    ld d,l
+    ld a,h
+    or a
+    jr nz,NxSx2
+    ld a,l
+    cp 16
+    jr c,NxSx2
+    cp 225
+    ret c
+NxSx2:
+    ld c,192
+    ret
+NxD16:
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ret
+; two entries at HL: y C, x D, pattern A (and A + 4), colours B then the next table colour
+NxSp2:
+    ld (hl),c
+    inc hl
+    ld (hl),d
+    inc hl
+    ld (hl),a
+    inc hl
+    ld (hl),b
+    inc hl
+    ld (hl),c
+    inc hl
+    ld (hl),d
+    inc hl
+    add a,4
+    ld (hl),a
+    inc hl
+    ld a,b
+    cp 9
+    ld a,7
+    jr z,NxSp3
+    ld a,1
+NxSp3:
+    ld (hl),a
+    inc hl
+    ret
+
+; NumOut: HL = value: 5 digits into TxBuf[0..4]
+NumOut:
+    ld de,AMY_UVAR_TxBuf
+    ld bc,10000
+    call NumD
+    ld bc,1000
+    call NumD
+    ld bc,100
+    call NumD
+    ld bc,10
+    call NumD
+    ld a,l
+    jr NumD2
+NumD:
+    xor a
+NumD1:
+    or a
+    sbc hl,bc
+    jr c,NumD3
+    inc a
+    jr NumD1
+NumD3:
+    add hl,bc
+NumD2:
+    add a,AMY_UCONST_ChDigit
+    ld (de),a
+    inc de
+    ret
+
+; ---- the obstacle overlay, inside the band sequence. NxObs (after the near
+; band): rows 13-16; NxObs2 (after the rails band): row 21. A bridge or
+; gantry (ObT at screen x ObX, locked to the ground: ObX + P = 7 mod 8) is
+; drawn EVERY frame it is on screen: its pre-shifted patterns (NxObT: per
+; screen x & 7 one block, third 1 then third 2) and, per row, the names of
+; the cells it covers (L, M..., R) plus the cell just right of it, which gets
+; the band's own name back (it moves at most 2 px a frame). Row 16 is behind
+; the train: a cell where the cab band shows anything but sky keeps the
+; band's name, and the coal lump stays in front. ObClr: the last one is
+; gone, its cells get the band's names back. Row 16 also carries the coal
+; lump (LmSX; codes NX_COAL, +1, pre-shifted over two cells). Columns are
+; kept + 16 (OvCol) so the left edge can go below 0.
+NxObs:
+    ; where they are drawn: from this frame's P and camera (the bands' own), so
+    ; a bridge stays locked to the ground and the coal to the roof (ObX and
+    ; LmSX, the logic's, are a frame older)
+    ld hl,(AMY_UVAR_ObG)
+    ld de,(AMY_UVAR_P)
+    or a
+    sbc hl,de
+    ld (AMY_UVAR_OvOX),hl
+    ld hl,(AMY_UVAR_LmX)
+    ld de,16
+    add hl,de
+    ld de,(AMY_UVAR_CamX)
+    or a
+    sbc hl,de
+    ld (AMY_UVAR_OvLX),hl
+    ld hl,(AMY_UVAR_OvDX)
+    ld (AMY_UVAR_OvUX),hl
+    ld hl,(AMY_UVAR_OvLD)
+    ld (AMY_UVAR_OvCX),hl
+    xor a
+    ld (AMY_UVAR_OvPh),a
+    ld (AMY_UVAR_OvLmC),a
+    ld a,(AMY_UVAR_LmOn)
+    ld b,a
+    ld a,(AMY_UVAR_LmClr)
+    or b
+    ld (AMY_UVAR_OvCoA),a
+    ld a,(AMY_UVAR_ObClr)
+    or a
+    call nz,OvClr
+    ld a,(AMY_UVAR_LmClr)
+    or a
+    jr z,NxOs1
+    xor a
+    ld (AMY_UVAR_LmClr),a
+    inc a
+    ld (AMY_UVAR_OvMd),a
+    call LmRow
+NxOs1:
+    xor a
+    ld (AMY_UVAR_OvMd),a
+    ld hl,(AMY_UVAR_OvLX)
+    ld (AMY_UVAR_OvCX),hl
+    ld a,(AMY_UVAR_LmOn)
+    or a
+    jr z,NxOs2
+    ld (AMY_UVAR_OvLD),hl
+    call LmRow
+NxOs2:
+    ld a,(AMY_UVAR_ObT)
+    or a
+    ret z
+    ld hl,(AMY_UVAR_OvOX)
+    ld (AMY_UVAR_OvUX),hl
+    call OvPats
+    jr OvDraw
+NxObs2:
+    ld a,1
+    ld (AMY_UVAR_OvPh),a
+    ld a,(AMY_UVAR_ObClr)
+    or a
+    jr z,NxO21
+    call OvClr
+    xor a
+    ld (AMY_UVAR_ObClr),a
+NxO21:
+    ld a,(AMY_UVAR_ObT)
+    ld (AMY_UVAR_ObPT),a
+    or a
+    ret z
+OvDraw:
+    ld hl,(AMY_UVAR_OvOX)
+    ld (AMY_UVAR_OvUX),hl
+    ld (AMY_UVAR_OvDX),hl
+    xor a
+    ld (AMY_UVAR_OvMd),a
+    call OvXs
+    ld a,(AMY_UVAR_ObT)
+    jr OvRows
+OvClr:
+    ld a,1
+    ld (AMY_UVAR_OvMd),a
+    call OvXs
+    ld a,(AMY_UVAR_ObPT)
+    or a
+    ret z
+; the obstacle's own cell (+16) and shift, from OvUX
+OvXs:
+    ld a,(AMY_UVAR_OvUX)
+    and 7
+    ld (AMY_UVAR_OvXf),a
+    ld hl,(AMY_UVAR_OvUX)
+    ld de,64
+    add hl,de
+    call OvCol
+    ld (AMY_UVAR_OvXc),a
+    ret
+; A = type: the rows of this phase (OvPh 0: rows 13-16, 1: row 21 and below)
+OvRows:
+    ld c,a
+    ld a,(AMY_UVAR_ObPT)
+    or a
+    ld a,0
+    jr nz,OvRs0
+    inc a
+OvRs0:
+    ld (AMY_UVAR_OvFo),a
+    ld a,(AMY_UVAR_OvPh)
+    or a
+    jr z,OvRsA
+    ; phase 1 (row 21): on from where phase 0 stopped (the rows are in order)
+    ld hl,(AMY_UVAR_OvRP)
+    ld a,(AMY_UVAR_OvRI)
+    ld (AMY_UVAR_OvIx),a
+    ld a,(AMY_UVAR_OvRN)
+    ld b,a
+    or a
+    ret z
+    jr OvRs1
+OvRsA:
+    xor a
+    ld (AMY_UVAR_OvRN),a
+    ld a,c
+    call OvTyp
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+    ld a,255
+    ld (AMY_UVAR_OvIx),a
+    ld b,(hl)
+    inc hl
+OvRs1:
+    ld a,(hl)
+    cp 20
+    jr c,OvRs2
+    ld a,(AMY_UVAR_OvPh)
+    or a
+    jr nz,OvRs2
+    ; phase 0 has reached the row-21 entries: their place is kept for phase 1
+    ld (AMY_UVAR_OvRP),hl
+    ld a,b
+    ld (AMY_UVAR_OvRN),a
+    ld a,(AMY_UVAR_OvIx)
+    ld (AMY_UVAR_OvRI),a
+    ret
+OvRs2:
+    push bc
+    ld a,(AMY_UVAR_OvIx)
+    inc a
+    ld (AMY_UVAR_OvIx),a
+    ld (AMY_UVAR_OvP),hl
+    call OvFast
+    ld hl,(AMY_UVAR_OvP)
+    push hl
+    ld de,7
+    add hl,de
+    ld e,(hl)
+    pop hl
+    add hl,de
+    pop bc
+    djnz OvRs1
+    ret
+OvTyp:
+    dec a
+    add a,a
+    add a,a
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,NxObT
+    add hl,de
+    ret
+
+; the patterns of type ObT at shift ObX & 7: N1 bytes at code C1 (third 1),
+; the rest of the block at code C2 (third 2)
+OvPats:
+    ld a,(AMY_UVAR_ObT)
+    call OvTyp
+    inc hl
+    inc hl
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_ObN2),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_ObN1),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_OvC1),a
+    inc hl
+    ld a,(hl)
+    ld (AMY_UVAR_OvC2),a
+    ld a,(AMY_UVAR_OvUX)
+    and 7
+    ld b,a
+    ex de,hl
+    ld a,(AMY_UVAR_ObN2)
+    ld e,a
+    ld d,0
+    inc b
+    jr OvPt2
+OvPt1:
+    add hl,de
+OvPt2:
+    djnz OvPt1
+    ld (AMY_UVAR_OvXp),hl
+    ld a,(AMY_UVAR_OvC1)
+    ld de,$0800
+    call OvPtA
+    ld a,(AMY_UVAR_ObN1)
+    ld c,a
+    ld b,0
+    ld hl,(AMY_UVAR_OvXp)
+    call NxOut
+    ld hl,(AMY_UVAR_OvXp)
+    ld a,(AMY_UVAR_ObN1)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld (AMY_UVAR_OvXp),hl
+    ld a,(AMY_UVAR_OvC2)
+    ld de,$1000
+    call OvPtA
+    ld a,(AMY_UVAR_ObN1)
+    ld b,a
+    ld a,(AMY_UVAR_ObN2)
+    sub b
+    ld c,a
+    ld b,0
+    ld hl,(AMY_UVAR_OvXp)
+    jp NxOut
+; DE = DE + A * 8
+OvPtA:
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ex de,hl
+    ret
+
+; the coal lump (OvMd 1: its cells get the band's names back). Its own
+; work (OvBand, OvWrite's buffer, row 16's pass) is charged NX_OVOH like
+; OvFast: uncharged, a lump and a busy rails frame ran the fast chain into
+; line 261 (kit VDP checker, v4)
+LmRow:
+    ld de,NX_OVOH
+    call NxChg
+    ld a,1
+    ld (AMY_UVAR_OvCo),a
+    ld hl,(AMY_UVAR_OvCX)
+    ld de,64
+    add hl,de
+    ld a,l
+    and 7
+    ld (AMY_UVAR_OvSL),a
+    call OvCol
+    ld (AMY_UVAR_OvCL),a
+    inc a
+    ld (AMY_UVAR_OvCR),a
+    ld a,NX_COAL
+    ld (AMY_UVAR_OvCd),a
+    ld a,16
+    ld (AMY_UVAR_OvRw),a
+    ld a,(AMY_UVAR_OvMd)
+    or a
+    jr nz,LmR1
+    ld a,(AMY_UVAR_OvCL)
+    ld (AMY_UVAR_OvLmC),a
+    ld a,(AMY_UVAR_OvSL)
+    add a,a
+    add a,a
+    add a,a
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,NxLump
+    add hl,de
+    ld de,$1000+NX_COAL*8
+    ld bc,16
+    call NxOut
+LmR1:
+    call OvBand
+    call OvWrite
+    xor a
+    ld (AMY_UVAR_OvCo),a
+    ret
+
+OvCol:
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,l
+    add a,8
+    ret
+
+; the fast writer (drawing, every row but 16): the row's template for the
+; shift OvXf (first cell from the obstacle's own cell OvXc, count, codes),
+; streamed straight to VRAM, then the band's name in the cell right of it.
+; Skipped when its cells and its band's step are as last frame.
+OvFast:
+    ld de,NX_OVOH
+    call NxChg
+    ld a,(hl)
+    ld (AMY_UVAR_OvRw),a
+    ld de,5
+    add hl,de
+    ld e,(hl)
+    push hl
+    ld hl,AMY_UVAR_NxSt
+    add hl,de
+    ld a,(hl)
+    ld (AMY_UVAR_OvSt),a
+    pop hl
+    inc hl
+    ld c,(hl)
+    inc hl
+    inc hl
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    push hl
+    ex de,hl
+    ld a,(AMY_UVAR_OvSt)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld de,-18
+    add hl,de
+    ld (AMY_UVAR_OvRT),hl
+    pop hl
+    ld a,(AMY_UVAR_OvXf)
+    or a
+    jr z,OvF2
+    ld b,a
+    ld e,c
+    ld d,0
+OvF1:
+    add hl,de
+    djnz OvF1
+OvF2:
+    ld a,(AMY_UVAR_OvXc)
+    add a,(hl)
+    ld (AMY_UVAR_OvCL),a
+    inc hl
+    ld b,(hl)
+    inc hl
+    ld (AMY_UVAR_OvXp),hl
+    add a,b
+    ld (AMY_UVAR_OvCR),a
+    ld a,(AMY_UVAR_OvMd)
+    or a
+    jr nz,OvF5b
+    ld a,(AMY_UVAR_OvIx)
+    ld e,a
+    add a,a
+    add a,e
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_OvSv
+    add hl,de
+    ld a,(AMY_UVAR_OvFo)
+    ld b,a
+    ld a,(AMY_UVAR_OvCL)
+    cp (hl)
+    jr z,OvF3
+    ld (hl),a
+    ld b,1
+OvF3:
+    inc hl
+    ld a,(AMY_UVAR_OvCR)
+    cp (hl)
+    jr z,OvF4
+    ld (hl),a
+    ld b,1
+OvF4:
+    inc hl
+    ld a,(AMY_UVAR_OvSt)
+    cp (hl)
+    jr z,OvF5
+    ld (hl),a
+    ld b,1
+OvF5:
+    ld a,(AMY_UVAR_OvRw)
+    cp 16
+    jr nz,OvF5a
+    ld a,(AMY_UVAR_OvCoA)
+    or b
+    ld b,a
+    call OvCab16
+OvF5a:
+    ld a,b
+    or a
+    ret z
+OvF5b:
+    ; window: CS = max(s, 18) in C, CE = min(e, 45) in B
+    ld a,(AMY_UVAR_OvCL)
+    cp 18
+    jr nc,OvF6
+    ld a,18
+OvF6:
+    ld c,a
+    ld a,(AMY_UVAR_OvCR)
+    cp 46
+    jr c,OvF7
+    ld a,45
+OvF7:
+    ld b,a
+    cp c
+    ret c
+    ld a,(AMY_UVAR_OvMd)
+    or a
+    jr z,OvF7a
+    ; clearing: the band's own names from CS to CE
+    ld a,(AMY_UVAR_OvRw)
+    cp 16
+    call z,OvCab16
+    ld a,c
+    ld (AMY_UVAR_OvCS),a
+    ld hl,(AMY_UVAR_OvRT)
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    push hl
+    ld a,b
+    sub c
+    inc a
+    ld (AMY_UVAR_OvX1),a
+    pop de
+    push de
+    call OvOut0
+    pop hl
+    ld a,(AMY_UVAR_OvX1)
+    ld c,a
+    ld b,0
+    jp NxOut
+OvF7a:
+    push bc
+    ld a,(AMY_UVAR_OvRw)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,c
+    sub 16
+    add a,l
+    ld l,a
+    ld de,$1800
+    add hl,de
+    ex de,hl
+    call NxSetW
+    pop bc
+    ld a,(AMY_UVAR_OvCL)
+    ld e,a
+    ld a,c
+    sub e
+    ld e,a
+    ld d,0
+    ld hl,(AMY_UVAR_OvXp)
+    add hl,de
+    ld a,(AMY_UVAR_OvCR)
+    cp b
+    ld a,b
+    jr nz,OvF8
+    sub c
+    ld b,a
+    ld d,1
+    jr OvF9
+OvF8:
+    sub c
+    inc a
+    ld b,a
+    ld d,0
+OvF9:
+    ld a,b
+    or a
+    jr z,OvFb
+    ld c,$BE
+OvFa:
+    outi
+    nop
+    jp nz,OvFa
+OvFb:
+    ld a,d
+    or a
+    jr z,OvFc
+    ld hl,(AMY_UVAR_OvRT)
+    ld a,(AMY_UVAR_OvCR)
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld a,(hl)
+    out ($BE),a
+OvFc:
+    ld a,(AMY_UVAR_OvRw)
+    cp 16
+    ret nz
+    ; row 16 is behind the train: where the cab band shows anything but sky
+    ; (luggage), its name goes back; the coal lump stays in front
+    ld a,(AMY_UVAR_OvCL)
+    ld c,a
+    ld a,(AMY_UVAR_OvCR)
+    sub c
+    ret z
+    ld b,a
+OvFd:
+    ld hl,(AMY_UVAR_OvRT)
+    ld a,c
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld a,(hl)
+    cp NX_CABSKY
+    call nz,OvPoke
+    inc c
+    djnz OvFd
+    ld a,(AMY_UVAR_OvLmC)
+    or a
+    ret z
+    ld c,a
+    ld a,NX_COAL
+    call OvPoke
+    inc c
+    ld a,NX_COAL+1
+; A = name at column C (+16) of row 16, when visible
+OvPoke:
+    push af
+    ld a,c
+    cp 18
+    jr c,OvPk1
+    cp 46
+    jr nc,OvPk1
+    push bc
+    ld l,a
+    ld h,0
+    ld de,$1800+16*32-16
+    add hl,de
+    ex de,hl
+    call NxSetW
+    pop bc
+    pop af
+    out ($BE),a
+    ret
+OvPk1:
+    pop af
+    ret
+
+; the names of row OvRw from column max(cL, 2) to min(cR + 1, 29): the band's
+; names (OvRT), then (drawing) L, M..., R over them, then (row 16, the obstacle)
+; the coal lump in front; out in one copy
+OvWrite:
+    ld a,(AMY_UVAR_OvCL)
+    cp 18
+    jr nc,OvNa
+    ld a,18
+OvNa:
+    ld c,a
+    ld (AMY_UVAR_OvCS),a
+    ld a,(AMY_UVAR_OvCR)
+    inc a
+    cp 46
+    jr c,OvNb
+    ld a,45
+OvNb:
+    ld (AMY_UVAR_OvCE),a
+    sub c
+    ret c
+    inc a
+    ld b,a
+    ld (AMY_UVAR_OvX1),a
+    ld a,1
+    ld (AMY_UVAR_OvWr),a
+    ld hl,(AMY_UVAR_OvRT)
+    ld e,c
+    ld d,0
+    add hl,de
+    ld de,AMY_UVAR_OvBuf
+    push bc
+    ld c,b
+    ld b,0
+    ldir
+    pop bc
+    ; row 16, the obstacle's pass (behind the train): OvF16
+    ld e,0
+    ld a,(AMY_UVAR_OvRw)
+    cp 16
+    jr nz,OvW0
+    ld a,(AMY_UVAR_OvCo)
+    xor 1
+    ld e,a
+OvW0:
+    ld a,e
+    ld (AMY_UVAR_OvF16),a
+    ld a,(AMY_UVAR_OvMd)
+    or a
+    jr nz,OvW8
+    ; drawing: L at cL, M between, R at cR (c = column, b = count)
+    ld a,(AMY_UVAR_OvCL)
+    ld d,a
+    ld a,(AMY_UVAR_OvCR)
+    ld e,a
+    ld hl,AMY_UVAR_OvBuf
+OvW1:
+    ld a,c
+    cp d
+    jr c,OvW5
+    jr z,OvW2
+    cp e
+    jr z,OvW3
+    jr nc,OvW5
+    ld a,(AMY_UVAR_OvCm)
+    jr OvW4
+OvW2:
+    ld a,(AMY_UVAR_OvCd)
+    jr OvW4
+OvW3:
+    ld a,(AMY_UVAR_OvCd)
+    inc a
+OvW4:
+    push af
+    ld a,(AMY_UVAR_OvF16)
+    or a
+    jr z,OvW6
+    ld a,(hl)
+    cp NX_CABSKY
+    jr z,OvW6
+    pop af
+    jr OvW5
+OvW6:
+    pop af
+    ld (hl),a
+OvW5:
+    inc hl
+    inc c
+    djnz OvW1
+OvW8:
+    ld a,(AMY_UVAR_OvF16)
+    or a
+    jr z,OvOut
+    ld a,(AMY_UVAR_OvLmC)
+    or a
+    jr z,OvOut
+    ld c,NX_COAL
+    call OvPut
+    ld a,(AMY_UVAR_OvLmC)
+    inc a
+    ld c,NX_COAL+1
+    call OvPut
+OvOut:
+    call OvOut0
+    ld a,(AMY_UVAR_OvX1)
+    ld c,a
+    ld b,0
+    ld hl,AMY_UVAR_OvBuf
+    jp NxOut
+; DE = the name table address of row OvRw, column OvCS (+16)
+OvOut0:
+    ld a,(AMY_UVAR_OvRw)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(AMY_UVAR_OvCS)
+    sub 16
+    add a,l
+    ld l,a
+    ld de,$1800
+    add hl,de
+    ex de,hl
+    ret
+; A = column + 16, C = code: into the buffer when the column is in it
+OvPut:
+    ld b,a
+    ld a,(AMY_UVAR_OvCE)
+    cp b
+    ret c
+    ld a,(AMY_UVAR_OvCS)
+    ld e,a
+    ld a,b
+    sub e
+    ret c
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_OvBuf
+    add hl,de
+    ld (hl),c
+    ret
+; the band under row OvRw: OvRT = its name strip + step - 18, OvSt = its step
+OvBand:
+    ld a,(AMY_UVAR_OvRw)
+    sub 13
+    ld e,a
+    add a,a
+    add a,e
+    ld e,a
+    ld d,0
+    ld hl,OvBandT
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld a,(hl)
+    push de
+    ld e,a
+    ld d,0
+    ld hl,AMY_UVAR_NxSt
+    add hl,de
+    ld e,(hl)
+    ld a,e
+    ld (AMY_UVAR_OvSt),a
+    pop hl
+    add hl,de
+    ld de,-18
+    add hl,de
+; OvRT = HL, but row 16 while the rear end shows (TrPre < 4) reads the cab
+; row as on screen (CabRow): the strip's cells behind a shorter train hold
+; the removed coaches' luggage
+; (OvFast: only on its row 16 paths, OvCab16, so the other rows pay nothing)
+OvCab:
+    ld (AMY_UVAR_OvRT),hl
+    ld a,(AMY_UVAR_OvRw)
+    cp 16
+    ret nz
+OvCab16:
+    ld a,(AMY_UVAR_TrPre)
+    cp 4
+    ret nc
+    ld hl,AMY_UVAR_CabRow-18
+    ld (AMY_UVAR_OvRT),hl
+    ret
+; rows 13-22 -> the band's name strip, its NxSt index
+OvBandT:
+    dw Nx_near_N0
+    db 6
+    dw Nx_near_N1
+    db 6
+    dw Nx_smoke_N0
+    db 9
+    dw Nx_cab_N0
+    db 12
+    dw Nx_cab_N0
+    db 12
+    dw Nx_cab_N0
+    db 12
+    dw Nx_cab_N0
+    db 12
+    dw Nx_cab_N0
+    db 12
+    dw Nx_rails_N0
+    db 21
+    dw Nx_rails_N1
+    db 21
+
+; NxCam: MoveCamera (see there)
+NxCam:
+    ld hl,(AMY_UVAR_Gx)
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld de,AMY_UCONST_GuardSX-16
+    or a
+    sbc hl,de
+    ld de,(AMY_UVAR_CamMin)
+    jr c,NxCm0
+    or a
+    sbc hl,de
+    add hl,de
+    jr nc,NxCm1
+NxCm0:
+    ex de,hl
+NxCm1:
+    ld de,AMY_UCONST_CamMax+1
+    or a
+    sbc hl,de
+    add hl,de
+    jr c,NxCm2
+    ld hl,AMY_UCONST_CamMax
+NxCm2:
+    ; HL = W (the camera the guard wants)
+    ld a,(AMY_UVAR_Ph)
+    or a
+    jr nz,NxCm3
+    ld (AMY_UVAR_CamX),hl
+NxCm3:
+    ex de,hl
+    ld hl,(AMY_UVAR_CamX)
+    ; DE = W, HL = CamX; held: W = CamX
+    ld a,(AMY_UVAR_Tick)
+    rra
+    jr c,NxCm4
+    ld a,(AMY_UVAR_LmOn)
+    ld b,a
+    ld a,(AMY_UVAR_ObT)
+    or b
+    ret nz
+    push hl
+    ld bc,AMY_UCONST_CamEng
+    or a
+    sbc hl,bc
+    pop hl
+    ret nc
+NxCm4:
+    ld a,(AMY_UVAR_ObClr)
+    ld b,a
+    ld a,(AMY_UVAR_LmClr)
+    or b
+    ret nz
+    ld a,(AMY_UVAR_Ph)
+    cp AMY_UCONST_PhWin
+    ret z
+    ; W > CamX: one step on, unless it crosses a cell as the near band steps
+    ex de,hl
+    or a
+    sbc hl,de
+    ret z
+    ex de,hl
+    jr c,NxCmB
+    ld a,l
+    and 7
+    cp 7
+    jr nz,NxCmF
+    ld bc,(AMY_UVAR_Ground)
+    ld a,c
+    add a,l
+    add a,2
+    ld c,a
+    and 7
+    cp 2
+    ret c
+    ld a,c
+    and 6
+    ret z
+NxCmF:
+    inc hl
+    ld (AMY_UVAR_CamX),hl
+    ret
+NxCmB:
+    ; W < CamX: one step back
+    ld a,l
+    and 7
+    jr nz,NxCmG
+    ld bc,(AMY_UVAR_Ground)
+    ld a,c
+    add a,l
+    and 6
+    ret z
+NxCmG:
+    dec hl
+    ld (AMY_UVAR_CamX),hl
+NxCmH:
+    ret
+
+; twinkle: every 6 frames one of the stars (in turn) takes the next of 3
+; colours (grey, white, dark blue): 36 frames a state, under 2 Hz
+; NxDawn: A = stage 0-3: the dark blue of the sky's dithered rows 4-7
+; becomes the stage's colour (rows 4-5, rows 6-7); ~60 cycles a byte, safe
+; while the screen is drawn. Stage 0 is the night. Stars stop twinkling
+; while it is not night (NxNoTw).
+NxDawn:
+    ld (AMY_UVAR_NxNoTw),a
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,NxDawnT
+    add hl,de
+    ld b,(hl)
+    inc hl
+    ld c,(hl)
+    push bc
+    ld de,$2000+38*8
+    call NxSetW
+    pop bc
+    ld hl,NxDawnC
+    ld e,120
+    call NxDw1
+    ld b,c
+    ld e,16
+NxDw1:
+    ld a,(hl)
+    and $F0
+    cp $40
+    ld a,(hl)
+    jr nz,NxDw2
+    and $0F
+    ld d,a
+    ld a,b
+    rlca
+    rlca
+    rlca
+    rlca
+    or d
+NxDw2:
+    ld d,a
+    and $0F
+    cp 4
+    ld a,d
+    jr nz,NxDw3
+    and $F0
+    or b
+NxDw3:
+    out ($BE),a
+    inc hl
+    dec e
+    jr nz,NxDw1
+    ret
+NxDawnT:
+    db 4,4, 4,13, 13,9, 13,11
+NxTwinkle:
+    ld a,(AMY_UVAR_NxNoTw)
+    or a
+    ret nz
+    ld hl,AMY_UVAR_TwT
+    inc (hl)
+    ld a,(hl)
+    cp 6
+    ret c
+    ld (hl),0
+    ld hl,AMY_UVAR_TwK
+    inc (hl)
+    ld a,(hl)
+    cp 18
+    jr c,NxTw1
+    xor a
+    ld (hl),a
+NxTw1:
+    ld b,0
+NxTw2:
+    cp 6
+    jr c,NxTw3
+    sub 6
+    inc b
+    jr NxTw2
+NxTw3:
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,NxTwk
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld a,(hl)
+    ex de,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld e,a
+    ld d,$20
+    add hl,de
+    ex de,hl
+    call NxSetW
+    ld a,b
+    ld hl,NxTwC
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld a,(hl)
+    out ($BE),a
+    ret
+NxTwC:
+    db $E1,$F1,$41
+
+; set up the screen (display off): clear VRAM, the sky, every static tile
+; and colour, the sprite patterns, the overlay tiles; the first frame
+; writes the bands
+; NxMapInit: (display off) the HUD map's 7 tiles: bank 0, 128-134
+NxMapInit:
+    ld hl,NxMapP
+    ld de,$0400
+    ld bc,56
+    call NxOutF
+    ld hl,NxMapK
+    ld de,$2400
+    ld bc,56
+    jp NxOutF
+; NxMapDraw: the map of this run's train (its cells from (8 - Cars) * 2 to
+; the engine's), then the markers
+NxMapDraw:
+    ld a,(AMY_UVAR_Cars)
+    neg
+    add a,8
+    add a,a
+    ld e,a
+    ld d,0
+    ld a,19
+    sub e
+    ld c,a
+    ld b,d
+    ld hl,AMY_UVAR_TxBuf+AMY_UCONST_MapC
+    add hl,de
+    push hl
+    ld hl,NxMapT
+    add hl,de
+    pop de
+    ldir
+    ld hl,$FFFF
+    ld (AMY_UVAR_MapG),hl
+; NxMapTick: in play, every 4th frame: NxMapMark; every 16th while a bridge,
+; a gantry or the coal is out (their frames are the heaviest)
+NxMapTick:
+    ld a,(AMY_UVAR_State)
+    cp AMY_UCONST_StPlay
+    ret nz
+    ld a,(AMY_UVAR_ObT)
+    ld b,a
+    ld a,(AMY_UVAR_LmOn)
+    or b
+    ld a,(AMY_UVAR_Tick)
+    jr z,NxMt1
+    and 12
+    ret nz
+NxMt1:
+    and 3
+    ret nz
+; NxMapMark: the guard's and the thief's cells, (x - 24) * 41 / 2048 (one
+; cell for 50 px: a coach is 2 cells); only a move rewrites row 2
+NxMapMark:
+    ld hl,(AMY_UVAR_Gx)
+    call NxMapC
+    push af
+    ld hl,(AMY_UVAR_Tx)
+    call NxMapC
+    cp 19
+    jr c,NxMk1
+    ld a,18
+NxMk1:
+    pop bc
+    ld c,a
+    ld hl,(AMY_UVAR_MapG)
+    ld a,l
+    cp b
+    jr nz,NxMk2
+    ld a,h
+    cp c
+    ret z
+NxMk2:
+    ld a,b
+    ld (AMY_UVAR_MapG),a
+    ld a,c
+    ld (AMY_UVAR_MapH),a
+    push bc
+    ld a,l
+    call NxMapR
+    ld a,h
+    call NxMapR
+    pop bc
+    ld a,b
+    ld d,AMY_UCONST_TlGuard
+    call NxMapS
+    ld a,c
+    ld d,AMY_UCONST_TlThief
+    call NxMapS
+    ld hl,AMY_UVAR_TxDirty
+    set 1,(hl)
+    ret
+; the map's own tile back in cell A (if A < 19); keeps H
+NxMapR:
+    cp 19
+    ret nc
+    push hl
+    ld e,a
+    ld d,0
+    ld hl,NxMapT
+    add hl,de
+    ld d,(hl)
+    pop hl
+; D into the map's cell A; keeps H, BC
+NxMapS:
+    push hl
+    ld hl,AMY_UVAR_TxBuf+AMY_UCONST_MapC
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld (hl),d
+    pop hl
+    ret
+; HL = x (1/16 px): A = its map cell
+NxMapC:
+    call NxD16
+    ld de,-24
+    add hl,de
+    ld b,h
+    ld c,l
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,hl
+    add hl,de
+    add hl,bc
+    ld a,h
+    rrca
+    rrca
+    rrca
+    and 31
+    ret
+NxMapT:
+    db 128,129,128,129,128,129,128,129,128,129,128,129,128,129,128,129,130,131,132
+; NxBarRecol: the time bar's cells (row 3) to the next colour: green to
+; yellow, yellow to red (+2: ChBarG, ChBarY, ChBarR; each with its half
+; cell); the empty cells (ChBarE) stay
+NxBarRecol:
+    ld hl,AMY_UVAR_TxBuf+58
+    ld b,18
+NxBR1:
+    ld a,(hl)
+    cp AMY_UCONST_ChBarE
+    jr nc,NxBR2
+    add a,2
+    ld (hl),a
+NxBR2:
+    inc hl
+    djnz NxBR1
+    ld hl,AMY_UVAR_TxDirty
+    set 2,(hl)
+    ret
+; NxOffBal: A = frames: the thief off balance; in play, GRAB! while it
+; lasts if the guard is near (behind him, within 80 px)
+NxOffBal:
+    ld (AMY_UVAR_TOff),a
+    ld c,a
+    ld a,(AMY_UVAR_State)
+    cp AMY_UCONST_StPlay
+    ret nz
+    ld a,(AMY_UVAR_Ph)
+    cp AMY_UCONST_PhChase
+    ret nz
+    ld hl,(AMY_UVAR_Tx)
+    ld de,(AMY_UVAR_Gx)
+    or a
+    sbc hl,de
+    ret c
+    ld de,80*16
+    sbc hl,de
+    ret nc
+    ld a,c
+    ld (AMY_UVAR_MsgT),a
+    ld a,AMY_UCONST_MsgGrab
+    jp TxMsg
+NxMapP:
+    db $00,$00,$7F,$5B,$7F,$36,$00,$00,$00,$00,$FE,$DA,$FE,$6C,$00,$00
+    db $00,$7C,$7E,$7E,$7E,$24,$00,$00,$78,$48,$7F,$7F,$7F,$36,$00,$00
+    db $18,$18,$FE,$FF,$FF,$DA,$00,$00,$3C,$3C,$FF,$B6,$FF,$66,$00,$00
+    db $7E,$3C,$FF,$B6,$FF,$66,$00,$00
+NxMapK:
+    db $11,$11,$E1,$B1,$E1,$E1,$11,$11,$11,$11,$E1,$B1,$E1,$E1,$11,$11
+    db $11,$E1,$61,$61,$E1,$E1,$11,$11,$E1,$E1,$81,$81,$E1,$E1,$11,$11
+    db $E1,$E1,$81,$81,$E1,$E1,$11,$11,$71,$71,$E1,$B1,$E1,$E1,$11,$11
+    db $F1,$F1,$E1,$B1,$E1,$E1,$11,$11
+NxInit:
+    ld de,0
+    call NxSetW
+    ld bc,$4000
+NxIn1:
+    xor a
+    out ($BE),a
+    dec bc
+    ld a,b
+    or c
+    jr nz,NxIn1
+    ld hl,NxSkyName
+    ld de,$1800
+    ld bc,256
+    call NxOutF
+    ld hl,NxSprPat
+    ld de,$3800
+    ld bc,NX_SPRG
+    call NxOutF
+    ld hl,NxSprPat
+    ld de,$3800+NX_SPRG
+    ld b,NX_SPRG/32
+    call NxMirror
+    ld hl,NxSprPat+NX_SPRG
+    ld de,$3800+NX_SPRG*2
+    ld bc,NX_SPRB-NX_SPRG
+    call NxOutF
+NxIn4:
+    ld hl,AMY_UVAR_NxSt
+    ld b,24
+NxIn2:
+    ld (hl),$FF
+    inc hl
+    djnz NxIn2
+    ld a,208
+    ld (AMY_UVAR_Sat),a
+    ret
+NX_BUDGET EQU 12000
+; (vdp-safe pass, 2026-11-15) a late frame starts at an unknown point of the
+; blank (its logic ran into it): no fast (18 T) writes at all, every write is
+; paced (NxOutS). With 9500 the fast chain could still run into the display.
+NX_LATEBUD EQU 0
+NX_FASTOH EQU 1100
+NX_OVOH EQU 2100
+; NxRep: (display off) B blocks of 8 bytes from HL, each written C times, at DE
+; NxMirror: B 16 x 16 sprite patterns from HL, mirrored left-right, at DE
+NxMirror:
+    call NxSetW
+NxM1:
+    push bc
+    push hl
+    ld bc,16
+    add hl,bc
+    call NxM16
+    pop hl
+    call NxM16
+    ld bc,16
+    add hl,bc
+    pop bc
+    djnz NxM1
+    ret
+NxM16:
+    ld b,16
+NxM2:
+    ld a,(hl)
+    inc hl
+    push bc
+    ld b,8
+NxM3:
+    rra
+    rl c
+    djnz NxM3
+    ld a,c
+    pop bc
+    out ($BE),a
+    djnz NxM2
+    ret
+; NIGHT EXPRESS prototype: graphics tables and the band engine, made by art.py (do not edit)
+NxSkyName:
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$01,$00,$00,$02,$00,$03,$02,$00,$00,$00,$04,$05,$00
+    db $00,$00,$06,$01,$00,$07,$00,$08,$09,$0A,$00,$0B,$00,$00,$00,$00
+    db $00,$00,$0C,$00,$00,$00,$00,$0D,$00,$0E,$00,$00,$0F,$10,$00,$00
+    db $11,$00,$12,$00,$13,$00,$14,$15,$16,$17,$00,$18,$19,$00,$00,$00
+    db $00,$00,$00,$1A,$00,$1B,$00,$1C,$00,$1D,$00,$1E,$00,$1F,$20,$00
+    db $00,$21,$00,$10,$00,$00,$00,$22,$23,$24,$00,$25,$00,$00,$00,$00
+    db $00,$00,$26,$26,$26,$27,$26,$26,$28,$26,$29,$2A,$26,$2B,$26,$26
+    db $2C,$26,$2D,$26,$2E,$26,$2F,$26,$26,$26,$26,$26,$30,$26,$00,$00
+    db $00,$00,$31,$31,$31,$31,$32,$31,$31,$31,$33,$31,$31,$31,$31,$31
+    db $31,$31,$31,$34,$31,$31,$31,$31,$31,$31,$31,$31,$31,$31,$00,$00
+    db $00,$00,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35
+    db $35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$35,$00,$00
+    db $00,$00,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36
+    db $36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$36,$00,$00
+NxTwk:
+    db $0B,$06,$33,$03,$18,$05,$0F,$02,$01,$05,$1B,$02
+Nx_far_N0:
+    db $91,$91,$09,$19,$21,$29,$91,$91,$91,$91,$91,$41,$49,$91,$91,$91
+    db $91,$09,$71,$79,$29,$91,$91,$91,$91,$09,$71,$79,$29,$91,$91,$91
+    db $91,$91,$09,$19,$21,$29,$91,$91,$91,$91,$91,$41,$49,$91,$91,$91
+    db $91,$09,$71,$79,$29,$91,$91,$91,$91,$09,$71,$79
+Nx_far_N1:
+    db $09,$01,$11,$99,$99,$31,$39,$29,$91,$09,$01,$11,$31,$39,$29,$91
+    db $59,$69,$99,$99,$81,$89,$91,$09,$01,$11,$99,$99,$31,$39,$29,$91
+    db $09,$01,$11,$99,$99,$31,$39,$29,$91,$09,$01,$11,$31,$39,$29,$91
+    db $59,$69,$99,$99,$81,$89,$91,$09,$01,$11,$99,$99
+Nx_far_N2:
+    db $99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$51
+    db $61,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99
+    db $99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$51
+    db $61,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99
+Nx_mid_I:
+    db $F7,$E7,$E3,$C3,$E3,$C1,$81,$00,$00,$00,$EF,$C7,$C7,$83,$01,$00
+    db $FF,$FF,$FF,$BD,$18,$10,$00,$00,$00,$FF,$EF,$C7,$C7,$83,$01,$00
+    db $FF,$C7,$83,$01,$00,$81,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$0C,$00,$00,$00,$00,$00,$FF,$FF,$EF,$C7,$C7,$83,$01,$00
+    db $EF,$CF,$C7,$87,$C7,$83,$02,$00,$00,$00,$DF,$8F,$8E,$06,$02,$00
+    db $FF,$FF,$FF,$7B,$31,$21,$01,$00,$00,$FF,$DF,$8E,$8E,$07,$02,$00
+    db $FF,$8F,$07,$03,$01,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$18,$00,$00,$00,$00,$00,$FF,$FF,$DF,$8F,$8F,$07,$03,$00
+    db $DF,$9F,$8F,$0F,$8F,$06,$04,$00,$00,$00,$BF,$1E,$1C,$0C,$04,$00
+    db $FF,$FF,$FF,$F7,$63,$43,$02,$00,$00,$FF,$BE,$1C,$1C,$0E,$04,$00
+    db $FF,$1F,$0F,$07,$03,$07,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$30,$00,$00,$00,$00,$00,$FF,$FF,$BF,$1F,$1F,$0F,$06,$00
+    db $BF,$3F,$1F,$1E,$1E,$0C,$08,$00,$00,$00,$7F,$3D,$38,$18,$08,$00
+    db $FF,$FF,$FF,$EE,$C7,$86,$04,$00,$00,$FE,$7C,$38,$38,$1C,$08,$00
+    db $FF,$3F,$1F,$0E,$07,$0E,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$60,$00,$00,$00,$00,$00,$FF,$FF,$7F,$3E,$3F,$1E,$0C,$00
+    db $7F,$7F,$3E,$3C,$3C,$18,$10,$00,$00,$00,$FF,$7B,$71,$31,$10,$00
+    db $FF,$FE,$FE,$DC,$8E,$0C,$08,$00,$00,$FC,$F8,$70,$70,$38,$10,$00
+    db $FF,$7E,$3E,$1C,$0E,$1C,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$C0,$00,$00,$00,$00,$00,$FF,$FE,$FE,$7C,$7E,$3C,$18,$00
+    db $FF,$FF,$7D,$78,$78,$30,$20,$00,$00,$00,$FF,$F7,$E3,$62,$20,$00
+    db $FE,$FC,$FC,$B8,$1C,$18,$10,$00,$00,$F8,$F0,$E0,$E0,$70,$20,$00
+    db $FE,$FC,$7C,$38,$1C,$38,$10,$00,$00,$00,$01,$00,$00,$00,$00,$00
+    db $00,$00,$80,$00,$00,$00,$00,$00,$FE,$FC,$FC,$F8,$FC,$78,$30,$00
+    db $FF,$FF,$FB,$F1,$F1,$60,$40,$00,$00,$00,$FF,$EF,$C6,$C4,$40,$00
+    db $FD,$F9,$F8,$70,$38,$30,$20,$00,$00,$F1,$E0,$C0,$C0,$E0,$40,$00
+    db $FD,$F9,$F8,$70,$38,$70,$20,$00,$00,$00,$03,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$FD,$F9,$F8,$F0,$F8,$F0,$60,$00
+    db $FF,$FF,$F7,$E3,$E3,$C1,$80,$00,$00,$00,$FF,$DE,$8C,$88,$80,$00
+    db $FB,$F3,$F1,$E1,$71,$60,$40,$00,$00,$E3,$C1,$80,$80,$C0,$80,$00
+    db $FB,$F3,$F1,$E1,$71,$E0,$40,$00,$00,$00,$06,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$FB,$F3,$F1,$E1,$F1,$E0,$C0,$00
+Nx_mid_V:
+Nx_mid_IT:
+    dw Nx_mid_I+0,Nx_mid_I+64,Nx_mid_I+128,Nx_mid_I+192,Nx_mid_I+256,Nx_mid_I+320,Nx_mid_I+384,Nx_mid_I+448
+Nx_mid_N0:
+    db $A1,$A2,$A3,$A1,$A2,$A3,$A1,$A4,$A5,$A1,$A2,$A3,$A1,$A2,$A3,$A1
+    db $A4,$A5,$A1,$A2,$A3,$A1,$A2,$A3,$A1,$A4,$A5,$A1,$A2,$A3,$A1,$A8
+    db $A1,$A2,$A3,$A1,$A2,$A3,$A1,$A4,$A5,$A1,$A2,$A3,$A1,$A2,$A3,$A1
+    db $A4,$A5,$A1,$A2,$A3,$A1,$A2,$A3,$A1,$A4,$A5,$A1
+Nx_mid_N1:
+    db $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$A6,$A7,$C2,$C2,$C2
+    db $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+    db $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$A6,$A7,$C2,$C2,$C2
+    db $C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2,$C2
+Nx_near_I:
+    db $00,$DF,$00,$DF,$DF,$00,$DF,$DF,$00,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$FF,$FF,$00,$FF,$00,$FF,$FF,$FF,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$66,$00,$00,$E7,$00,$E7,$E7,$E7,$C7,$00,$C7,$C7,$00,$C7,$C7
+    db $00,$DF,$00,$DF,$DF,$00,$DF,$DF,$00,$E7,$00,$01,$00,$00,$00,$00
+    db $00,$DF,$00,$D8,$80,$00,$00,$00,$00,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$C7,$00,$01,$00,$00,$00,$00,$00,$FF,$00,$D8,$80,$00,$00,$00
+    db $00,$BF,$00,$BF,$BF,$00,$BF,$BF,$00,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$FE,$FE,$00,$FF,$00,$FF,$FF,$FF,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$CD,$01,$00,$CF,$00,$CF,$CF,$CF,$8F,$00,$8F,$8F,$00,$8F,$8F
+    db $00,$BF,$00,$BE,$BE,$00,$BE,$BE,$00,$CF,$00,$03,$01,$00,$00,$00
+    db $00,$BF,$00,$B1,$01,$00,$01,$01,$00,$FF,$00,$FE,$FE,$00,$FE,$FE
+    db $00,$8F,$00,$03,$01,$00,$00,$00,$00,$FF,$00,$B1,$01,$00,$01,$01
+    db $00,$7F,$00,$7F,$7F,$00,$7F,$7F,$00,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$FD,$FC,$00,$FF,$00,$FF,$FF,$FF,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$9B,$03,$00,$9F,$00,$9F,$9F,$9F,$1F,$00,$1F,$1F,$00,$1F,$1F
+    db $00,$7F,$00,$7C,$7C,$00,$7C,$7C,$00,$9F,$00,$07,$02,$00,$00,$00
+    db $00,$7F,$00,$63,$03,$00,$03,$03,$00,$FF,$00,$FC,$FC,$00,$FC,$FC
+    db $00,$1F,$00,$07,$02,$00,$00,$00,$00,$FF,$00,$63,$03,$00,$03,$03
+    db $00,$FF,$00,$FF,$FF,$00,$FF,$FF,$00,$FE,$00,$FE,$FE,$00,$FE,$FE
+    db $00,$FB,$F8,$00,$FF,$00,$FF,$FF,$FF,$FE,$00,$FE,$FE,$00,$FE,$FE
+    db $00,$37,$07,$00,$3F,$00,$3F,$3F,$3F,$3F,$00,$3F,$3F,$00,$3F,$3F
+    db $00,$FF,$00,$F8,$F8,$00,$F8,$F8,$00,$3E,$00,$0E,$04,$00,$00,$00
+    db $00,$FF,$00,$C7,$07,$00,$07,$07,$00,$FE,$00,$F8,$F8,$00,$F8,$F8
+    db $00,$3F,$00,$0E,$04,$00,$00,$00,$00,$FE,$00,$C6,$06,$00,$06,$06
+    db $00,$FF,$00,$FF,$FF,$00,$FF,$FF,$00,$FD,$00,$FD,$FD,$00,$FD,$FD
+    db $00,$F6,$F0,$00,$FE,$00,$FE,$FE,$FE,$FC,$00,$FC,$FC,$00,$FC,$FC
+    db $00,$6F,$0F,$00,$7F,$00,$7F,$7F,$7F,$7F,$00,$7F,$7F,$00,$7F,$7F
+    db $00,$FE,$00,$F0,$F0,$00,$F0,$F0,$00,$7D,$00,$1D,$08,$00,$00,$00
+    db $00,$FF,$00,$8F,$0F,$00,$0F,$0F,$00,$FC,$00,$F0,$F0,$00,$F0,$F0
+    db $00,$7F,$00,$1D,$08,$00,$00,$00,$00,$FD,$00,$8D,$0D,$00,$0D,$0D
+    db $00,$FF,$00,$FF,$FF,$00,$FF,$FF,$00,$FB,$00,$FB,$FB,$00,$FB,$FB
+    db $00,$EC,$E0,$00,$FC,$00,$FC,$FC,$FC,$F8,$00,$F8,$F8,$00,$F8,$F8
+    db $00,$DF,$1F,$00,$FF,$00,$FF,$FF,$FF,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$FC,$00,$E0,$E0,$00,$E0,$E0,$00,$FB,$00,$3B,$10,$00,$00,$00
+    db $00,$FF,$00,$1F,$1F,$00,$1F,$1F,$00,$F8,$00,$E0,$E0,$00,$E0,$E0
+    db $00,$FF,$00,$3B,$10,$00,$00,$00,$00,$FB,$00,$1B,$1B,$00,$1B,$1B
+    db $00,$FF,$00,$FF,$FF,$00,$FF,$FF,$00,$F7,$00,$F7,$F7,$00,$F7,$F7
+    db $00,$D9,$C0,$00,$F9,$00,$F9,$F9,$F9,$F1,$00,$F1,$F1,$00,$F1,$F1
+    db $00,$BF,$3F,$00,$FF,$00,$FF,$FF,$FF,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$F9,$00,$C0,$C0,$00,$C0,$C0,$00,$F7,$00,$76,$20,$00,$00,$00
+    db $00,$FF,$00,$3F,$3F,$00,$3F,$3F,$00,$F1,$00,$C0,$C0,$00,$C0,$C0
+    db $00,$FF,$00,$76,$20,$00,$00,$00,$00,$F7,$00,$37,$37,$00,$37,$37
+    db $00,$FF,$00,$FF,$FF,$00,$FF,$FF,$00,$EF,$00,$EF,$EF,$00,$EF,$EF
+    db $00,$B3,$80,$00,$F3,$00,$F3,$F3,$F3,$E3,$00,$E3,$E3,$00,$E3,$E3
+    db $00,$7F,$7F,$00,$FF,$00,$FF,$FF,$FF,$FF,$00,$FF,$FF,$00,$FF,$FF
+    db $00,$F3,$00,$80,$80,$00,$80,$80,$00,$EF,$00,$EC,$40,$00,$00,$00
+    db $00,$FF,$00,$7F,$7F,$00,$7F,$7F,$00,$E3,$00,$80,$80,$00,$80,$80
+    db $00,$FF,$00,$EC,$40,$00,$00,$00,$00,$EF,$00,$6F,$6F,$00,$6F,$6F
+Nx_near_V:
+Nx_near_IT:
+    dw Nx_near_I+0,Nx_near_I+96,Nx_near_I+192,Nx_near_I+288,Nx_near_I+384,Nx_near_I+480,Nx_near_I+576,Nx_near_I+672
+Nx_near_N0:
+    db $C3,$C3,$C3,$AB,$AD,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+    db $C3,$C3,$C3,$AB,$AD,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+    db $C3,$C3,$C3,$AB,$AD,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+    db $C3,$C3,$C3,$AB,$AD,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+Nx_near_N1:
+    db $A9,$AA,$A9,$AC,$AE,$AA,$A9,$AA,$AF,$B0,$B1,$AA,$A9,$AA,$A9,$AA
+    db $A9,$AA,$A9,$AC,$AE,$AA,$A9,$B2,$B3,$B4,$A9,$AA,$A9,$AA,$A9,$AA
+    db $A9,$AA,$A9,$AC,$AE,$AA,$A9,$AA,$AF,$B0,$B1,$AA,$A9,$AA,$A9,$AA
+    db $A9,$AA,$A9,$AC,$AE,$AA,$A9,$B2,$B3,$B4,$A9,$AA
+Nx_smoke_I:
+Nx_smoke_V:
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$00,$00,$00,$00,$00
+    db $AA,$54,$BA,$55,$AE,$54,$2A,$00,$8A,$05,$AF,$17,$AF,$05,$2B,$00
+    db $A8,$40,$EA,$D1,$EA,$D5,$AA,$00,$AA,$54,$FE,$7F,$FF,$7F,$BE,$14
+    db $88,$05,$AB,$17,$AF,$5F,$AF,$05,$80,$40,$E8,$F0,$FA,$F5,$FA,$50
+    db $08,$00,$BA,$7F,$FF,$FF,$FF,$7F,$00,$00,$02,$07,$8F,$0F,$AF,$07
+    db $00,$00,$A0,$C0,$E8,$F0,$F8,$F0,$00,$00,$00,$10,$FE,$7F,$FF,$7F
+    db $00,$00,$00,$00,$80,$00,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $01,$00,$05,$00,$01,$00,$00,$00,$55,$A8,$75,$AA,$5D,$A8,$54,$00
+    db $15,$0A,$5F,$2F,$5F,$0B,$57,$00,$51,$80,$D5,$A2,$D5,$AA,$55,$00
+    db $55,$A8,$FD,$FE,$FF,$FE,$7D,$28,$11,$0A,$57,$2F,$5F,$BF,$5F,$0A
+    db $00,$80,$D1,$E0,$F5,$EB,$F5,$A0,$10,$00,$74,$FE,$FF,$FE,$FF,$FE
+    db $00,$00,$05,$0F,$1F,$1F,$5F,$0F,$00,$00,$40,$80,$D1,$E0,$F1,$E0
+    db $00,$00,$00,$20,$FD,$FE,$FF,$FE,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$02,$01,$0A,$01,$02,$01,$00,$00
+    db $AA,$50,$EA,$54,$BA,$50,$A8,$00,$2A,$15,$BF,$5F,$BF,$17,$AE,$00
+    db $A2,$01,$AB,$45,$AB,$55,$AA,$00,$AA,$50,$FA,$FC,$FE,$FD,$FA,$50
+    db $22,$15,$AF,$5F,$BF,$7F,$BF,$15,$00,$00,$A2,$C1,$EB,$D7,$EB,$41
+    db $20,$00,$E8,$FC,$FE,$FC,$FE,$FC,$00,$00,$0A,$1F,$3F,$3F,$BF,$1F
+    db $00,$00,$80,$00,$A3,$C1,$E3,$C1,$00,$00,$00,$40,$FA,$FC,$FE,$FC
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $05,$02,$15,$02,$05,$02,$01,$00,$54,$A0,$D5,$A8,$75,$A0,$51,$00
+    db $55,$2A,$7F,$BE,$7F,$2E,$5D,$00,$45,$02,$57,$8B,$57,$AB,$55,$00
+    db $54,$A0,$F5,$F8,$FD,$FA,$F5,$A0,$44,$2A,$5F,$BF,$7F,$FF,$7F,$2A
+    db $00,$00,$45,$83,$D7,$AF,$D7,$83,$40,$00,$D0,$F8,$FC,$F8,$FD,$F8
+    db $00,$00,$15,$3E,$7F,$7F,$7F,$3F,$00,$00,$00,$00,$47,$83,$C7,$83
+    db $00,$00,$00,$80,$F4,$F8,$FC,$F8,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$0A,$05,$2B,$05,$0A,$05,$02,$00
+    db $A8,$40,$AA,$51,$EA,$40,$A2,$00,$AA,$54,$FE,$7D,$FE,$5D,$BA,$00
+    db $8A,$05,$AF,$17,$AF,$57,$AB,$01,$A8,$40,$EA,$F1,$FA,$F5,$EA,$40
+    db $88,$54,$BE,$7F,$FF,$FF,$FF,$55,$00,$00,$8B,$07,$AF,$5F,$AF,$07
+    db $80,$00,$A0,$F0,$F8,$F0,$FA,$F0,$00,$00,$2A,$7C,$FE,$FF,$FF,$7F
+    db $00,$00,$00,$01,$8F,$07,$8F,$07,$00,$00,$00,$00,$E8,$F0,$F8,$F0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $15,$0A,$57,$0A,$15,$0A,$05,$00,$51,$80,$55,$A2,$D5,$80,$45,$00
+    db $55,$A8,$FD,$FA,$FD,$BA,$75,$00,$15,$0A,$5F,$2F,$5F,$AF,$57,$02
+    db $51,$80,$D5,$E2,$F5,$EB,$D5,$80,$10,$A8,$7D,$FE,$FF,$FE,$FF,$AA
+    db $01,$00,$17,$0F,$5F,$BF,$5F,$0F,$00,$00,$40,$E0,$F1,$E1,$F5,$E0
+    db $00,$00,$54,$F8,$FD,$FE,$FF,$FE,$00,$00,$00,$02,$1F,$0F,$1F,$0F
+    db $00,$00,$00,$00,$D0,$E0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$2A,$15,$AE,$15,$2B,$15,$0A,$00
+    db $A2,$01,$AB,$45,$AB,$01,$8A,$00,$AA,$50,$FA,$F4,$FA,$75,$EA,$00
+    db $2A,$15,$BF,$5F,$BF,$5F,$AF,$05,$A2,$01,$AA,$C5,$EB,$D7,$AB,$01
+    db $20,$50,$FA,$FC,$FE,$FD,$FE,$54,$02,$00,$2E,$1F,$BF,$7F,$BF,$1F
+    db $00,$00,$80,$C1,$E3,$C3,$EB,$C1,$00,$00,$A8,$F0,$FA,$FC,$FE,$FC
+    db $00,$00,$00,$04,$3F,$1F,$3F,$1F,$00,$00,$00,$00,$A0,$C0,$E0,$C0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00
+    db $55,$2A,$5D,$2A,$57,$2A,$15,$00,$45,$02,$57,$8B,$57,$02,$15,$00
+    db $54,$A0,$F5,$E8,$F5,$EA,$D5,$00,$55,$2A,$7F,$BF,$7F,$BF,$5F,$0A
+    db $44,$02,$55,$8B,$D7,$AF,$57,$02,$40,$A0,$F4,$F8,$FD,$FA,$FD,$A8
+    db $04,$00,$5D,$3F,$7F,$FF,$7F,$3F,$00,$00,$01,$83,$C7,$87,$D7,$83
+    db $00,$00,$50,$E0,$F4,$F8,$FC,$F8,$00,$00,$00,$08,$7F,$3F,$7F,$3F
+    db $00,$00,$00,$00,$40,$80,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$0A,$05,$2A,$01,$0A,$00,$02,$00
+    db $A8,$40,$AA,$01,$AA,$40,$22,$00,$AA,$54,$BE,$7D,$FE,$55,$AA,$00
+    db $8A,$05,$AF,$17,$AF,$17,$2B,$01,$A8,$40,$EA,$F1,$FA,$D5,$EA,$00
+    db $A8,$54,$FE,$7F,$FF,$FF,$FF,$55,$00,$00,$AB,$17,$AF,$5F,$AF,$07
+    db $80,$40,$E0,$F0,$FA,$F1,$FA,$D0,$00,$00,$2A,$7D,$FF,$FF,$FF,$7F
+    db $00,$00,$02,$01,$8F,$07,$AF,$07,$00,$00,$00,$40,$E8,$FC,$FC,$FC
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $15,$0A,$55,$02,$15,$00,$04,$00,$51,$80,$55,$02,$55,$80,$45,$00
+    db $55,$A8,$7D,$FA,$FD,$AA,$54,$00,$15,$0A,$5F,$2F,$5F,$2F,$57,$02
+    db $51,$80,$D5,$E2,$F5,$AB,$D5,$00,$50,$A8,$FD,$FE,$FF,$FE,$FF,$AA
+    db $01,$00,$57,$2F,$5F,$BF,$5F,$0F,$00,$80,$C0,$E0,$F5,$E3,$F5,$A0
+    db $00,$00,$54,$FA,$FF,$FE,$FF,$FE,$00,$00,$04,$02,$1F,$0F,$5F,$0F
+    db $00,$00,$00,$80,$D0,$F8,$F8,$F8,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$2A,$15,$AA,$04,$2A,$01,$08,$00
+    db $A2,$01,$AA,$05,$AB,$01,$8A,$00,$AA,$50,$FA,$F4,$FA,$54,$A8,$00
+    db $2A,$15,$BF,$5F,$BF,$5F,$AF,$04,$A2,$01,$AB,$C5,$EB,$57,$AB,$01
+    db $A0,$50,$FA,$FC,$FE,$FD,$FE,$54,$02,$01,$AF,$5F,$BF,$7F,$BF,$1F
+    db $00,$00,$80,$C1,$EB,$C7,$EB,$41,$00,$00,$A8,$F4,$FE,$FC,$FE,$FC
+    db $00,$00,$08,$05,$3F,$1F,$BF,$1F,$00,$00,$00,$00,$A0,$F0,$F0,$F0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$00
+    db $55,$2A,$55,$08,$55,$02,$11,$00,$45,$02,$55,$0B,$57,$02,$15,$00
+    db $54,$A0,$F5,$E8,$F5,$A8,$51,$00,$55,$2A,$7F,$BF,$7F,$BE,$5F,$08
+    db $45,$02,$57,$8B,$D7,$AF,$57,$02,$40,$A0,$F5,$F8,$FD,$FA,$FD,$A8
+    db $04,$02,$5F,$BF,$7F,$FF,$7F,$3E,$00,$00,$01,$83,$D7,$8F,$D7,$83
+    db $00,$00,$50,$E8,$FC,$F8,$FD,$F8,$00,$00,$10,$0A,$7F,$3F,$7F,$3F
+    db $00,$00,$00,$00,$40,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$02,$00,$00,$00,$00,$00,$AA,$54,$AA,$10,$AA,$04,$22,$00
+    db $8A,$05,$AB,$17,$AF,$05,$2A,$00,$A8,$40,$EA,$D1,$EA,$51,$A2,$00
+    db $AA,$54,$FE,$7F,$FF,$7D,$BE,$10,$8A,$05,$AF,$17,$AF,$5F,$AF,$05
+    db $80,$40,$EA,$F1,$FA,$F5,$FA,$50,$08,$04,$BE,$7F,$FF,$FF,$FF,$7D
+    db $00,$00,$02,$07,$AF,$1F,$AF,$07,$00,$00,$A0,$D0,$F8,$F0,$FA,$F0
+    db $00,$00,$20,$14,$FE,$7F,$FF,$7F,$00,$00,$00,$00,$80,$C0,$C0,$C0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$05,$00,$01,$00,$00,$00
+    db $55,$A8,$55,$20,$55,$08,$44,$00,$15,$0A,$57,$2F,$5F,$0A,$55,$00
+    db $51,$80,$D5,$A2,$D5,$A2,$45,$00,$55,$A8,$FD,$FE,$FF,$FA,$7D,$20
+    db $15,$0A,$5F,$2F,$5F,$BF,$5F,$0A,$00,$80,$D5,$E2,$F5,$EB,$F5,$A0
+    db $10,$08,$7C,$FE,$FF,$FE,$FF,$FA,$00,$00,$05,$0F,$5F,$3F,$5F,$0F
+    db $00,$00,$40,$A0,$F1,$E0,$F5,$E0,$00,$00,$40,$28,$FD,$FF,$FF,$FF
+    db $00,$00,$00,$00,$00,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+    db $02,$01,$0A,$00,$02,$00,$00,$00,$AA,$50,$AA,$40,$AA,$10,$88,$00
+    db $2A,$15,$AF,$5F,$BF,$15,$AA,$00,$A2,$01,$AB,$45,$AB,$45,$8A,$00
+    db $AA,$50,$FA,$FC,$FE,$F5,$FA,$40,$2A,$15,$BF,$5F,$BF,$7F,$BF,$15
+    db $00,$00,$AA,$C5,$EB,$D7,$EB,$41,$20,$10,$F8,$FC,$FE,$FC,$FE,$F4
+    db $00,$00,$0A,$1F,$BF,$7F,$BF,$1F,$00,$00,$80,$40,$E3,$C1,$EB,$C1
+    db $00,$00,$80,$50,$FA,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$05,$02,$15,$00,$05,$00,$01,$00
+    db $54,$A0,$55,$80,$55,$20,$11,$00,$55,$2A,$5F,$BE,$7F,$2A,$55,$00
+    db $45,$02,$57,$8B,$57,$8B,$15,$00,$54,$A0,$F5,$F8,$FD,$EA,$F5,$80
+    db $54,$2A,$7F,$BF,$7F,$FF,$7F,$2A,$00,$00,$55,$8B,$D7,$AF,$D7,$83
+    db $40,$20,$F0,$F8,$FD,$F8,$FD,$E8,$00,$00,$15,$3E,$7F,$FF,$7F,$3F
+    db $00,$00,$01,$80,$C7,$83,$D7,$83,$00,$00,$00,$A0,$F4,$FE,$FE,$FE
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$A8,$00,$2A,$00,$AA,$00,$20,$00
+    db $8A,$05,$2B,$15,$AF,$05,$02,$00,$A8,$40,$AA,$51,$EA,$40,$A2,$00
+    db $AA,$54,$FE,$7F,$FF,$7D,$BA,$10,$8A,$05,$AF,$17,$AF,$5F,$AF,$05
+    db $A8,$40,$EA,$F1,$FA,$F5,$EA,$40,$08,$14,$BE,$7F,$FF,$FF,$FF,$7D
+    db $00,$00,$03,$07,$AF,$5F,$AF,$07,$00,$00,$A0,$D0,$F8,$F0,$FA,$F0
+    db $00,$00,$2A,$14,$FE,$FF,$FF,$7F,$00,$00,$00,$00,$80,$3C,$BC,$3C
+    db $00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$01,$00,$00,$00
+    db $51,$00,$54,$00,$55,$00,$40,$00,$15,$0A,$57,$2A,$5F,$0A,$05,$00
+    db $51,$80,$55,$A2,$D5,$80,$45,$00,$55,$A8,$FD,$FE,$FF,$FA,$75,$20
+    db $15,$0A,$5F,$2F,$5F,$BF,$5F,$0A,$50,$80,$D5,$E2,$F5,$EB,$D5,$80
+    db $10,$28,$7C,$FE,$FF,$FE,$FF,$FA,$00,$00,$07,$0F,$5F,$BF,$5F,$0F
+    db $00,$00,$40,$A0,$F1,$E1,$F5,$E0,$00,$00,$54,$28,$FD,$FE,$FF,$FE
+    db $00,$00,$00,$00,$00,$78,$78,$78,$00,$00,$00,$00,$00,$00,$00,$00
+    db $02,$00,$00,$00,$02,$00,$00,$00,$A2,$00,$A8,$00,$AA,$00,$80,$00
+    db $2A,$15,$AE,$55,$BF,$15,$0A,$00,$A2,$01,$AB,$45,$AB,$01,$8A,$00
+    db $AA,$50,$FA,$FC,$FE,$F5,$EA,$40,$2A,$15,$BF,$5F,$BF,$7F,$BF,$15
+    db $A0,$00,$AA,$C5,$EB,$D7,$AB,$01,$20,$50,$F8,$FC,$FE,$FD,$FE,$F4
+    db $00,$00,$0E,$1F,$BF,$7F,$BF,$1F,$00,$00,$80,$40,$E3,$C3,$EB,$C1
+    db $00,$00,$A8,$50,$FA,$FC,$FE,$FC,$00,$00,$00,$00,$00,$F0,$F0,$F0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$05,$00,$01,$00,$05,$00,$01,$00
+    db $44,$00,$51,$00,$55,$00,$00,$00,$55,$2A,$5D,$AA,$7F,$2A,$15,$00
+    db $45,$02,$57,$8B,$57,$03,$15,$00,$54,$A0,$F5,$F8,$FD,$EA,$D5,$80
+    db $55,$2A,$7F,$BF,$7F,$FF,$7F,$2A,$40,$00,$55,$8B,$D7,$AF,$57,$03
+    db $40,$A0,$F0,$F8,$FD,$FA,$FD,$E8,$00,$00,$1D,$3E,$7F,$FF,$7F,$3F
+    db $00,$00,$01,$80,$C7,$87,$D7,$83,$00,$00,$50,$A0,$F4,$F9,$FD,$F9
+    db $00,$00,$00,$00,$00,$E0,$E0,$E0,$00,$00,$00,$00,$00,$00,$00,$00
+    db $0A,$00,$02,$00,$0A,$00,$02,$00,$88,$00,$A2,$01,$AA,$00,$00,$00
+    db $AA,$54,$BA,$55,$FE,$54,$2A,$00,$8A,$05,$AF,$17,$AF,$07,$2B,$01
+    db $A8,$40,$EA,$F1,$FA,$D5,$AA,$00,$AA,$54,$FE,$7F,$FF,$FF,$FE,$54
+    db $80,$01,$AB,$17,$AF,$5F,$AF,$07,$80,$40,$E0,$F0,$FA,$F5,$FA,$D0
+    db $00,$00,$3A,$7D,$FF,$FF,$FF,$7F,$00,$00,$02,$01,$8F,$0F,$AF,$07
+    db $00,$00,$A0,$40,$E8,$F3,$FB,$F3,$00,$00,$00,$00,$00,$C0,$C0,$C0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$15,$00,$05,$00,$15,$00,$04,$00
+    db $11,$00,$45,$02,$55,$00,$00,$00,$55,$A8,$75,$AA,$FD,$A8,$54,$00
+    db $15,$0A,$5F,$2F,$5F,$0F,$57,$02,$51,$80,$D5,$E2,$F5,$AB,$55,$00
+    db $55,$A8,$FD,$FE,$FF,$FE,$FD,$A8,$01,$02,$57,$2F,$5F,$BF,$5F,$0F
+    db $00,$80,$C0,$E0,$F5,$EB,$F5,$A0,$00,$00,$74,$FA,$FF,$FE,$FF,$FE
+    db $00,$00,$05,$02,$1F,$1F,$5F,$0F,$00,$00,$40,$80,$D0,$E7,$F7,$E7
+    db $00,$00,$00,$00,$00,$80,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+    db $2A,$00,$0A,$00,$2A,$00,$08,$00,$22,$01,$8A,$05,$AB,$01,$00,$00
+    db $AA,$50,$EA,$54,$FA,$50,$A8,$00,$2A,$15,$BF,$5F,$BF,$1F,$AE,$04
+    db $A2,$01,$AB,$C5,$EB,$57,$AB,$01,$AA,$50,$FA,$FC,$FE,$FD,$FA,$50
+    db $02,$05,$AF,$5F,$BF,$7F,$BF,$1F,$00,$00,$80,$C1,$EB,$D7,$EB,$41
+    db $00,$00,$E8,$F4,$FE,$FC,$FE,$FC,$00,$00,$0A,$05,$3F,$3F,$BF,$1F
+    db $00,$00,$80,$00,$A0,$CF,$EF,$CF,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$54,$00,$15,$00,$55,$00,$10,$00
+    db $45,$02,$15,$0A,$57,$02,$01,$00,$54,$A0,$D5,$A8,$F5,$A0,$51,$00
+    db $55,$2A,$7F,$BF,$7F,$3E,$5D,$08,$45,$02,$57,$8B,$D7,$AF,$57,$02
+    db $54,$A0,$F5,$F8,$FD,$FA,$F5,$A0,$04,$0A,$5F,$BF,$7F,$FF,$7F,$3E
+    db $00,$00,$01,$83,$D7,$AF,$D7,$83,$00,$00,$D0,$E8,$FC,$F8,$FD,$F8
+    db $00,$00,$15,$0A,$7F,$7F,$7F,$3F,$00,$00,$00,$00,$40,$9E,$DE,$9E
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+Nx_smoke_IT:
+    dw Nx_smoke_I+0,Nx_smoke_I+0,Nx_smoke_I+0,Nx_smoke_I+0,Nx_smoke_I+0,Nx_smoke_I+0,Nx_smoke_I+0,Nx_smoke_I+0
+Nx_smoke_VT:
+    dw Nx_smoke_V+0,Nx_smoke_V+104,Nx_smoke_V+208,Nx_smoke_V+312,Nx_smoke_V+416,Nx_smoke_V+520,Nx_smoke_V+624,Nx_smoke_V+728
+    dw Nx_smoke_V+832,Nx_smoke_V+936,Nx_smoke_V+1040,Nx_smoke_V+1144,Nx_smoke_V+1248,Nx_smoke_V+1352,Nx_smoke_V+1456,Nx_smoke_V+1560
+    dw Nx_smoke_V+1664,Nx_smoke_V+1768,Nx_smoke_V+1872,Nx_smoke_V+1976,Nx_smoke_V+2080,Nx_smoke_V+2184,Nx_smoke_V+2288,Nx_smoke_V+2392
+Nx_smoke_N0:
+    db $C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4
+    db $C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4
+    db $C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4
+    db $C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4
+    db $C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4
+    db $C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4
+    db $C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$C4,$B5,$B6,$B7,$B8
+    db $B9,$BA,$BB,$BC,$BD,$BE,$BF,$C0,$C1,$C4,$C4,$C4,$C4
+Nx_smoke_R:
+    dw 0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0
+    dw 0,0,0,0,0,0,0,0
+    dw 0,0,0,8,0,0,0,16
+    dw 0,0,0,24,0,0,0,32
+    dw 0,0,0,40,0,0,0,48
+    dw 0,0,0,56,0,0,0,64
+    dw 0,0,0,72,0,0,0,80
+    dw 0,0,0,88,0,0,0,96
+    dw 0,0,0,104,0,0,0,104
+    dw 0,0,0,104,0,0,0,104
+    dw 0,0,0,104
+Nx_cab_I:
+    db $00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$F0,$F0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$7E,$FF,$FF,$FF,$FF,$FF
+    db $00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$0F,$0F
+    db $00,$00,$00,$00,$00,$FF,$FF,$FF,$00,$00,$00,$00,$00,$C7,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$E1,$E1
+    db $00,$00,$00,$01,$01,$01,$01,$01,$00,$00,$FC,$FE,$FE,$FE,$FE,$FE
+    db $00,$00,$00,$00,$00,$00,$FE,$FE,$00,$00,$00,$00,$00,$00,$1F,$1F
+    db $00,$00,$00,$00,$00,$FF,$FE,$FE,$00,$00,$00,$00,$00,$8F,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$C3,$C3
+    db $00,$00,$01,$03,$03,$03,$03,$03,$00,$00,$F8,$FC,$FC,$FC,$FC,$FC
+    db $00,$00,$00,$00,$00,$00,$FC,$FC,$00,$00,$00,$00,$00,$00,$3F,$3F
+    db $00,$00,$00,$00,$00,$FF,$FC,$FC,$00,$00,$00,$00,$00,$1F,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$87,$87
+    db $00,$00,$03,$07,$07,$07,$07,$07,$00,$00,$F0,$F8,$F8,$F8,$F8,$F8
+    db $00,$00,$00,$00,$00,$00,$F8,$F8,$00,$00,$00,$00,$00,$00,$7F,$7F
+    db $00,$00,$00,$00,$00,$FE,$F8,$F8,$00,$00,$00,$00,$00,$3E,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FF,$FF,$00,$00,$00,$00,$00,$00,$0F,$0F
+    db $00,$00,$07,$0F,$0F,$0F,$0F,$0F,$00,$00,$E0,$F0,$F0,$F0,$F0,$F0
+    db $00,$00,$00,$00,$00,$00,$F0,$F0,$00,$00,$00,$00,$00,$00,$FF,$FF
+    db $00,$00,$00,$00,$00,$FC,$F0,$F0,$00,$00,$00,$00,$00,$7C,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FE,$FE,$00,$00,$00,$00,$00,$00,$1F,$1F
+    db $00,$00,$0F,$1F,$1F,$1F,$1F,$1F,$00,$00,$C0,$E0,$E0,$E0,$E0,$E0
+    db $00,$00,$00,$00,$00,$00,$E1,$E1,$00,$00,$00,$00,$00,$00,$FF,$FF
+    db $00,$00,$00,$00,$00,$F8,$E0,$E0,$00,$00,$00,$00,$00,$F8,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FC,$FC,$00,$00,$00,$00,$00,$00,$3F,$3F
+    db $00,$00,$1F,$3F,$3F,$3F,$3F,$3F,$00,$00,$80,$C0,$C0,$C0,$C0,$C0
+    db $00,$00,$00,$00,$00,$00,$C3,$C3,$00,$00,$00,$00,$00,$00,$FF,$FF
+    db $00,$00,$00,$00,$00,$F1,$C0,$C0,$00,$00,$00,$00,$00,$F1,$00,$00
+    db $00,$00,$00,$00,$00,$00,$F8,$F8,$00,$00,$00,$00,$00,$00,$7F,$7F
+    db $00,$00,$3F,$7F,$7F,$7F,$7F,$7F,$00,$00,$00,$80,$80,$80,$80,$80
+    db $00,$00,$00,$00,$00,$00,$87,$87,$00,$00,$00,$00,$00,$00,$FF,$FF
+    db $00,$00,$00,$00,$00,$E3,$80,$80,$00,$00,$00,$00,$00,$E3,$00,$00
+Nx_cab_V:
+    db $00,$00,$00,$00,$00,$C7,$00,$00,$08,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$00,$00,$00,$00,$00,$00,$00,$A8,$00,$00,$00,$00,$00,$00,$00
+    db $BE,$00,$00,$00,$FF,$FF,$FF,$FF,$8F,$00,$00,$00,$00,$00,$00,$00
+    db $E8,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$00,$00,$00,$00,$00,$00,$00
+    db $80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$8F,$01,$01
+    db $11,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FF,$01,$01,$01,$01,$01,$01,$01
+    db $51,$00,$00,$00,$00,$00,$00,$00,$7D,$00,$00,$00,$FE,$FE,$FE,$FE
+    db $1F,$00,$00,$00,$01,$01,$01,$01,$D1,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+    db $FD,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$1F,$03,$03,$23,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+    db $FE,$03,$03,$03,$03,$03,$03,$03,$A2,$00,$00,$00,$00,$00,$00,$00
+    db $FA,$00,$00,$00,$FC,$FC,$FC,$FC,$3F,$00,$00,$00,$03,$03,$03,$03
+    db $A3,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FA,$03,$03,$03,$03,$03,$03,$03
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$07,$07
+    db $47,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$FD,$07,$07,$07,$07,$07,$07,$07
+    db $45,$00,$00,$00,$00,$00,$00,$00,$F4,$00,$00,$00,$F8,$F8,$F8,$F8
+    db $7F,$00,$00,$00,$07,$07,$07,$07,$47,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+    db $F4,$07,$07,$07,$07,$07,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$7F,$0F,$0F,$8F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+    db $FA,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$8B,$00,$00,$00,$00,$00,$00,$00
+    db $E8,$00,$00,$00,$F0,$F0,$F0,$F0,$FE,$00,$00,$00,$0F,$0F,$0F,$0F
+    db $8F,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$E8,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+    db $00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,$00,$00,$FF,$1F,$1F
+    db $1F,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$F5,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+    db $17,$00,$00,$00,$00,$00,$00,$00,$D1,$00,$00,$00,$E0,$E0,$E0,$E0
+    db $FD,$00,$00,$00,$1F,$1F,$1F,$1F,$1F,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+    db $D0,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$00,$00,$00,$00,$00,$00,$00,$00
+    db $02,$00,$00,$00,$00,$FF,$3F,$3F,$3F,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+    db $EA,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$2F,$00,$00,$00,$00,$00,$00,$00
+    db $A3,$00,$00,$00,$C0,$C0,$C0,$C0,$FA,$00,$00,$00,$3F,$3F,$3F,$3F
+    db $3F,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$A0,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+    db $00,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$00,$00,$FF,$7F,$7F
+    db $7F,$80,$80,$80,$80,$80,$80,$80,$D4,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+    db $5F,$00,$00,$00,$00,$00,$00,$00,$47,$00,$00,$00,$80,$80,$80,$80
+    db $F4,$00,$00,$00,$7F,$7F,$7F,$7F,$7F,$80,$80,$80,$80,$80,$80,$80
+    db $40,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$C7,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$00,$00,$00,$00,$00,$00,$00,$8A,$00,$00,$00,$00,$00,$00,$00
+    db $A8,$00,$00,$00,$FF,$FF,$FF,$FF,$BE,$00,$00,$00,$00,$00,$00,$00
+    db $8F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FC,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$8F,$01,$01
+    db $01,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FF,$01,$01,$01,$01,$01,$01,$01
+    db $15,$00,$00,$00,$00,$00,$00,$00,$51,$00,$00,$00,$FE,$FE,$FE,$FE
+    db $7D,$00,$00,$00,$01,$01,$01,$01,$1F,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+    db $F8,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$1F,$03,$03,$03,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+    db $FE,$03,$03,$03,$03,$03,$03,$03,$2A,$00,$00,$00,$00,$00,$00,$00
+    db $A2,$00,$00,$00,$FC,$FC,$FC,$FC,$FA,$00,$00,$00,$03,$03,$03,$03
+    db $3F,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$F0,$03,$03,$03,$03,$03,$03,$03
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$07,$07
+    db $07,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$FC,$07,$07,$07,$07,$07,$07,$07
+    db $55,$00,$00,$00,$00,$00,$00,$00,$45,$00,$00,$00,$F8,$F8,$F8,$F8
+    db $F4,$00,$00,$00,$07,$07,$07,$07,$7F,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+    db $E0,$07,$07,$07,$07,$07,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$7F,$0F,$0F,$0F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+    db $F8,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$AA,$00,$00,$00,$00,$00,$00,$00
+    db $8B,$00,$00,$00,$F0,$F0,$F0,$F0,$E8,$00,$00,$00,$0F,$0F,$0F,$0F
+    db $FF,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$C0,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$1F,$1F
+    db $1F,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$F1,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+    db $55,$00,$00,$00,$00,$00,$00,$00,$17,$00,$00,$00,$E0,$E0,$E0,$E0
+    db $D1,$00,$00,$00,$1F,$1F,$1F,$1F,$FF,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+    db $80,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$FF,$3F,$3F,$3F,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+    db $E2,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$AA,$00,$00,$00,$00,$00,$00,$00
+    db $2F,$00,$00,$00,$C0,$C0,$C0,$C0,$A3,$00,$00,$00,$3F,$3F,$3F,$3F
+    db $FF,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$7F,$7F
+    db $7F,$80,$80,$80,$80,$80,$80,$80,$C5,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+    db $54,$00,$00,$00,$00,$00,$00,$00,$5F,$00,$00,$00,$80,$80,$80,$80
+    db $47,$00,$00,$00,$7F,$7F,$7F,$7F,$FE,$80,$80,$80,$80,$80,$80,$80
+    db $00,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$C7,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$00,$00,$00,$00,$00,$00,$00,$AA,$00,$00,$00,$00,$00,$00,$00
+    db $8B,$00,$00,$00,$FF,$FF,$FF,$FF,$E8,$00,$00,$00,$00,$00,$00,$00
+    db $FE,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$BC,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$8F,$01,$01
+    db $01,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FF,$01,$01,$01,$01,$01,$01,$01
+    db $55,$00,$00,$00,$00,$00,$00,$00,$17,$00,$00,$00,$FE,$FE,$FE,$FE
+    db $D1,$00,$00,$00,$01,$01,$01,$01,$FD,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+    db $78,$01,$01,$01,$01,$01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$1F,$03,$03,$03,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+    db $FE,$03,$03,$03,$03,$03,$03,$03,$AA,$00,$00,$00,$00,$00,$00,$00
+    db $2F,$00,$00,$00,$FC,$FC,$FC,$FC,$A3,$00,$00,$00,$03,$03,$03,$03
+    db $FA,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$F0,$03,$03,$03,$03,$03,$03,$03
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$07,$07
+    db $07,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$FD,$07,$07,$07,$07,$07,$07,$07
+    db $54,$00,$00,$00,$00,$00,$00,$00,$5F,$00,$00,$00,$F8,$F8,$F8,$F8
+    db $47,$00,$00,$00,$07,$07,$07,$07,$F5,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+    db $E0,$07,$07,$07,$07,$07,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$7F,$0F,$0F,$0F,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+    db $FA,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$A8,$00,$00,$00,$00,$00,$00,$00
+    db $BE,$00,$00,$00,$F0,$F0,$F0,$F0,$8F,$00,$00,$00,$0F,$0F,$0F,$0F
+    db $EB,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$C0,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$1F,$1F
+    db $1F,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$F5,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+    db $51,$00,$00,$00,$00,$00,$00,$00,$7D,$00,$00,$00,$E0,$E0,$E0,$E0
+    db $1F,$00,$00,$00,$1F,$1F,$1F,$1F,$D7,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+    db $80,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$FF,$3F,$3F,$3F,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+    db $EA,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$A2,$00,$00,$00,$00,$00,$00,$00
+    db $FA,$00,$00,$00,$C0,$C0,$C0,$C0,$3F,$00,$00,$00,$3F,$3F,$3F,$3F
+    db $AF,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$7F,$7F
+    db $7F,$80,$80,$80,$80,$80,$80,$80,$D5,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+    db $45,$00,$00,$00,$00,$00,$00,$00,$F4,$00,$00,$00,$80,$80,$80,$80
+    db $7F,$00,$00,$00,$7F,$7F,$7F,$7F,$5E,$80,$80,$80,$80,$80,$80,$80
+    db $00,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00
+Nx_cab_IT:
+    dw Nx_cab_I+0,Nx_cab_I+64,Nx_cab_I+128,Nx_cab_I+192,Nx_cab_I+256,Nx_cab_I+320,Nx_cab_I+384,Nx_cab_I+448
+Nx_cab_VT:
+    dw Nx_cab_V+0,Nx_cab_V+72,Nx_cab_V+144,Nx_cab_V+216,Nx_cab_V+288,Nx_cab_V+360,Nx_cab_V+432,Nx_cab_V+504
+    dw Nx_cab_V+576,Nx_cab_V+648,Nx_cab_V+720,Nx_cab_V+792,Nx_cab_V+864,Nx_cab_V+936,Nx_cab_V+1008,Nx_cab_V+1080
+    dw Nx_cab_V+1152,Nx_cab_V+1224,Nx_cab_V+1296,Nx_cab_V+1368,Nx_cab_V+1440,Nx_cab_V+1512,Nx_cab_V+1584,Nx_cab_V+1656
+Nx_cab_N0:
+    db $49,$49,$49,$49,$49,$01,$02,$49,$49,$49,$05,$06,$03,$04,$49,$49
+    db $49,$01,$02,$49,$03,$04,$05,$06,$49,$49,$49,$49,$49,$49,$49,$49
+    db $03,$04,$05,$06,$49,$49,$49,$49,$49,$49,$01,$02,$49,$49,$03,$04
+    db $05,$06,$49,$49,$49,$49,$49,$01,$02,$49,$03,$04,$05,$06,$49,$49
+    db $49,$49,$49,$01,$02,$03,$04,$49,$05,$06,$49,$49,$49,$49,$49,$49
+    db $01,$02,$49,$49,$49,$05,$06,$03,$04,$49,$49,$49,$01,$02,$49,$03
+    db $04,$05,$06,$49,$49,$49,$49,$07,$08,$08,$08,$08,$08,$09,$0A,$4A
+    db $4A,$4A,$0B,$0C,$0D,$0E,$0F,$10,$11,$49,$49,$49,$49
+Nx_cab_R:
+    dw 0,48,0,0,0,56,0,0
+    dw 0,64,0,0,0,64,0,0
+    dw 0,64,0,0,0,64,0,0
+    dw 0,64,0,0,0,64,0,8
+    dw 0,64,0,16,0,64,0,16
+    dw 0,64,0,16,0,64,0,16
+    dw 0,64,0,24,0,64,0,32
+    dw 0,64,0,40,0,64,0,48
+    dw 0,64,0,56,0,64,0,64
+    dw 8,56,0,72,16,48,0,72
+    dw 16,48,0,72,24,40,0,72
+    dw 32,32,0,72
+Nx_body_I:
+    db $00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $0F,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$F0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$7E,$7E,$7E,$7E,$7E,$7E,$00
+    db $00,$7E,$7E,$7E,$7E,$7E,$7E,$00,$00,$7E,$7E,$66,$66,$42,$42,$00
+    db $00,$7E,$7E,$7E,$7E,$7E,$7E,$00,$FF,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$F0,$03,$01,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$0F,$00,$3F,$3F,$00,$00,$3F,$00,$00
+    db $FF,$FC,$FC,$00,$00,$FC,$FF,$FF,$00,$3F,$3F,$00,$00,$3F,$00,$00
+    db $00,$FF,$FF,$00,$00,$FF,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FC,$FC,$00,$00,$FC,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$00,$00,$FF,$FF,$FF
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$C0,$80,$FF,$FF,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$3F,$1F,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$3F,$1F,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$FF,$FF,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FF
+    db $1F,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$E0
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$00
+    db $00,$FC,$FC,$FC,$FC,$FC,$FC,$00,$00,$FC,$FC,$CC,$CC,$84,$84,$00
+    db $00,$FC,$FC,$FC,$FC,$FC,$FC,$00,$FF,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$E0,$07,$03,$01,$01,$01,$01,$01
+    db $01,$00,$00,$00,$00,$00,$01,$1F,$00,$7F,$7F,$00,$00,$7F,$00,$00
+    db $FE,$F8,$F8,$00,$00,$F8,$FE,$FF,$00,$7F,$7F,$00,$00,$7F,$00,$00
+    db $00,$FF,$FF,$00,$00,$FF,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+    db $FE,$F8,$F8,$00,$00,$F8,$FE,$FE,$01,$01,$01,$01,$01,$01,$01,$01
+    db $01,$01,$01,$00,$00,$01,$01,$01,$FE,$FE,$FE,$00,$00,$FE,$FE,$FE
+    db $01,$01,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01
+    db $00,$00,$00,$00,$00,$00,$80,$00,$FE,$FE,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$7F,$3F,$01,$01,$00,$00,$00,$00,$00,$00
+    db $01,$01,$FE,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01,$01
+    db $01,$00,$00,$00,$00,$00,$7F,$3F,$00,$01,$01,$01,$01,$01,$00,$00
+    db $00,$FF,$FE,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FF
+    db $3F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0
+    db $00,$01,$01,$01,$01,$01,$01,$00,$00,$F9,$F9,$F9,$F9,$F9,$F9,$00
+    db $00,$F9,$F9,$F9,$F9,$F9,$F9,$00,$00,$F9,$F9,$99,$99,$09,$09,$00
+    db $00,$F8,$F8,$F8,$F8,$F8,$F8,$00,$FF,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$C0,$0F,$07,$03,$03,$03,$03,$03
+    db $03,$00,$00,$00,$00,$00,$03,$3F,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $FC,$F0,$F0,$00,$00,$F0,$FC,$FF,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $00,$FF,$FF,$00,$00,$FF,$00,$00,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+    db $FC,$F0,$F0,$00,$00,$F0,$FC,$FC,$03,$03,$03,$03,$03,$03,$03,$03
+    db $03,$03,$03,$00,$00,$03,$03,$03,$FC,$FC,$FC,$00,$00,$FC,$FC,$FC
+    db $03,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$02
+    db $00,$00,$00,$00,$00,$00,$00,$00,$FC,$FC,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FF,$7E,$03,$03,$00,$00,$00,$00,$00,$00
+    db $03,$03,$FC,$00,$00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$03,$03
+    db $03,$00,$00,$00,$00,$00,$FF,$7F,$00,$03,$03,$03,$03,$03,$00,$00
+    db $00,$FE,$FC,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$FF
+    db $7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+    db $00,$03,$03,$03,$03,$03,$03,$00,$00,$F3,$F3,$F3,$F3,$F3,$F3,$00
+    db $00,$F3,$F3,$F3,$F3,$F2,$F2,$00,$00,$F3,$F3,$33,$33,$13,$13,$00
+    db $00,$F0,$F0,$F0,$F0,$F0,$F0,$00,$FF,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$80,$1F,$0F,$07,$07,$07,$07,$07
+    db $07,$01,$01,$00,$00,$01,$07,$7F,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $F8,$E0,$E0,$00,$00,$E0,$F8,$FF,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $00,$FF,$FF,$00,$00,$FF,$00,$00,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+    db $F8,$E0,$E0,$00,$00,$E0,$F8,$F8,$07,$07,$07,$07,$07,$07,$07,$07
+    db $07,$07,$07,$00,$00,$07,$07,$07,$F8,$F8,$F8,$00,$00,$F8,$F8,$F8
+    db $07,$07,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$06,$04
+    db $00,$00,$00,$00,$00,$00,$01,$00,$F8,$F8,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FE,$FC,$07,$07,$00,$00,$00,$00,$00,$00
+    db $07,$07,$F8,$00,$00,$00,$00,$00,$00,$00,$07,$07,$07,$07,$07,$07
+    db $07,$00,$00,$00,$00,$00,$FF,$FF,$00,$07,$07,$07,$07,$07,$00,$00
+    db $00,$FC,$F8,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$FF
+    db $FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$07,$07,$07,$07,$07,$07,$00,$00,$E7,$E7,$E7,$E7,$E7,$E7,$00
+    db $00,$E7,$E7,$E6,$E6,$E4,$E4,$00,$00,$E7,$E7,$67,$67,$27,$27,$00
+    db $00,$E0,$E0,$E0,$E0,$E0,$E0,$00,$FF,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$1F,$0F,$0F,$0F,$0F,$0F
+    db $0F,$03,$03,$00,$00,$03,$0F,$FF,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $F0,$C0,$C0,$00,$00,$C0,$F0,$FF,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $00,$FF,$FF,$00,$00,$FF,$00,$00,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+    db $F0,$C0,$C0,$00,$00,$C0,$F0,$F0,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+    db $0F,$0F,$0F,$00,$00,$0F,$0F,$0F,$F0,$F0,$F0,$00,$00,$F0,$F0,$F0
+    db $0F,$0F,$0F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$0C,$08
+    db $00,$00,$00,$00,$00,$00,$03,$01,$F0,$F0,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$FC,$F8,$0F,$0F,$00,$00,$00,$00,$00,$00
+    db $0F,$0F,$F0,$00,$00,$00,$00,$00,$00,$00,$0F,$0F,$0F,$0F,$0F,$0F
+    db $0F,$00,$00,$00,$00,$00,$FF,$FF,$00,$0F,$0F,$0F,$0F,$0F,$00,$00
+    db $01,$F8,$F0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$FE
+    db $FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$0F,$0F,$0F,$0F,$0F,$0F,$00,$00,$CF,$CF,$CF,$CF,$CF,$CF,$00
+    db $00,$CF,$CF,$CC,$CC,$C8,$C8,$00,$00,$CF,$CF,$CF,$CF,$4F,$4F,$00
+    db $00,$C0,$C0,$C0,$C0,$C0,$C0,$00,$FE,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$01,$00,$7F,$3F,$1F,$1F,$1F,$1F,$1F
+    db $1F,$07,$07,$00,$00,$07,$1F,$FF,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $E0,$80,$80,$00,$00,$80,$E0,$FE,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $00,$FF,$FF,$00,$00,$FF,$00,$00,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+    db $E0,$80,$80,$00,$00,$80,$E0,$E0,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F
+    db $1F,$1F,$1F,$00,$00,$1F,$1F,$1F,$E0,$E0,$E0,$00,$00,$E0,$E0,$E0
+    db $1F,$1F,$1F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$18,$10
+    db $00,$00,$00,$00,$00,$00,$07,$03,$E0,$E0,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$F8,$F0,$1F,$1F,$00,$00,$00,$00,$00,$00
+    db $1F,$1F,$E0,$00,$00,$00,$00,$00,$00,$00,$1F,$1F,$1F,$1F,$1F,$1F
+    db $1F,$00,$00,$00,$00,$00,$FF,$FF,$00,$1F,$1F,$1F,$1F,$1F,$00,$00
+    db $03,$F0,$E0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$FC
+    db $FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$1F,$1F,$1F,$1F,$1F,$1F,$00,$00,$9F,$9F,$9F,$9F,$9F,$9F,$00
+    db $00,$9F,$9F,$99,$99,$90,$90,$00,$00,$9F,$9F,$9F,$9F,$9F,$9F,$00
+    db $00,$80,$80,$80,$80,$80,$80,$00,$FC,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$03,$00,$FF,$7F,$3F,$3F,$3F,$3F,$3F
+    db $3F,$0F,$0F,$00,$00,$0F,$3F,$FF,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $C0,$00,$00,$00,$00,$00,$C0,$FC,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $00,$FF,$FF,$00,$00,$FF,$00,$00,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+    db $C0,$00,$00,$00,$00,$00,$C0,$C0,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+    db $3F,$3F,$3F,$00,$00,$3F,$3F,$3F,$C0,$C0,$C0,$00,$00,$C0,$C0,$C0
+    db $3F,$3F,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$20
+    db $00,$00,$00,$00,$00,$00,$0F,$07,$C0,$C0,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$F0,$E0,$3F,$3F,$00,$00,$00,$00,$00,$00
+    db $3F,$3F,$C0,$00,$00,$00,$00,$00,$00,$00,$3F,$3F,$3F,$3F,$3F,$3F
+    db $3F,$00,$00,$00,$00,$00,$FF,$FF,$00,$3F,$3F,$3F,$3F,$3F,$00,$00
+    db $07,$E0,$C0,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$F8
+    db $FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$3F,$3F,$3F,$3F,$3F,$3F,$00,$00,$3F,$3F,$3F,$3F,$3F,$3F,$00
+    db $00,$3F,$3F,$33,$33,$21,$21,$00,$00,$3F,$3F,$3F,$3F,$3F,$3F,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$F8,$01,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$07,$00,$FF,$FF,$7F,$7F,$7F,$7F,$7F
+    db $7F,$1F,$1F,$00,$00,$1F,$7F,$FF,$00,$FE,$FE,$00,$00,$FE,$00,$00
+    db $80,$00,$00,$00,$00,$00,$80,$F8,$00,$FF,$FF,$00,$00,$FF,$00,$00
+    db $00,$FE,$FE,$00,$00,$FE,$00,$00,$80,$80,$80,$80,$80,$80,$80,$80
+    db $80,$00,$00,$00,$00,$00,$80,$80,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+    db $7F,$7F,$7F,$00,$00,$7F,$7F,$7F,$80,$80,$80,$00,$00,$80,$80,$80
+    db $7F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$60,$40
+    db $00,$00,$00,$00,$00,$00,$1F,$0F,$80,$80,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$E0,$C0,$7F,$7F,$00,$00,$00,$00,$00,$00
+    db $7F,$7F,$80,$00,$00,$00,$00,$00,$00,$00,$7F,$7F,$7F,$7F,$7F,$7F
+    db $7F,$00,$00,$00,$00,$00,$FF,$FF,$00,$7F,$7F,$7F,$7F,$7F,$00,$00
+Nx_body_V:
+Nx_body_IT:
+    dw Nx_body_I+0,Nx_body_I+256,Nx_body_I+512,Nx_body_I+768,Nx_body_I+1024,Nx_body_I+1280,Nx_body_I+1536,Nx_body_I+1792
+Nx_body_N0:
+    db $4B,$4B,$4B,$12,$14,$4C,$4C,$4C,$4C,$4C,$4C,$4C,$1B,$1D,$4B,$12
+    db $14,$4C,$4C,$4C,$4C,$4C,$4C,$4C,$1B,$1D,$4B,$4B,$12,$14,$4C,$4C
+    db $4C,$4C,$4C,$4C,$4C,$1B,$1D,$4B,$12,$14,$4C,$4C,$4C,$4C,$4C,$4C
+    db $4C,$1B,$1D,$4B,$4B,$12,$14,$4C,$4C,$4C,$4C,$4C,$4C,$4C,$1B,$1D
+    db $4B,$12,$14,$4C,$4C,$4C,$4C,$4C,$4C,$4C,$1B,$1D,$4B,$4B,$12,$14
+    db $4C,$4C,$4C,$4C,$4C,$4C,$4C,$1B,$1D,$4B,$12,$14,$4C,$4C,$4C,$4C
+    db $4C,$4C,$4C,$1B,$1D,$4B,$4B,$23,$4D,$4D,$4D,$4D,$4D,$25,$23,$4D
+    db $4D,$4D,$28,$4E,$2B,$2D,$2B,$2E,$2F,$4B,$4B,$4B,$4B
+Nx_body_N1:
+    db $4B,$4B,$4B,$23,$4D,$16,$17,$17,$18,$19,$17,$1A,$4D,$25,$4B,$23
+    db $4D,$16,$17,$17,$18,$19,$17,$1A,$4D,$25,$4B,$4B,$23,$4D,$16,$17
+    db $17,$18,$19,$17,$1A,$4D,$25,$4B,$23,$4D,$16,$17,$17,$18,$19,$17
+    db $1A,$4D,$25,$4B,$4B,$23,$4D,$16,$17,$17,$18,$19,$17,$1A,$4D,$25
+    db $4B,$23,$4D,$16,$17,$17,$18,$19,$17,$1A,$4D,$25,$4B,$4B,$23,$4D
+    db $16,$17,$17,$18,$19,$17,$1A,$4D,$25,$4B,$23,$4D,$16,$17,$17,$18
+    db $19,$17,$1A,$4D,$25,$4B,$4B,$23,$4D,$4D,$4D,$4D,$4D,$25,$23,$4D
+    db $16,$1A,$4D,$4D,$4D,$4D,$4D,$4D,$25,$4B,$4B,$4B,$4B
+Nx_body_N2:
+    db $4B,$4B,$4B,$13,$15,$4D,$4D,$4D,$4D,$4D,$4D,$4D,$1C,$1E,$1F,$20
+    db $15,$4D,$4D,$4D,$4D,$4D,$4D,$4D,$1C,$1E,$21,$22,$20,$15,$4D,$4D
+    db $4D,$4D,$4D,$4D,$4D,$1C,$1E,$1F,$20,$15,$4D,$4D,$4D,$4D,$4D,$4D
+    db $4D,$1C,$1E,$21,$22,$20,$15,$4D,$4D,$4D,$4D,$4D,$4D,$4D,$1C,$1E
+    db $1F,$20,$15,$4D,$4D,$4D,$4D,$4D,$4D,$4D,$1C,$1E,$21,$22,$20,$15
+    db $4D,$4D,$4D,$4D,$4D,$4D,$4D,$1C,$1E,$1F,$20,$15,$4D,$4D,$4D,$4D
+    db $4D,$4D,$4D,$1C,$1E,$21,$22,$24,$4D,$4D,$4D,$4D,$4D,$26,$27,$4D
+    db $4D,$4D,$29,$2A,$2C,$2A,$2C,$2A,$30,$31,$4B,$4B,$4B
+Nx_body_R:
+    dw 0,160,0,0,0,160,0,0
+    dw 0,160,0,0,0,160,0,0
+    dw 0,160,0,0,0,160,0,0
+    dw 0,160,0,0,0,168,0,0
+    dw 0,176,0,0,0,176,0,0
+    dw 0,176,0,0,0,176,0,0
+    dw 0,192,0,0,0,200,0,0
+    dw 0,216,0,0,0,224,0,0
+    dw 16,208,0,0,32,200,0,0
+    dw 32,216,0,0,32,224,0,0
+    dw 32,224,0,0,32,224,0,0
+    dw 32,224,0,0
+Nx_wheels_I:
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$81,$00,$00,$81,$81,$E7
+    db $00,$00,$81,$00,$00,$81,$81,$E7,$FF,$FF,$FF,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FE,$F8,$F8,$F0,$F0,$F8,$F8,$FE,$7F,$1F,$1F,$0F,$0F,$1F,$1F,$7F
+    db $7F,$1F,$1F,$0F,$0F,$1F,$1F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $E7,$81,$81,$00,$00,$81,$81,$E7,$E7,$81,$81,$00,$00,$81,$81,$E7
+    db $FE,$FE,$FF,$FE,$FE,$FF,$FF,$FF,$00,$00,$03,$00,$00,$03,$03,$CF
+    db $01,$01,$03,$01,$01,$03,$03,$CF,$FE,$FE,$FE,$00,$00,$00,$00,$00
+    db $01,$01,$01,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FC,$F0,$F0,$E0,$E0,$F0,$F0,$FC,$FF,$3F,$3F,$1F,$1F,$3F,$3F,$FF
+    db $FF,$3F,$3F,$1F,$1F,$3F,$3F,$FF,$FF,$FF,$FF,$FE,$FE,$FF,$FF,$FF
+    db $CF,$03,$03,$00,$00,$03,$03,$CF,$CF,$03,$03,$01,$01,$03,$03,$CF
+    db $FC,$FC,$FE,$FC,$FC,$FE,$FE,$FF,$00,$00,$06,$00,$00,$06,$06,$9F
+    db $03,$03,$07,$03,$03,$07,$07,$9F,$FC,$FC,$FC,$00,$00,$00,$00,$00
+    db $03,$03,$03,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $F9,$E0,$E0,$C0,$C0,$E0,$E0,$F9,$FF,$7F,$7F,$3F,$3F,$7F,$7F,$FF
+    db $FF,$7F,$7F,$3F,$3F,$7F,$7F,$FF,$FF,$FE,$FE,$FC,$FC,$FE,$FE,$FF
+    db $9F,$06,$06,$00,$00,$06,$06,$9F,$9F,$07,$07,$03,$03,$07,$07,$9F
+    db $F8,$F8,$FC,$F8,$F8,$FC,$FC,$FF,$00,$00,$0C,$00,$00,$0C,$0C,$3F
+    db $07,$07,$0F,$07,$07,$0F,$0F,$3F,$F8,$F8,$F8,$00,$00,$00,$00,$00
+    db $07,$07,$07,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $F3,$C0,$C0,$80,$80,$C0,$C0,$F3,$FF,$FF,$FF,$7F,$7F,$FF,$FF,$FF
+    db $FF,$FF,$FF,$7F,$7F,$FF,$FF,$FF,$FF,$FC,$FC,$F8,$F8,$FC,$FC,$FF
+    db $3F,$0C,$0C,$00,$00,$0C,$0C,$3F,$3F,$0F,$0F,$07,$07,$0F,$0F,$3F
+    db $F0,$F0,$F8,$F0,$F0,$F8,$F8,$FE,$00,$00,$18,$00,$00,$18,$18,$7E
+    db $0F,$0F,$1F,$0F,$0F,$1F,$1F,$7F,$F0,$F0,$F0,$00,$00,$00,$00,$00
+    db $0F,$0F,$0F,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $E7,$81,$81,$00,$00,$81,$81,$E7,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$F8,$F8,$F0,$F0,$F8,$F8,$FE
+    db $7E,$18,$18,$00,$00,$18,$18,$7E,$7F,$1F,$1F,$0F,$0F,$1F,$1F,$7F
+    db $E0,$E0,$F0,$E0,$E0,$F0,$F0,$FC,$00,$00,$30,$00,$00,$30,$30,$FC
+    db $1F,$1F,$3F,$1F,$1F,$3F,$3F,$FF,$E0,$E0,$E0,$00,$00,$00,$00,$00
+    db $1F,$1F,$1F,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FE,$FE,$FF,$FF,$FF
+    db $CF,$03,$03,$01,$01,$03,$03,$CF,$FF,$FF,$FF,$FE,$FE,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FC,$F0,$F0,$E0,$E0,$F0,$F0,$FC
+    db $FC,$30,$30,$00,$00,$30,$30,$FC,$FF,$3F,$3F,$1F,$1F,$3F,$3F,$FF
+    db $C0,$C0,$E0,$C0,$C0,$E0,$E0,$F9,$00,$00,$60,$00,$00,$60,$60,$F9
+    db $3F,$3F,$7F,$3F,$3F,$7F,$7F,$FF,$C0,$C0,$C0,$00,$00,$00,$00,$00
+    db $3F,$3F,$3F,$00,$00,$00,$00,$00,$FF,$FE,$FE,$FC,$FC,$FE,$FE,$FF
+    db $9F,$07,$07,$03,$03,$07,$07,$9F,$FF,$FE,$FE,$FC,$FC,$FE,$FE,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F9,$E0,$E0,$C0,$C0,$E0,$E0,$F9
+    db $F9,$60,$60,$00,$00,$60,$60,$F9,$FF,$7F,$7F,$3F,$3F,$7F,$7F,$FF
+    db $80,$80,$C0,$80,$80,$C0,$C0,$F3,$00,$00,$C0,$00,$00,$C0,$C0,$F3
+    db $7F,$7F,$FF,$7F,$7F,$FF,$FF,$FF,$80,$80,$80,$00,$00,$00,$00,$00
+    db $7F,$7F,$7F,$00,$00,$00,$00,$00,$FF,$FC,$FC,$F8,$F8,$FC,$FC,$FF
+    db $3F,$0F,$0F,$07,$07,$0F,$0F,$3F,$FF,$FC,$FC,$F8,$F8,$FC,$FC,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$F3,$C0,$C0,$80,$80,$C0,$C0,$F3
+    db $F3,$C0,$C0,$00,$00,$C0,$C0,$F3,$FF,$FF,$FF,$7F,$7F,$FF,$FF,$FF
+Nx_wheels_V:
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$80,$80,$80,$80,$80,$C0,$E0,$00
+    db $1F,$1F,$00,$1F,$1F,$3F,$7F,$00,$80,$80,$00,$80,$80,$C0,$E0,$00
+    db $80,$80,$00,$80,$80,$C0,$E0,$00,$1F,$1F,$9F,$1F,$1F,$3F,$7F,$00
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$80,$C0,$00
+    db $3F,$3F,$00,$3F,$3F,$7F,$FF,$00,$00,$00,$00,$00,$00,$80,$C0,$00
+    db $00,$00,$01,$00,$00,$80,$C0,$00,$3F,$3F,$3F,$3F,$3F,$7F,$FF,$00
+    db $FE,$FE,$FE,$FE,$FE,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$81,$00
+    db $7E,$7E,$00,$7E,$7E,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$81,$00
+    db $00,$00,$02,$00,$00,$00,$81,$00,$7F,$7F,$7F,$7F,$7F,$FF,$FF,$00
+    db $FC,$FC,$FC,$FC,$FC,$FE,$FF,$00,$00,$00,$00,$00,$00,$01,$03,$00
+    db $FC,$FC,$00,$FC,$FC,$FE,$FF,$00,$00,$00,$00,$00,$00,$01,$03,$00
+    db $00,$00,$04,$00,$00,$01,$03,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $F8,$F8,$F8,$F8,$F8,$FC,$FE,$00,$01,$01,$00,$01,$01,$03,$07,$00
+    db $F8,$F8,$00,$F8,$F8,$FC,$FE,$00,$01,$01,$00,$01,$01,$03,$07,$00
+    db $01,$01,$09,$01,$01,$03,$07,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $F0,$F0,$F0,$F0,$F0,$F8,$FC,$00,$03,$03,$00,$03,$03,$07,$0F,$00
+    db $F0,$F0,$00,$F0,$F0,$F8,$FC,$00,$03,$03,$00,$03,$03,$07,$0F,$00
+    db $03,$03,$13,$03,$03,$07,$0F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $E0,$E0,$E0,$E0,$E0,$F0,$F8,$00,$07,$07,$00,$07,$07,$0F,$1F,$00
+    db $E0,$E0,$00,$E0,$E0,$F0,$F8,$00,$07,$07,$00,$07,$07,$0F,$1F,$00
+    db $07,$07,$27,$07,$07,$0F,$1F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $C0,$C0,$C0,$C0,$C0,$E0,$F0,$00,$0F,$0F,$00,$0F,$0F,$1F,$3F,$00
+    db $C0,$C0,$00,$C0,$C0,$E0,$F0,$00,$0F,$0F,$00,$0F,$0F,$1F,$3F,$00
+    db $0F,$0F,$4F,$0F,$0F,$1F,$3F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$80,$80,$82,$80,$80,$C0,$E0,$00
+    db $1F,$1F,$1F,$1F,$1F,$3F,$7F,$00,$80,$80,$82,$80,$80,$C0,$E0,$00
+    db $80,$80,$82,$80,$80,$C0,$E0,$00,$1F,$1F,$1F,$1F,$1F,$3F,$7F,$00
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$04,$00,$00,$80,$C0,$00
+    db $3F,$3F,$3F,$3F,$3F,$7F,$FF,$00,$00,$00,$04,$00,$00,$80,$C0,$00
+    db $00,$00,$04,$00,$00,$80,$C0,$00,$3F,$3F,$3F,$3F,$3F,$7F,$FF,$00
+    db $FE,$FE,$FE,$FE,$FE,$FF,$FF,$00,$00,$00,$08,$00,$00,$00,$81,$00
+    db $7E,$7E,$7E,$7E,$7E,$FF,$FF,$00,$00,$00,$08,$00,$00,$00,$81,$00
+    db $00,$00,$08,$00,$00,$00,$81,$00,$7F,$7F,$7F,$7F,$7F,$FF,$FF,$00
+    db $FC,$FC,$FC,$FC,$FC,$FE,$FF,$00,$00,$00,$10,$00,$00,$01,$03,$00
+    db $FC,$FC,$FC,$FC,$FC,$FE,$FF,$00,$00,$00,$10,$00,$00,$01,$03,$00
+    db $00,$00,$10,$00,$00,$01,$03,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $F8,$F8,$F8,$F8,$F8,$FC,$FE,$00,$01,$01,$21,$01,$01,$03,$07,$00
+    db $F8,$F8,$F8,$F8,$F8,$FC,$FE,$00,$01,$01,$21,$01,$01,$03,$07,$00
+    db $01,$01,$21,$01,$01,$03,$07,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $F0,$F0,$F0,$F0,$F0,$F8,$FC,$00,$03,$03,$43,$03,$03,$07,$0F,$00
+    db $F0,$F0,$F0,$F0,$F0,$F8,$FC,$00,$03,$03,$43,$03,$03,$07,$0F,$00
+    db $03,$03,$43,$03,$03,$07,$0F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $E0,$E0,$E0,$E0,$E0,$F0,$F8,$00,$07,$07,$87,$07,$07,$0F,$1F,$00
+    db $E0,$E0,$E0,$E0,$E0,$F0,$F8,$00,$07,$07,$87,$07,$07,$0F,$1F,$00
+    db $07,$07,$87,$07,$07,$0F,$1F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $C0,$C0,$C1,$C0,$C0,$E0,$F0,$00,$0F,$0F,$0F,$0F,$0F,$1F,$3F,$00
+    db $C0,$C0,$C1,$C0,$C0,$E0,$F0,$00,$0F,$0F,$0F,$0F,$0F,$1F,$3F,$00
+    db $0F,$0F,$0F,$0F,$0F,$1F,$3F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$80,$80,$90,$80,$80,$C0,$E0,$00
+    db $1F,$1F,$00,$1F,$1F,$3F,$7F,$00,$80,$80,$00,$80,$80,$C0,$E0,$00
+    db $80,$80,$00,$80,$80,$C0,$E0,$00,$1F,$1F,$1F,$1F,$1F,$3F,$7F,$00
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$20,$00,$00,$80,$C0,$00
+    db $3F,$3F,$00,$3F,$3F,$7F,$FF,$00,$00,$00,$00,$00,$00,$80,$C0,$00
+    db $00,$00,$00,$00,$00,$80,$C0,$00,$3F,$3F,$3F,$3F,$3F,$7F,$FF,$00
+    db $FE,$FE,$FE,$FE,$FE,$FF,$FF,$00,$00,$00,$40,$00,$00,$00,$81,$00
+    db $7E,$7E,$00,$7E,$7E,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$81,$00
+    db $00,$00,$00,$00,$00,$00,$81,$00,$7F,$7F,$7F,$7F,$7F,$FF,$FF,$00
+    db $FC,$FC,$FC,$FC,$FC,$FE,$FF,$00,$00,$00,$80,$00,$00,$01,$03,$00
+    db $FC,$FC,$00,$FC,$FC,$FE,$FF,$00,$00,$00,$00,$00,$00,$01,$03,$00
+    db $00,$00,$00,$00,$00,$01,$03,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $F8,$F8,$F9,$F8,$F8,$FC,$FE,$00,$01,$01,$00,$01,$01,$03,$07,$00
+    db $F8,$F8,$00,$F8,$F8,$FC,$FE,$00,$01,$01,$00,$01,$01,$03,$07,$00
+    db $01,$01,$01,$01,$01,$03,$07,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $F0,$F0,$F2,$F0,$F0,$F8,$FC,$00,$03,$03,$00,$03,$03,$07,$0F,$00
+    db $F0,$F0,$00,$F0,$F0,$F8,$FC,$00,$03,$03,$00,$03,$03,$07,$0F,$00
+    db $03,$03,$03,$03,$03,$07,$0F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $E0,$E0,$E4,$E0,$E0,$F0,$F8,$00,$07,$07,$00,$07,$07,$0F,$1F,$00
+    db $E0,$E0,$00,$E0,$E0,$F0,$F8,$00,$07,$07,$00,$07,$07,$0F,$1F,$00
+    db $07,$07,$07,$07,$07,$0F,$1F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $C0,$C0,$C8,$C0,$C0,$E0,$F0,$00,$0F,$0F,$00,$0F,$0F,$1F,$3F,$00
+    db $C0,$C0,$00,$C0,$C0,$E0,$F0,$00,$0F,$0F,$00,$0F,$0F,$1F,$3F,$00
+    db $0F,$0F,$0F,$0F,$0F,$1F,$3F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$80,$80,$82,$80,$82,$C0,$E0,$00
+    db $1F,$1F,$1F,$1F,$1F,$00,$7F,$00,$80,$80,$82,$80,$82,$00,$E0,$00
+    db $80,$80,$82,$80,$82,$00,$E0,$00,$1F,$1F,$1F,$1F,$1F,$3F,$7F,$00
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$04,$00,$04,$80,$C0,$00
+    db $3F,$3F,$3F,$3F,$3F,$00,$FF,$00,$00,$00,$04,$00,$04,$00,$C0,$00
+    db $00,$00,$04,$00,$04,$00,$C0,$00,$3F,$3F,$3F,$3F,$3F,$7F,$FF,$00
+    db $FE,$FE,$FE,$FE,$FE,$FF,$FF,$00,$00,$00,$08,$00,$08,$00,$81,$00
+    db $7E,$7E,$7E,$7E,$7E,$00,$FF,$00,$00,$00,$08,$00,$08,$00,$81,$00
+    db $00,$00,$08,$00,$08,$00,$81,$00,$7F,$7F,$7F,$7F,$7F,$FF,$FF,$00
+    db $FC,$FC,$FC,$FC,$FC,$FE,$FF,$00,$00,$00,$10,$00,$10,$00,$03,$00
+    db $FC,$FC,$FC,$FC,$FC,$00,$FF,$00,$00,$00,$10,$00,$10,$00,$03,$00
+    db $00,$00,$10,$00,$10,$01,$03,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $F8,$F8,$F8,$F8,$F8,$FC,$FE,$00,$01,$01,$21,$01,$21,$00,$07,$00
+    db $F8,$F8,$F8,$F8,$F8,$00,$FE,$00,$01,$01,$21,$01,$21,$00,$07,$00
+    db $01,$01,$21,$01,$21,$03,$07,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $F0,$F0,$F0,$F0,$F0,$F8,$FC,$00,$03,$03,$43,$03,$43,$00,$0F,$00
+    db $F0,$F0,$F0,$F0,$F0,$00,$FC,$00,$03,$03,$43,$03,$43,$00,$0F,$00
+    db $03,$03,$43,$03,$43,$07,$0F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $E0,$E0,$E0,$E0,$E0,$F0,$F8,$00,$07,$07,$87,$07,$87,$00,$1F,$00
+    db $E0,$E0,$E0,$E0,$E0,$00,$F8,$00,$07,$07,$87,$07,$87,$00,$1F,$00
+    db $07,$07,$87,$07,$87,$0F,$1F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $C0,$C0,$C1,$C0,$C1,$E0,$F0,$00,$0F,$0F,$0F,$0F,$0F,$00,$3F,$00
+    db $C0,$C0,$C1,$C0,$C1,$00,$F0,$00,$0F,$0F,$0F,$0F,$0F,$00,$3F,$00
+    db $0F,$0F,$0F,$0F,$0F,$1F,$3F,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
+Nx_wheels_IT:
+    dw Nx_wheels_I+0,Nx_wheels_I+96,Nx_wheels_I+192,Nx_wheels_I+288,Nx_wheels_I+384,Nx_wheels_I+480,Nx_wheels_I+576,Nx_wheels_I+672
+Nx_wheels_VT:
+    dw Nx_wheels_V+0,Nx_wheels_V+48,Nx_wheels_V+96,Nx_wheels_V+144,Nx_wheels_V+192,Nx_wheels_V+240,Nx_wheels_V+288,Nx_wheels_V+336
+    dw Nx_wheels_V+384,Nx_wheels_V+432,Nx_wheels_V+480,Nx_wheels_V+528,Nx_wheels_V+576,Nx_wheels_V+624,Nx_wheels_V+672,Nx_wheels_V+720
+    dw Nx_wheels_V+768,Nx_wheels_V+816,Nx_wheels_V+864,Nx_wheels_V+912,Nx_wheels_V+960,Nx_wheels_V+1008,Nx_wheels_V+1056,Nx_wheels_V+1104
+    dw Nx_wheels_V+1152,Nx_wheels_V+1200,Nx_wheels_V+1248,Nx_wheels_V+1296,Nx_wheels_V+1344,Nx_wheels_V+1392,Nx_wheels_V+1440,Nx_wheels_V+1488
+Nx_wheels_N0:
+    db $4F,$4F,$4F,$4F,$32,$33,$34,$35,$50,$36,$32,$33,$34,$4F,$4F,$4F
+    db $32,$33,$34,$35,$50,$36,$32,$33,$34,$4F,$4F,$4F,$4F,$32,$33,$34
+    db $35,$50,$36,$32,$33,$34,$4F,$4F,$4F,$32,$33,$34,$35,$50,$36,$32
+    db $33,$34,$4F,$4F,$4F,$4F,$32,$33,$34,$35,$50,$36,$32,$33,$34,$4F
+    db $4F,$4F,$32,$33,$34,$35,$50,$36,$32,$33,$34,$4F,$4F,$4F,$4F,$32
+    db $33,$34,$35,$50,$36,$32,$33,$34,$4F,$4F,$4F,$32,$33,$34,$35,$50
+    db $36,$32,$33,$34,$4F,$4F,$4F,$37,$38,$39,$38,$39,$38,$3A,$4F,$3B
+    db $3C,$3D,$3E,$3F,$40,$41,$40,$42,$43,$4F,$4F,$4F,$4F
+Nx_wheels_R:
+    dw 0,40,0,0,0,48,0,0
+    dw 0,56,0,0,0,64,0,0
+    dw 0,64,0,0,0,64,0,0
+    dw 0,64,0,0,0,72,0,0
+    dw 0,72,0,0,0,80,0,0
+    dw 0,88,0,0,0,96,0,0
+    dw 0,96,0,8,0,96,0,16
+    dw 0,96,0,24,0,96,0,32
+    dw 0,96,0,32,0,96,0,40
+    dw 0,96,0,48,0,96,0,48
+    dw 0,96,0,48,0,96,0,48
+    dw 0,96,0,48
+Nx_rails_I:
+    db $00,$00,$00,$F8,$00,$00,$00,$00,$00,$10,$00,$00,$02,$00,$00,$00
+    db $10,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$00,$00,$80,$00,$00
+    db $00,$10,$00,$00,$04,$00,$00,$00,$00,$00,$00,$F1,$00,$00,$00,$00
+    db $00,$20,$00,$00,$04,$00,$00,$00,$20,$00,$00,$00,$00,$01,$00,$00
+    db $00,$00,$10,$00,$00,$00,$00,$00,$00,$20,$00,$00,$08,$00,$00,$00
+    db $00,$00,$00,$E3,$00,$00,$00,$00,$00,$40,$00,$00,$08,$00,$00,$00
+    db $40,$00,$00,$00,$00,$02,$00,$00,$00,$00,$20,$00,$00,$00,$00,$00
+    db $00,$40,$00,$00,$10,$00,$00,$00,$00,$00,$00,$C7,$00,$00,$00,$00
+    db $00,$80,$00,$00,$10,$00,$00,$00,$80,$00,$00,$00,$00,$04,$00,$00
+    db $00,$00,$40,$00,$00,$00,$00,$00,$00,$80,$00,$00,$20,$00,$00,$00
+    db $00,$00,$00,$8F,$00,$00,$00,$00,$01,$00,$00,$00,$20,$00,$00,$00
+    db $00,$00,$00,$00,$00,$08,$00,$00,$00,$01,$80,$00,$00,$00,$00,$00
+    db $00,$01,$00,$00,$40,$00,$00,$00,$00,$00,$00,$1F,$00,$00,$00,$00
+    db $02,$00,$00,$00,$40,$00,$00,$00,$00,$00,$01,$00,$00,$10,$00,$00
+    db $00,$02,$00,$00,$00,$00,$00,$00,$00,$02,$00,$00,$80,$00,$00,$00
+    db $00,$00,$00,$3E,$00,$00,$00,$00,$04,$00,$00,$00,$80,$00,$00,$00
+    db $00,$00,$02,$00,$00,$20,$00,$00,$00,$04,$00,$00,$01,$00,$00,$00
+    db $00,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$7C,$00,$00,$00,$00
+    db $08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$04,$00,$00,$40,$00,$00
+    db $00,$08,$00,$00,$02,$00,$00,$00,$00,$08,$00,$00,$01,$00,$00,$00
+Nx_rails_V:
+Nx_rails_IT:
+    dw Nx_rails_I+0,Nx_rails_I+40,Nx_rails_I+80,Nx_rails_I+120,Nx_rails_I+160,Nx_rails_I+200,Nx_rails_I+240,Nx_rails_I+280
+Nx_rails_N0:
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+    db $44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44,$44
+Nx_rails_N1:
+    db $45,$46,$47,$48,$45,$46,$47,$48,$45,$46,$47,$48,$45,$46,$47,$48
+    db $45,$46,$47,$48,$45,$46,$47,$48,$45,$46,$47,$48,$45,$46,$47,$48
+; ---- band engine (generated). State per band (NxSt): cell step, shift, animation frame.
+; Per band: shift or step changed -> both pattern blocks; animation only -> the
+; animated block; step changed -> the name rows. FAST bands use OTIR (vertical blank).
+; order: the train first (the biggest writes get the fast blank), then the
+; landscape top to bottom (each band still ahead of the beam), rails last
+; NxOutT: NxOut (28 train names from HL at DE) but, while the rear end is
+; on screen (TrPre < 4), its first k = 4 - TrPre cells come from the strip's
+; own cells TrPre..3 (sky, then the last coach's end), at HL - CamC: written
+; paced (NxOutS, safe anywhere, charged NX_PREOH to the blank budget), then
+; the 28 - k others by NxOut
+NX_PREOH EQU 400
+NxOutT:
+    ld a,(AMY_UVAR_TrPre)
+    cp 4
+    jp nc,NxOut
+    ld b,a
+    ld a,4
+    sub b
+    ld (AMY_UVAR_NxTk),a
+    push hl
+    push de
+    ld de,NX_PREOH
+    call NxChg
+    ld a,(AMY_UVAR_CamC)
+    cpl
+    ld c,a
+    ld b,$FF
+    inc bc
+    add hl,bc
+    pop de
+    push de
+    ld a,(AMY_UVAR_NxTk)
+    ld c,a
+    ld b,0
+    call NxOutS
+    pop hl
+    ld a,(AMY_UVAR_NxTk)
+    ld c,a
+    ld b,0
+    add hl,bc
+    ex de,hl
+    pop hl
+    add hl,bc
+    ld a,28
+    sub c
+    ld c,a
+    jp NxOut
+NxBands:
+    call NB_far
+    call NB_smoke
+    call NB_cab
+    call NB_body
+    call NB_mid
+    call NB_near
+    call NxObs
+    call NB_wheels
+    call NB_rails
+    jp NxObs2
+NB_far:
+    ld hl,(AMY_UVAR_OffFar)
+    ld a,l
+    and 7
+    ld e,a
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,l
+    and 31
+    ld d,a
+    ld a,(AMY_UVAR_NxSt+0)
+    cp d
+    jr nz,NxL1r
+    ld a,(AMY_UVAR_NxSt+0+1)
+    cp e
+    ret z
+NxL1r:
+    ld a,d
+    ld (AMY_UVAR_NxSt+0),a
+    ld a,e
+    ld (AMY_UVAR_NxSt+0+1),a
+    ld a,(AMY_UVAR_NxSt+0)
+    ld hl,Nx_far_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6402
+    ld a,(AMY_UVAR_NxSt+0+1)
+    ld c,a
+    ld b,28
+    call NxOutA
+    ld a,(AMY_UVAR_NxSt+0)
+    ld hl,Nx_far_N1
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6434
+    ld a,(AMY_UVAR_NxSt+0+1)
+    ld c,a
+    ld b,28
+    call NxOutA
+    ld a,(AMY_UVAR_NxSt+0)
+    ld hl,Nx_far_N2
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6466
+    ld a,(AMY_UVAR_NxSt+0+1)
+    ld c,a
+    ld b,28
+    jp NxOutA
+NB_mid:
+    ld hl,(AMY_UVAR_OffMid)
+    ld a,l
+    and 7
+    ld e,a
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,l
+    and 31
+    ld d,a
+    ld c,0
+    ld a,(AMY_UVAR_NxSt+3)
+    cp d
+    jr z,NxL2a
+    ld c,3
+    jr NxL3b
+NxL2a:
+    ld a,(AMY_UVAR_NxSt+3+1)
+    cp e
+    jr z,NxL3b
+    ld c,1
+NxL3b:
+    ld a,c
+    or a
+    ret z
+    ld a,d
+    ld (AMY_UVAR_NxSt+3),a
+    ld a,e
+    ld (AMY_UVAR_NxSt+3+1),a
+    ld a,c
+    ld (AMY_UVAR_NxFl),a
+    and 1
+    jr z,NxL5s
+    ld a,(AMY_UVAR_NxSt+3+1)
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_mid_IT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld de,3336
+    ld bc,64
+    call NxOut
+NxL6k:
+NxL5s:
+    ld a,(AMY_UVAR_NxFl)
+    and 2
+    ret z
+    ld a,(AMY_UVAR_NxSt+3)
+    ld hl,Nx_mid_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6498
+    ld bc,28
+    call NxOut
+    ld a,(AMY_UVAR_NxSt+3)
+    ld hl,Nx_mid_N1
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6530
+    ld bc,28
+    jp NxOut
+NB_near:
+    ld hl,(AMY_UVAR_OffNear)
+    ld a,l
+    and 7
+    ld e,a
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,l
+    and 31
+    ld d,a
+    ld c,0
+    ld a,(AMY_UVAR_NxSt+6)
+    cp d
+    jr z,NxL8a
+    ld c,3
+    jr NxL9b
+NxL8a:
+    ld a,(AMY_UVAR_NxSt+6+1)
+    cp e
+    jr z,NxL9b
+    ld c,1
+NxL9b:
+    ld a,c
+    or a
+    ret z
+    ld a,d
+    ld (AMY_UVAR_NxSt+6),a
+    ld a,e
+    ld (AMY_UVAR_NxSt+6+1),a
+    ld a,c
+    ld (AMY_UVAR_NxFl),a
+    and 1
+    jr z,NxL11s
+    ld a,(AMY_UVAR_NxSt+6+1)
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_near_IT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld de,3400
+    ld bc,96
+    call NxOut
+NxL12k:
+NxL11s:
+    ld a,(AMY_UVAR_NxFl)
+    and 2
+    ret z
+    ld a,(AMY_UVAR_NxSt+6)
+    ld hl,Nx_near_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6562
+    ld bc,28
+    call NxOut
+    ld a,(AMY_UVAR_NxSt+6)
+    ld hl,Nx_near_N1
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6594
+    ld bc,28
+    jp NxOut
+NB_smoke:
+    ; the train's cell and shift (NxLayers: TrDE)
+    ld de,(AMY_UVAR_TrDE)
+    ld c,0
+    ld a,(AMY_UVAR_NxSt+9)
+    cp d
+    jr z,NxL14a
+    ld c,3
+    jr NxL15b
+NxL14a:
+    ld a,(AMY_UVAR_NxSt+9+1)
+    cp e
+    jr z,NxL15b
+    ld c,1
+NxL15b:
+    ld a,(AMY_UVAR_AnimSmoke)
+    ld b,a
+    ld a,(AMY_UVAR_NxSt+9+2)
+    cp b
+    jr z,NxL16c
+    ld a,b
+    ld (AMY_UVAR_NxSt+9+2),a
+    set 2,c
+NxL16c:
+    ld a,c
+    or a
+    ret z
+    ld a,d
+    ld (AMY_UVAR_NxSt+9),a
+    ld a,e
+    ld (AMY_UVAR_NxSt+9+1),a
+    ld a,c
+    ld (AMY_UVAR_NxFl),a
+    ld a,(AMY_UVAR_NxSt+9+1)
+    ld e,a
+    ld a,(AMY_UVAR_NxSt+9+2)
+    add a,a
+    add a,a
+    add a,a
+    add a,e
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_smoke_VT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    push hl
+    ld hl,(AMY_UVAR_TrRow)
+    ld bc,Nx_smoke_R+4
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    pop hl
+    add hl,de
+    push hl
+    ld hl,3496
+    add hl,de
+    ex de,hl
+    pop hl
+    ld a,b
+    or c
+    jr z,NxL17k
+    call NxOut
+NxL17k:
+    ld a,(AMY_UVAR_NxFl)
+    and 2
+    ret z
+    ld a,(AMY_UVAR_NxSt+9)
+    ld hl,Nx_smoke_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6626
+    ld bc,28
+    jp NxOut
+NB_cab:
+    ; the train's cell and shift (NxLayers: TrDE)
+    ld de,(AMY_UVAR_TrDE)
+    ld c,0
+    ld a,(AMY_UVAR_NxSt+12)
+    cp d
+    jr z,NxL19a
+    ld c,3
+    jr NxL20b
+NxL19a:
+    ld a,(AMY_UVAR_NxSt+12+1)
+    cp e
+    jr z,NxL20b
+    ld c,1
+NxL20b:
+    ld a,(AMY_UVAR_AnimSmoke)
+    ld b,a
+    ld a,(AMY_UVAR_NxSt+12+2)
+    cp b
+    jr z,NxL21c
+    ld a,b
+    ld (AMY_UVAR_NxSt+12+2),a
+    set 2,c
+NxL21c:
+    ld a,c
+    or a
+    ret z
+    ld a,d
+    ld (AMY_UVAR_NxSt+12),a
+    ld a,e
+    ld (AMY_UVAR_NxSt+12+1),a
+    ld a,c
+    ld (AMY_UVAR_NxFl),a
+    and 1
+    jr z,NxL22s
+    ld a,(AMY_UVAR_NxSt+12+1)
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_cab_IT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    push hl
+    ld hl,(AMY_UVAR_TrRow)
+    ld bc,Nx_cab_R+0
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    pop hl
+    add hl,de
+    push hl
+    ld hl,4104
+    add hl,de
+    ex de,hl
+    pop hl
+    ld a,b
+    or c
+    jr z,NxL23k
+    call NxOut
+NxL23k:
+NxL22s:
+    ld a,(AMY_UVAR_NxSt+12+1)
+    ld e,a
+    ld a,(AMY_UVAR_NxSt+12+2)
+    add a,a
+    add a,a
+    add a,a
+    add a,e
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_cab_VT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    push hl
+    ld hl,(AMY_UVAR_TrRow)
+    ld bc,Nx_cab_R+4
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    pop hl
+    add hl,de
+    push hl
+    ld hl,4168
+    add hl,de
+    ex de,hl
+    pop hl
+    ld a,b
+    or c
+    jr z,NxL24k
+    call NxOut
+NxL24k:
+    ld a,(AMY_UVAR_NxFl)
+    and 2
+    ret z
+    ld a,(AMY_UVAR_NxSt+12)
+    ld hl,Nx_cab_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6658
+    ld bc,28
+    ; the rear end (sky, then the last coach's end) like the body rows: the
+    ; strip behind a shorter train holds the removed coaches' luggage
+    jp NxOutT
+NB_body:
+    ; the train's cell and shift (NxLayers: TrDE)
+    ld de,(AMY_UVAR_TrDE)
+    ld c,0
+    ld a,(AMY_UVAR_NxSt+15)
+    cp d
+    jr z,NxL26a
+    ld c,3
+    jr NxL27b
+NxL26a:
+    ld a,(AMY_UVAR_NxSt+15+1)
+    cp e
+    jr z,NxL27b
+    ld c,1
+NxL27b:
+    ld a,c
+    or a
+    ret z
+    ld a,d
+    ld (AMY_UVAR_NxSt+15),a
+    ld a,e
+    ld (AMY_UVAR_NxSt+15+1),a
+    ld a,c
+    ld (AMY_UVAR_NxFl),a
+    and 1
+    jr z,NxL29s
+    ld a,(AMY_UVAR_NxSt+15+1)
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_body_IT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    push hl
+    ld hl,(AMY_UVAR_TrRow)
+    ld bc,Nx_body_R+0
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    pop hl
+    add hl,de
+    push hl
+    ld hl,4240
+    add hl,de
+    ex de,hl
+    pop hl
+    ld a,b
+    or c
+    jr z,NxL30k
+    call NxOut
+NxL30k:
+NxL29s:
+    ld a,(AMY_UVAR_NxFl)
+    and 2
+    ret z
+    ld a,(AMY_UVAR_NxSt+15)
+    ld hl,Nx_body_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6690
+    ld bc,28
+    call NxOutT
+    ld a,(AMY_UVAR_NxSt+15)
+    ld hl,Nx_body_N1
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6722
+    ld bc,28
+    call NxOutT
+    ld a,(AMY_UVAR_NxSt+15)
+    ld hl,Nx_body_N2
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6754
+    ld bc,28
+    jp NxOutT
+NB_wheels:
+    ; the train's cell and shift (NxLayers: TrDE)
+    ld de,(AMY_UVAR_TrDE)
+    ld c,0
+    ld a,(AMY_UVAR_NxSt+18)
+    cp d
+    jr z,NxL32a
+    ld c,3
+    jr NxL33b
+NxL32a:
+    ld a,(AMY_UVAR_NxSt+18+1)
+    cp e
+    jr z,NxL33b
+    ld c,1
+NxL33b:
+    ld a,(AMY_UVAR_AnimWheel)
+    ld b,a
+    ld a,(AMY_UVAR_NxSt+18+2)
+    cp b
+    jr z,NxL34c
+    ld a,b
+    ld (AMY_UVAR_NxSt+18+2),a
+    set 2,c
+NxL34c:
+    ld a,c
+    or a
+    ret z
+    ld a,d
+    ld (AMY_UVAR_NxSt+18),a
+    ld a,e
+    ld (AMY_UVAR_NxSt+18+1),a
+    ld a,c
+    ld (AMY_UVAR_NxFl),a
+    and 1
+    jr z,NxL35s
+    ld a,(AMY_UVAR_NxSt+18+1)
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_wheels_IT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    push hl
+    ld hl,(AMY_UVAR_TrRow)
+    ld bc,Nx_wheels_R+0
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    pop hl
+    add hl,de
+    push hl
+    ld hl,4496
+    add hl,de
+    ex de,hl
+    pop hl
+    ld a,b
+    or c
+    jr z,NxL36k
+    call NxOut
+NxL36k:
+NxL35s:
+    ld a,(AMY_UVAR_NxSt+18+1)
+    ld e,a
+    ld a,(AMY_UVAR_NxSt+18+2)
+    add a,a
+    add a,a
+    add a,a
+    add a,e
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_wheels_VT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    push hl
+    ld hl,(AMY_UVAR_TrRow)
+    ld bc,Nx_wheels_R+4
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    pop hl
+    add hl,de
+    push hl
+    ld hl,4592
+    add hl,de
+    ex de,hl
+    pop hl
+    ld a,b
+    or c
+    jr z,NxL37k
+    call NxOut
+NxL37k:
+    ld a,(AMY_UVAR_NxFl)
+    and 2
+    ret z
+    ld a,(AMY_UVAR_NxSt+18)
+    ld hl,Nx_wheels_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6786
+    ld bc,28
+    jp NxOutT
+NB_rails:
+    ld hl,(AMY_UVAR_OffRail)
+    ld a,l
+    and 7
+    ld e,a
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,l
+    and 3
+    ld d,a
+    ld c,0
+    ld a,(AMY_UVAR_NxSt+21)
+    cp d
+    jr z,NxL39a
+    ld c,3
+    jr NxL40b
+NxL39a:
+    ld a,(AMY_UVAR_NxSt+21+1)
+    cp e
+    jr z,NxL40b
+    ld c,1
+NxL40b:
+    ld a,c
+    or a
+    ret z
+    ld a,d
+    ld (AMY_UVAR_NxSt+21),a
+    ld a,e
+    ld (AMY_UVAR_NxSt+21+1),a
+    ld a,c
+    ld (AMY_UVAR_NxFl),a
+    and 1
+    jr z,NxL42s
+    ld a,(AMY_UVAR_NxSt+21+1)
+    add a,a
+    ld l,a
+    ld h,0
+    ld bc,Nx_rails_IT
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    ld de,4640
+    ld bc,40
+    call NxOut
+NxL43k:
+NxL42s:
+    ld a,(AMY_UVAR_NxFl)
+    and 2
+    ret z
+    ld a,(AMY_UVAR_NxSt+21)
+    ld hl,Nx_rails_N0
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6818
+    ld bc,28
+    call NxOut
+    ld a,(AMY_UVAR_NxSt+21)
+    ld hl,Nx_rails_N1
+    add a,l
+    ld l,a
+    adc a,h
+    sub l
+    ld h,a
+    ld de,6850
+    ld bc,28
+    jp NxOut
+NxSprPat:
+    db $00,$00,$00,$03,$03,$00,$00,$00,$00,$0C,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $03,$07,$07,$00,$00,$07,$0F,$0F,$0D,$01,$01,$01,$01,$01,$01,$03
+    db $C0,$E0,$FC,$00,$00,$C0,$E0,$F0,$E0,$E0,$E0,$B0,$B0,$B0,$B0,$B8
+    db $00,$00,$00,$03,$03,$00,$00,$00,$60,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$C0,$80,$00,$00,$00,$0C,$00,$00,$00,$00,$00,$00,$00
+    db $03,$07,$07,$00,$00,$07,$1F,$37,$07,$03,$07,$0E,$1C,$38,$60,$40
+    db $C0,$E0,$FC,$00,$00,$C0,$E0,$F0,$B0,$C0,$E0,$70,$38,$18,$0C,$0E
+    db $00,$00,$00,$03,$03,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$C0,$80,$00,$00,$00,$0C,$00,$00,$00,$00,$00,$00,$00
+    db $03,$07,$07,$00,$00,$07,$0F,$0F,$07,$03,$03,$06,$0C,$78,$60,$00
+    db $C0,$E0,$FC,$00,$00,$C0,$F0,$D8,$80,$C0,$C0,$E0,$70,$30,$30,$38
+    db $00,$00,$00,$03,$03,$00,$00,$00,$04,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$C0,$80,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00,$00
+    db $03,$07,$07,$00,$00,$07,$07,$0F,$0B,$03,$03,$03,$03,$07,$06,$0E
+    db $C0,$E0,$FC,$00,$00,$C0,$F0,$E0,$C0,$C0,$C0,$E0,$60,$60,$70,$00
+    db $00,$00,$00,$03,$03,$00,$00,$00,$30,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$C0,$80,$00,$00,$00,$0C,$00,$00,$00,$00,$00,$00,$00
+    db $03,$07,$07,$00,$00,$07,$0F,$1B,$03,$03,$07,$06,$0C,$18,$38,$00
+    db $C0,$E0,$FC,$00,$00,$C0,$F0,$F0,$D0,$C0,$C0,$E0,$78,$0C,$04,$00
+    db $00,$00,$00,$33,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$C0,$80,$00,$00,$0C,$00,$00,$00,$00,$00,$00,$00,$00
+    db $03,$07,$07,$00,$30,$1F,$0F,$07,$07,$07,$0F,$1C,$38,$30,$00,$00
+    db $C0,$E0,$FC,$00,$00,$80,$E0,$F0,$80,$80,$F0,$38,$18,$0C,$08,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$03,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$C0,$00,$06,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$00,$07,$0F,$1F,$1C,$3C
+    db $00,$00,$00,$00,$00,$00,$00,$00,$C0,$FC,$00,$F0,$F8,$F8,$F0,$78
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$F0,$E0,$07,$03,$00,$07,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$01,$00,$00,$0F,$3F,$7F,$7F,$F1,$C0,$80,$00,$00
+    db $00,$00,$00,$F0,$F8,$00,$00,$F8,$FC,$80,$F0,$C0,$60,$30,$18,$1C
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$02,$00,$00,$0E,$0C,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$6F,$FF,$67
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1E,$3F,$F0,$F0,$E0
+    db $00,$00,$00,$01,$00,$00,$0F,$0F,$00,$01,$01,$00,$00,$00,$00,$00
+    db $00,$00,$00,$40,$00,$00,$E0,$F0,$00,$E0,$E0,$00,$00,$00,$00,$00
+    db $03,$07,$07,$02,$03,$07,$00,$00,$0D,$0C,$00,$01,$01,$01,$01,$03
+    db $C0,$E0,$E0,$80,$80,$C0,$00,$00,$E0,$00,$00,$B0,$B0,$B0,$B0,$B8
+    db $00,$00,$00,$01,$00,$00,$1F,$37,$00,$03,$07,$00,$00,$00,$00,$00
+    db $00,$00,$00,$40,$00,$00,$E0,$F0,$00,$C0,$E0,$00,$00,$00,$00,$00
+    db $03,$07,$07,$02,$03,$07,$00,$00,$67,$00,$00,$0E,$1C,$38,$60,$40
+    db $C0,$E0,$E0,$80,$80,$C0,$00,$00,$BC,$00,$00,$70,$38,$18,$0C,$0E
+    db $00,$00,$00,$01,$00,$00,$0F,$0F,$00,$03,$03,$00,$00,$00,$00,$00
+    db $00,$00,$00,$40,$00,$00,$F0,$D8,$00,$C0,$C0,$00,$00,$00,$00,$00
+    db $03,$07,$07,$02,$03,$07,$00,$00,$0F,$00,$00,$06,$0C,$78,$60,$00
+    db $C0,$E0,$E0,$80,$80,$C0,$00,$00,$8C,$00,$00,$E0,$70,$30,$30,$38
+    db $00,$00,$00,$01,$00,$00,$07,$0F,$00,$03,$03,$00,$00,$00,$00,$00
+    db $00,$00,$00,$40,$00,$00,$F0,$E0,$00,$C0,$C0,$00,$00,$00,$00,$00
+    db $03,$07,$07,$02,$03,$07,$00,$00,$0F,$00,$00,$03,$03,$07,$06,$0E
+    db $C0,$E0,$E0,$80,$80,$C0,$00,$00,$E0,$00,$00,$E0,$60,$60,$70,$00
+    db $00,$00,$00,$01,$00,$00,$0F,$1B,$00,$03,$07,$00,$00,$00,$00,$00
+    db $00,$00,$00,$40,$00,$00,$F0,$F0,$00,$C0,$C0,$00,$00,$00,$00,$00
+    db $03,$07,$07,$02,$03,$07,$00,$00,$33,$00,$00,$06,$0C,$18,$38,$00
+    db $C0,$E0,$E0,$80,$80,$C0,$00,$00,$DC,$00,$00,$E0,$78,$0C,$04,$00
+    db $00,$00,$00,$01,$00,$00,$0F,$07,$00,$07,$0F,$00,$00,$00,$00,$00
+    db $00,$00,$00,$40,$00,$00,$E0,$F0,$00,$80,$F0,$00,$00,$00,$00,$00
+    db $03,$07,$07,$32,$33,$1F,$00,$00,$07,$00,$00,$1C,$38,$30,$00,$00
+    db $C0,$E0,$E0,$80,$80,$80,$00,$0C,$80,$00,$00,$38,$18,$0C,$08,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$07,$00,$1F,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$40,$F0,$00,$F8,$00,$00
+    db $00,$00,$00,$00,$00,$00,$00,$00,$03,$07,$02,$00,$0F,$00,$1C,$3C
+    db $00,$00,$00,$00,$00,$00,$00,$00,$C0,$E0,$80,$00,$FC,$00,$F0,$78
+    db $00,$00,$00,$02,$00,$00,$07,$0F,$00,$07,$07,$00,$00,$00,$00,$00
+    db $00,$00,$00,$80,$00,$00,$F0,$F0,$00,$80,$80,$00,$00,$00,$00,$00
+    db $03,$07,$07,$01,$01,$03,$00,$00,$07,$00,$00,$0D,$0D,$0D,$0D,$1D
+    db $C6,$E4,$E8,$48,$D0,$E0,$00,$00,$B0,$30,$00,$80,$80,$80,$80,$C0
+    db $00,$00,$00,$02,$00,$00,$07,$0F,$00,$07,$07,$00,$00,$00,$00,$00
+    db $00,$00,$00,$80,$00,$00,$F0,$F0,$00,$80,$80,$00,$00,$00,$00,$00
+    db $63,$27,$27,$11,$11,$0B,$00,$00,$07,$00,$00,$0D,$0D,$0D,$0D,$1D
+    db $C0,$E0,$E0,$40,$C0,$E0,$00,$00,$B0,$30,$00,$80,$80,$80,$80,$C0
+    db $00,$00,$00,$02,$00,$00,$07,$0F,$00,$07,$07,$00,$00,$00,$00,$00
+    db $00,$00,$00,$80,$00,$00,$F0,$F0,$00,$80,$80,$00,$00,$00,$00,$00
+    db $03,$07,$07,$81,$81,$63,$10,$00,$07,$00,$00,$0D,$0D,$0D,$0D,$1D
+    db $C0,$E0,$E0,$40,$C0,$E0,$00,$00,$B0,$30,$00,$80,$80,$80,$80,$C0
+    db $00,$00,$00,$02,$00,$00,$07,$0F,$00,$07,$07,$00,$00,$00,$00,$00
+    db $00,$00,$00,$80,$00,$00,$F0,$F0,$00,$80,$80,$00,$00,$00,$00,$00
+    db $03,$17,$17,$11,$11,$0B,$00,$00,$07,$00,$00,$0D,$0D,$0D,$0D,$1D
+    db $C0,$F0,$F0,$50,$D0,$E0,$00,$00,$B0,$30,$00,$80,$80,$80,$80,$C0
+NX_SPRG EQU 576
+NxPgTitle:
+    db 1,2,13,99,100,101,102,103,0,104,105,106,107,104,108,108
+    db 2,2,13,109,110,111,112,113,0,114,115,116,117,114,118,118
+    db 3,2,15,0,0,0,74,75,56,73,75,0,0,0,0,0,0,0
+    db 4,2,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 5,2,15,0,0,0,63,70,78,0,75,70,0,71,67,56,80,0
+    db 6,2,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    db 7,2,15,0,0,0,58,73,60,59,64,75,74,0,0,0,0,0
+    db $FF
+NxPgHow1:
+    db 1,0,15,74,75,70,71,0,75,63,60,0,75,63,64,60,61,92
+    db 3,0,14,73,76,69,0,58,56,73,0,57,80,0,58,56,73
+    db 5,0,28,73,60,56,58,63,0,75,63,60,0,60,69,62,64,69,60,0,70,73,0,62,73,56,57,0,63,64,68
+    db 7,0,23,67,56,75,60,73,0,75,73,56,64,69,74,0,56,73,60,0,67,70,69,62,60,73
+    db $FF
+NxPgHow2:
+    db 1,0,20,65,76,68,71,95,0,76,71,0,70,73,0,73,0,57,76,75,75,70,69
+    db 3,0,15,59,76,58,66,95,0,71,76,67,67,0,59,70,78,69
+    db 5,0,23,62,73,56,57,95,0,67,0,57,76,75,75,70,69,93,0,56,0,67,76,69,62,60
+    db 7,0,24,56,0,68,64,74,74,60,59,0,62,73,56,57,0,58,70,74,75,74,0,75,64,68,60
+    db $FF
+NxPgHow3:
+    db 1,0,16,78,63,60,69,0,63,60,0,67,56,69,59,74,0,70,73
+    db 3,0,15,75,63,73,70,78,74,0,58,70,56,67,93,0,63,60
+    db 5,0,26,62,70,60,74,0,80,60,67,67,70,78,95,0,62,73,56,57,0,63,64,68,0,69,70,78,92
+    db 7,0,24,68,56,71,95,0,80,70,76,0,58,80,56,69,93,0,63,64,68,0,78,63,64,75,60
+    db $FF
+NxPgHow3b:
+    db 1,0,18,56,0,62,56,71,0,58,70,74,75,74,0,56,0,67,64,61,60
+    db 3,0,17,57,73,64,59,62,60,74,93,0,58,70,56,67,0,56,69,59
+    db 5,0,22,67,76,62,62,56,62,60,0,66,69,70,58,66,0,80,70,76,0,59,70,78,69
+    db $FF
+NxPgHow4:
+    db 1,0,5,67,64,77,60,74
+    db 1,6,3,119,119,119
+    db 3,0,4,75,64,68,60
+    db 3,5,14,120,0,121,121,121,121,121,121,123,123,123,125,125,126
+    db 5,0,22,75,64,68,60,0,70,76,75,95,0,63,60,0,62,60,75,74,0,56,78,56,80
+    db 7,0,24,67,60,77,60,67,0,83,82,0,64,74,0,75,63,60,0,67,56,74,75,0,73,76,69
+    db $FF
+NxPgCredits:
+    db 1,0,13,69,64,62,63,75,0,60,79,71,73,60,74,74
+    db 5,0,22,56,0,62,56,68,60,0,57,80,0,56,68,80,0,55,0,58,67,56,76,59,60
+    db 7,0,15,56,68,80,0,74,75,76,59,64,70,0,84,82,84,88
+    db $FF
+NxPgHud:
+    db 1,7,2,67,77
+    db 3,0,1,120
+    db $FF
+NxPgEnd:
+    db 1,5,15,58,56,76,62,63,75,0,56,75,0,59,56,78,69,92
+    db 3,0,11,61,64,69,56,67,0,74,58,70,73,60
+    db $FF
+NxPgEnd2:
+    db 1,0,18,75,63,60,0,60,69,59,95,0,56,0,62,56,68,60,0,57,80
+    db 2,0,12,56,68,80,0,55,0,58,67,56,76,59,60
+    db 3,0,15,56,68,80,0,74,75,76,59,64,70,0,84,82,84,88
+    db $FF
+NxPages:
+    dw NxPgTitle,NxPgHow1,NxPgHow2,NxPgHow3,NxPgHow3b,NxPgHow4,NxPgCredits,NxPgHud,NxPgEnd,NxPgEnd2
+NxMsgs:
+    db 5,5,17,82,0,58,56,73,74,0,0,62,60,75,0,73,60,56,59,80
+    db 5,12,3,62,70,92
+    db 5,8,11,58,56,76,62,63,75,0,63,64,68,92
+    db 5,9,9,58,70,73,69,60,73,60,59,92
+    db 5,8,12,63,60,0,62,70,75,0,56,78,56,80,92
+    db 5,9,9,80,70,76,0,61,60,67,67,92
+    db 5,9,9,62,56,68,60,0,70,77,60,73
+    db 5,11,5,62,73,56,57,92
+NxObT:
+    dw NxObR0,NxObP0
+    db 80,48,197,81
+    dw NxObR1,NxObP1
+    db 72,40,203,86
+NxObR0:
+    db 4
+    db 14,0,24,197,199,6,6,58
+    dw Nx_near_N1
+    db 0,3,197,199,198,0
+    db 0,4,197,199,199,198
+    db 0,4,197,199,199,198
+    db 0,4,197,199,199,198
+    db 0,4,197,199,199,198
+    db 0,4,197,199,199,198
+    db 0,4,197,199,199,198
+    db 0,4,197,199,199,198
+    db 15,0,24,200,202,9,6,58
+    dw Nx_smoke_N0
+    db 0,3,200,202,201,0
+    db 0,4,200,202,202,201
+    db 0,4,200,202,202,201
+    db 0,4,200,202,202,201
+    db 0,4,200,202,202,201
+    db 0,4,200,202,202,201
+    db 0,4,200,202,202,201
+    db 0,4,200,202,202,201
+    db 16,8,16,81,81,12,4,42
+    dw Nx_cab_N0
+    db 1,1,81,0
+    db 1,2,81,82
+    db 1,2,81,82
+    db 1,2,81,82
+    db 1,2,81,82
+    db 1,2,81,82
+    db 1,2,81,82
+    db 1,2,81,82
+    db 21,6,18,83,85,21,5,50
+    dw Nx_rails_N0
+    db 0,3,83,85,84
+    db 0,3,83,85,84
+    db 1,2,83,84,0
+    db 1,2,83,84,0
+    db 1,2,83,84,0
+    db 1,2,83,84,0
+    db 1,2,83,84,0
+    db 1,3,83,85,84
+NxObR1:
+    db 5
+    db 13,0,40,203,205,6,8,74
+    dw Nx_near_N0
+    db 0,5,203,205,205,205,204,0
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 14,0,40,203,205,6,8,74
+    dw Nx_near_N1
+    db 0,5,203,205,205,205,204,0
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 0,6,203,205,205,205,205,204
+    db 15,0,40,206,208,9,8,74
+    dw Nx_smoke_N0
+    db 0,5,206,208,208,208,207,0
+    db 0,6,206,208,208,208,208,207
+    db 0,6,206,208,208,208,208,207
+    db 0,6,206,208,208,208,208,207
+    db 0,6,206,208,208,208,208,207
+    db 0,6,206,208,208,208,208,207
+    db 0,6,206,208,208,208,208,207
+    db 0,6,206,208,208,208,208,207
+    db 16,12,28,86,90,12,5,50
+    dw Nx_cab_N0
+    db 1,3,86,90,87
+    db 1,3,86,90,87
+    db 1,3,86,90,87
+    db 1,3,86,90,87
+    db 2,2,86,87,0
+    db 2,3,86,90,87
+    db 2,3,86,90,87
+    db 2,3,86,90,87
+    db 21,10,30,88,91,21,6,58
+    dw Nx_rails_N0
+    db 1,3,88,91,89,0
+    db 1,3,88,91,89,0
+    db 1,3,88,91,89,0
+    db 1,4,88,91,91,89
+    db 1,4,88,91,91,89
+    db 1,4,88,91,91,89
+    db 2,3,88,91,89,0
+    db 2,3,88,91,89,0
+NxObP0:
+    db $FF,$C0,$A1,$A1,$92,$92,$8C,$8C,$FF,$C1,$21,$21,$13,$13,$0D,$0D
+    db $FF,$C0,$21,$21,$12,$12,$0C,$0C,$8C,$8C,$92,$92,$A1,$A1,$FF,$FF
+    db $0D,$0D,$13,$13,$21,$21,$FF,$FF,$0C,$0C,$12,$12,$21,$21,$FF,$FF
+    db $FF,$42,$66,$66,$42,$66,$5A,$66,$00,$00,$00,$00,$00,$00,$00,$00
+    db $00,$01,$01,$7D,$01,$03,$03,$00,$00,$80,$80,$FC,$80,$C0,$C0,$00
+    db $7F,$60,$50,$50,$49,$49,$46,$46,$80,$80,$80,$80,$80,$80,$80,$80
+    db $FF,$60,$90,$90,$09,$09,$06,$06,$46,$46,$49,$49,$50,$50,$7F,$7F
+    db $80,$80,$80,$80,$80,$80,$80,$80,$06,$06,$09,$09,$90,$90,$FF,$FF
+    db $7F,$21,$33,$33,$21,$33,$2D,$33,$80,$00,$00,$00,$00,$00,$00,$00
+    db $00,$00,$00,$3E,$00,$01,$01,$00,$00,$C0,$C0,$FE,$C0,$E0,$E0,$00
+    db $3F,$30,$28,$28,$24,$24,$23,$23,$C0,$40,$40,$40,$C0,$C0,$40,$40
+    db $FF,$30,$48,$48,$84,$84,$03,$03,$23,$23,$24,$24,$28,$28,$3F,$3F
+    db $40,$40,$C0,$C0,$40,$40,$C0,$C0,$03,$03,$84,$84,$48,$48,$FF,$FF
+    db $3F,$10,$19,$19,$10,$19,$16,$19,$C0,$80,$80,$80,$80,$80,$80,$80
+    db $00,$7F,$7F,$7F,$7F,$FF,$FF,$00,$00,$E0,$E0,$FF,$E0,$F0,$F0,$00
+    db $1F,$18,$14,$14,$12,$12,$11,$11,$E0,$20,$20,$20,$60,$60,$A0,$A0
+    db $FF,$18,$24,$24,$42,$42,$81,$81,$11,$11,$12,$12,$14,$14,$1F,$1F
+    db $A0,$A0,$60,$60,$20,$20,$E0,$E0,$81,$81,$42,$42,$24,$24,$FF,$FF
+    db $1F,$08,$0C,$0C,$08,$0C,$0B,$0C,$E0,$40,$C0,$C0,$40,$C0,$40,$C0
+    db $00,$3F,$3F,$BF,$3F,$7F,$7F,$00,$00,$F0,$F0,$FF,$F0,$F8,$F8,$00
+    db $0F,$0C,$0A,$0A,$09,$09,$08,$08,$F0,$10,$10,$10,$30,$30,$D0,$D0
+    db $FF,$0C,$12,$12,$21,$21,$C0,$C0,$08,$08,$09,$09,$0A,$0A,$0F,$0F
+    db $D0,$D0,$30,$30,$10,$10,$F0,$F0,$C0,$C0,$21,$21,$12,$12,$FF,$FF
+    db $0F,$04,$06,$06,$04,$06,$05,$06,$F0,$20,$60,$60,$20,$60,$A0,$60
+    db $00,$1F,$1F,$DF,$1F,$3F,$3F,$00,$00,$F8,$F8,$FF,$F8,$FC,$FC,$00
+    db $07,$06,$05,$05,$04,$04,$04,$04,$F8,$08,$08,$08,$98,$98,$68,$68
+    db $FF,$06,$09,$09,$90,$90,$60,$60,$04,$04,$04,$04,$05,$05,$07,$07
+    db $68,$68,$98,$98,$08,$08,$F8,$F8,$60,$60,$90,$90,$09,$09,$FF,$FF
+    db $07,$02,$03,$03,$02,$03,$02,$03,$F8,$10,$30,$30,$10,$30,$D0,$30
+    db $00,$0F,$0F,$EF,$0F,$1F,$1F,$00,$00,$FC,$FC,$FF,$FC,$FE,$FE,$00
+    db $03,$03,$02,$02,$02,$02,$02,$02,$FC,$04,$84,$84,$4C,$4C,$34,$34
+    db $FF,$03,$84,$84,$48,$48,$30,$30,$02,$02,$02,$02,$02,$02,$03,$03
+    db $34,$34,$4C,$4C,$84,$84,$FC,$FC,$30,$30,$48,$48,$84,$84,$FF,$FF
+    db $03,$01,$01,$01,$01,$01,$01,$01,$FC,$08,$98,$98,$08,$98,$68,$98
+    db $00,$07,$07,$F7,$07,$0F,$0F,$00,$00,$FE,$FE,$FF,$FE,$FF,$FF,$00
+    db $01,$01,$01,$01,$01,$01,$01,$01,$FE,$82,$42,$42,$26,$26,$1A,$1A
+    db $FF,$81,$42,$42,$24,$24,$18,$18,$01,$01,$01,$01,$01,$01,$01,$01
+    db $1A,$1A,$26,$26,$42,$42,$FE,$FE,$18,$18,$24,$24,$42,$42,$FF,$FF
+    db $01,$00,$00,$00,$00,$00,$00,$00,$FE,$84,$CC,$CC,$84,$CC,$B4,$CC
+    db $00,$03,$03,$FB,$03,$07,$07,$00,$00,$00,$00,$F8,$00,$80,$80,$00
+NxObP1:
+    db $FE,$FE,$FE,$FF,$EF,$EF,$EF,$FF,$FE,$FE,$FE,$FF,$EF,$EF,$EF,$FF
+    db $FE,$FE,$FE,$FF,$EF,$EF,$EF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+    db $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$00,$3F,$3F,$7F,$3F,$3F,$3F,$00
+    db $00,$FC,$FC,$FC,$FC,$FC,$FC,$00,$7F,$7F,$7F,$7F,$77,$77,$77,$7F
+    db $00,$00,$00,$80,$80,$80,$80,$80,$7F,$7F,$7F,$FF,$F7,$F7,$F7,$FF
+    db $7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$80,$80,$80,$80,$80,$80,$80,$80
+    db $07,$07,$07,$07,$07,$07,$07,$07,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+    db $00,$1F,$1F,$3F,$1F,$1F,$1F,$00,$00,$FE,$FE,$FE,$FE,$FE,$FE,$00
+    db $3F,$3F,$3F,$3F,$3B,$3B,$3B,$3F,$80,$80,$80,$C0,$C0,$C0,$C0,$C0
+    db $BF,$BF,$BF,$FF,$FB,$FB,$FB,$FF,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+    db $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$03,$03,$03,$03,$03,$03,$03,$03
+    db $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$00,$0F,$0F,$1F,$0F,$0F,$0F,$00
+    db $00,$FF,$FF,$FF,$FF,$FF,$FF,$00,$1F,$1F,$1F,$1F,$1D,$1D,$1D,$1F
+    db $C0,$C0,$C0,$E0,$E0,$E0,$E0,$E0,$DF,$DF,$DF,$FF,$FD,$FD,$FD,$FF
+    db $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+    db $01,$01,$01,$01,$01,$01,$01,$01,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+    db $00,$07,$07,$8F,$07,$07,$07,$00,$00,$80,$80,$8F,$80,$80,$80,$00
+    db $0F,$0F,$0F,$0F,$0E,$0E,$0E,$0F,$E0,$E0,$E0,$F0,$F0,$F0,$F0,$F0
+    db $EF,$EF,$EF,$FF,$FE,$FE,$FE,$FF,$0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
+    db $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$00,$03,$03,$C7,$03,$03,$03,$00
+    db $00,$C0,$C0,$C7,$C0,$C0,$C0,$00,$07,$07,$07,$07,$07,$07,$07,$07
+    db $F0,$F0,$F0,$F8,$78,$78,$78,$F8,$F7,$F7,$F7,$FF,$7F,$7F,$7F,$FF
+    db $07,$07,$07,$07,$07,$07,$07,$07,$F8,$F8,$F8,$F8,$F8,$F8,$F8,$F8
+    db $7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$80,$80,$80,$80,$80,$80,$80,$80
+    db $00,$01,$01,$E3,$01,$01,$01,$00,$00,$E0,$E0,$E3,$E0,$E0,$E0,$00
+    db $03,$03,$03,$03,$03,$03,$03,$03,$F8,$F8,$F8,$FC,$BC,$BC,$BC,$FC
+    db $FB,$FB,$FB,$FF,$BF,$BF,$BF,$FF,$03,$03,$03,$03,$03,$03,$03,$03
+    db $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC,$3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+    db $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0,$00,$FF,$FF,$FF,$FF,$FF,$FF,$00
+    db $00,$F0,$F0,$F1,$F0,$F0,$F0,$00,$01,$01,$01,$01,$01,$01,$01,$01
+    db $FC,$FC,$FC,$FE,$DE,$DE,$DE,$FE,$FD,$FD,$FD,$FF,$DF,$DF,$DF,$FF
+    db $01,$01,$01,$01,$01,$01,$01,$01,$FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
+    db $1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
+    db $00,$7F,$7F,$FF,$7F,$7F,$7F,$00,$00,$F8,$F8,$F8,$F8,$F8,$F8,$00
+NxLump:
+    db $00,$36,$7F,$FF,$DD,$FF,$FF,$77,$00,$00,$00,$80,$80,$80,$80,$00
+    db $00,$1B,$3F,$7F,$6E,$7F,$7F,$3B,$00,$00,$80,$C0,$C0,$C0,$C0,$80
+    db $00,$0D,$1F,$3F,$37,$3F,$3F,$1D,$00,$80,$C0,$E0,$60,$E0,$E0,$C0
+    db $00,$06,$0F,$1F,$1B,$1F,$1F,$0E,$00,$C0,$E0,$F0,$B0,$F0,$F0,$E0
+    db $00,$03,$07,$0F,$0D,$0F,$0F,$07,$00,$60,$F0,$F8,$D8,$F8,$F8,$70
+    db $00,$01,$03,$07,$06,$07,$07,$03,$00,$B0,$F8,$FC,$EC,$FC,$FC,$B8
+    db $00,$00,$01,$03,$03,$03,$03,$01,$00,$D8,$FC,$FE,$76,$FE,$FE,$DC
+    db $00,$00,$00,$01,$01,$01,$01,$00,$00,$6C,$FE,$FF,$BB,$FF,$FF,$EE
+NX_COAL EQU 92
+NX_CABSKY EQU 73
+NX_SKYC8 EQU 440
+NX_FONT0 EQU 55
+NX_FONTN EQU 44
+NX_ICON0 EQU 119
+NX_ICONN EQU 9
+NxDawnC:
+    db $11,$11,$11,$11,$41,$11,$11,$11,$E1,$11,$11,$11,$41,$11,$11,$11
+    db $11,$11,$11,$11,$41,$11,$11,$E1,$11,$11,$E1,$11,$41,$11,$11,$11
+    db $11,$11,$11,$E1,$41,$11,$11,$11,$11,$11,$11,$11,$41,$E1,$11,$11
+    db $11,$11,$11,$E1,$41,$11,$11,$11,$11,$11,$11,$E1,$41,$11,$11,$11
+    db $11,$11,$11,$11,$41,$11,$E1,$11,$11,$11,$11,$11,$41,$E1,$11,$11
+    db $11,$11,$E1,$11,$41,$11,$11,$11,$41,$11,$41,$11,$41,$11,$41,$11
+    db $41,$E1,$41,$11,$41,$11,$41,$11,$41,$11,$41,$E1,$41,$11,$41,$11
+    db $41,$11,$41,$E1,$41,$11,$41,$11,$41,$41,$41,$41,$41,$41,$41,$41
+    db $44,$41,$44,$41,$44,$44,$44,$44
+NX_SPRB EQU 1280
+NX_SKYN8 EQU 1024
+; made by pack.mjs (do not edit): ZX0 PATTERN and COLOR tables, strategy original
+NxZPat:
+    db $90,$00,$B9,$02,$F2,$BD,$10,$DC,$89,$02,$07,$AF,$04,$FE,$6F,$01
+    db $B0,$62,$00,$40,$46,$0E,$03,$07,$0F,$1F,$7E,$62,$1F,$0F,$08,$25
+    db $C0,$E0,$F0,$F8,$F7,$B4,$DB,$74,$80,$DE,$EC,$17,$94,$08,$E9,$EF
+    db $20,$7F,$98,$83,$34,$D8,$92,$E6,$1F,$3F,$FE,$88,$0F,$6A,$1F,$00
+    db $FE,$FC,$F8,$FC,$4E,$8C,$5B,$02,$DF,$96,$84,$4F,$26,$FE,$DE,$24
+    db $4F,$B6,$5A,$08,$26,$20,$70,$24,$64,$89,$3F,$1F,$1F,$0F,$07,$03
+    db $87,$78,$7C,$FE,$A7,$2C,$F0,$E0,$C0,$77,$F2,$9B,$F2,$88,$CF,$1A
+    db $F1,$DF,$E0,$53,$BD,$6A,$E0,$B8,$08,$D0,$3F,$44,$BC,$CE,$D0,$A0
+    db $04,$7F,$A2,$E8,$80,$01,$29,$10,$FA,$D8,$22,$BE,$AA,$FD,$F1,$96
+    db $20,$A9,$00,$08,$69,$20,$EA,$FD,$44,$A8,$11,$55,$A2,$00,$BE,$77
+    db $FE,$12,$30,$48,$50,$20,$54,$48,$34,$00,$38,$44,$88,$7C,$44,$DF
+    db $9F,$F9,$FA,$FA,$E0,$6A,$40,$40,$40,$38,$0A,$44,$0B,$7C,$BB,$E5
+    db $78,$FB,$7C,$9F,$F0,$FF,$EE,$C0,$5C,$D1,$AE,$3C,$44,$90,$7B,$E1
+    db $10,$E0,$FE,$98,$38,$00,$1C,$08,$F8,$48,$30,$D1,$51,$BF,$60,$50
+    db $D1,$AB,$EE,$FE,$7C,$B1,$67,$6C,$54,$54,$98,$A1,$64,$54,$4C,$7F
+    db $52,$9F,$40,$60,$3D,$FF,$FF,$F0,$E0,$E8,$90,$3C,$9E,$38,$04,$04
+    db $10,$FF,$57,$FE,$F3,$91,$A0,$8B,$F2,$28,$FE,$E1,$A2,$FF,$3E,$28
+    db $00,$E6,$8F,$28,$F0,$FE,$B0,$A1,$2B,$04,$08,$20,$EE,$21,$61,$4C
+    db $C2,$B8,$64,$A1,$D9,$10,$30,$D0,$E3,$41,$04,$18,$EF,$D0,$78,$57
+    db $88,$50,$77,$08,$18,$28,$48,$7C,$AD,$6E,$60,$DC,$EE,$50,$C6,$FE
+    db $0B,$F1,$80,$7D,$FF,$FF,$E0,$FA,$EF,$F0,$3C,$DB,$76,$61,$F4,$34
+    db $C9,$5E,$92,$18,$10,$20,$FF,$30,$D1,$F8,$F4,$F2,$A8,$04,$7C,$63
+    db $10,$08,$EF,$A3,$C0,$F7,$EA,$70,$40,$5A,$66,$66,$76,$76,$7E,$7E
+    db $6E,$7F,$3C,$3C,$18,$FE,$B8,$F0,$DD,$BE,$60,$60,$D1,$FE,$3F,$F1
+    db $C9,$9F,$D0,$F1,$E8,$D5,$D1,$7C,$7B,$A8,$BF,$67,$7C,$EC,$F6,$E1
+    db $F0,$3E,$3E,$3E,$C5,$91,$24,$3C,$6E,$DF,$FB,$FE,$FF,$B1,$93,$E4
+    db $FE,$C9,$F1,$D0,$5F,$FF,$FF,$93,$A4,$59,$FF,$E1,$20,$FF,$FE,$E0
+    db $FE,$6A,$00,$7C,$78,$6C,$A9,$66,$9F,$00,$3C,$06,$49,$82,$F1,$7E
+    db $7F,$3C,$38,$BA,$FE,$B0,$1E,$5A,$99,$9D,$81,$42,$5F,$FA,$FE,$FE
+    db $00,$28,$F0,$3E,$F3,$E0,$14,$E0,$FE,$01,$42,$0F,$01,$07,$1F,$7F
+    db $E2,$82,$03,$0F,$3F,$FF,$5A,$FF,$5A,$FF,$5A,$FF,$5A,$FF,$5A,$FF
+    db $4F,$FF,$95,$5A,$F2,$E2,$96,$03,$96,$07,$F6,$0F,$1E,$97,$00,$D2
+    db $08,$96,$00,$93,$00,$E7,$FF,$08,$F9,$FF,$E3,$F0,$A5,$7F,$E5,$08
+    db $F2,$78,$83,$01,$FF,$F5,$F3,$78,$FF,$F5,$F3,$78,$51,$FE,$6B,$F3
+    db $78,$08,$04,$0E,$0E,$1F,$20,$82,$08,$1C,$1D,$3F,$7E,$10,$39,$3B
+    db $6A,$08,$FF,$20,$72,$77,$60,$F8,$40,$E4,$EE,$FE,$4A,$21,$80,$C8
+    db $DC,$FC,$9E,$90,$B8,$F8,$DE,$D5,$3B,$C2,$F0,$AA,$DE,$00,$66,$40
+    db $E0,$E0,$A6,$00,$80,$C0,$C0,$68,$00,$89,$80,$80,$E3,$00,$CA,$DE
+    db $00,$42,$96,$00,$96,$00,$96,$00,$96,$00,$97,$00,$77,$72,$D6,$F0
+    db $96,$FE,$97,$FC,$FF,$08,$FE,$CA,$2A,$00,$17,$7E,$80,$08,$3B,$F0
+    db $DA,$DE,$00,$5A,$00,$5A,$00,$5D,$D7,$A2,$59,$90,$0C,$FF,$78,$F2
+    db $3F,$78,$F0,$CF,$78,$F3,$F0,$78,$FC,$F0,$FF,$78,$F0,$3F,$78,$F0
+    db $CF,$78,$F3,$F0,$78,$FC,$F0,$FF,$78,$F0,$3F,$78,$F2,$CF,$78,$F3
+    db $F2,$78,$FC,$F2,$F1,$78,$98,$A0,$91,$80,$80,$1F,$BA,$29,$03,$53
+    db $E9,$F2,$03,$69,$07,$69,$0F,$69,$1F,$6F,$3F,$60,$A5,$06,$A5,$0C
+    db $A5,$18,$A5,$30,$B5,$60,$D7,$96,$87,$30,$DB,$72,$7F,$CA,$F2,$FF
+    db $5A,$FF,$5A,$FF,$5A,$FF,$5A,$FF,$5A,$FF,$5C,$8C,$90,$35,$F8,$5D
+    db $34,$78,$5D,$DF,$F2,$F0,$69,$FE,$6E,$FC,$EE,$7E,$99,$EE,$7E,$99
+    db $EE,$7E,$99,$EE,$62,$00,$C0,$48,$95,$00,$80,$A5,$00,$A5,$00,$A5
+    db $00,$A5,$00,$C9,$6A,$A1,$80,$3D,$FE,$51,$4A,$FF,$5A,$00,$00,$40
+    db $0A,$FF,$1D,$49,$60,$07,$CE,$F2,$FE,$40,$55,$75,$55,$58
+NxZCol:
+    db $90,$11,$BC,$E1,$F2,$3A,$FF,$F1,$3B,$E4,$D7,$C2,$FD,$CE,$F4,$F7
+    db $B2,$EE,$EA,$FF,$FF,$BD,$FE,$E0,$F7,$9C,$A5,$4B,$E1,$7F,$CB,$EA
+    db $3D,$54,$7E,$CF,$40,$47,$FF,$B8,$E9,$FE,$29,$FE,$FF,$33,$FF,$E0
+    db $79,$7A,$3E,$B9,$F6,$7D,$50,$7D,$E6,$BD,$F1,$D4,$7D,$E2,$E7,$C8
+    db $9F,$66,$54,$7F,$32,$BC,$FE,$E0,$F1,$A4,$BC,$41,$70,$A5,$41,$A7
+    db $41,$BC,$FA,$E0,$F8,$EF,$D0,$37,$0A,$3D,$D0,$7A,$C1,$E1,$07,$CF
+    db $90,$F9,$DB,$FC,$E1,$D3,$EC,$DF,$F0,$FE,$2F,$44,$FC,$EA,$FE,$F1
+    db $14,$00,$A4,$B1,$E0,$F0,$53,$A6,$FF,$A1,$AE,$61,$11,$F0,$05,$6E
+    db $71,$FF,$AA,$91,$71,$25,$11,$F1,$A5,$31,$69,$B1,$5A,$81,$56,$96
+    db $41,$95,$00,$55,$5A,$11,$5A,$54,$55,$69,$44,$F4,$F0,$5F,$FE,$A7
+    db $55,$D0,$F0,$38,$FE,$11,$BC,$55,$F0,$57,$60,$00,$12,$83,$55,$C5
+    db $F0,$77,$80,$55,$7D,$F0,$57,$7B,$78,$B5,$BC,$F8,$F0,$57,$37,$76
+    db $C5,$F0,$7D,$00,$57,$0D,$80,$54,$F6,$F0,$91,$55,$5D,$35,$80,$5D
+    db $80,$00,$1F,$FE,$54,$A5,$55,$56,$92,$51,$F9,$11,$ED,$F0,$E0,$E0
+    db $A5,$51,$3B,$FF,$B1,$EF,$FB,$25,$44,$F0,$7D,$D0,$C5,$6B,$D1,$11
+    db $F8,$FA,$F0,$71,$5C,$94,$E5,$E0,$7C,$F0,$3B,$6A,$D4,$D0,$BE,$E4
+    db $FE,$F8,$44,$FD,$F0,$A1,$E4,$79,$FE,$52,$BD,$44,$F0,$68,$44,$0F
+    db $44,$DA,$50,$83,$11,$3A,$42,$11,$A0,$11,$7C,$30,$02,$0E,$94,$84
+    db $64,$14,$F8,$17,$8E,$CE,$F0,$13,$55,$95,$00,$55,$D6,$34,$74,$E1
+    db $31,$F0,$92,$B4,$64,$A4,$64,$64,$64,$13,$D7,$C0,$FD,$F2,$F0,$EF
+    db $81,$E4,$E0,$2C,$E4,$7E,$3A,$F0,$5D,$37,$80,$FF,$C2,$E0,$FC,$F0
+    db $B0,$4F,$E1,$C7,$FE,$F9,$E1,$47,$FE,$3C,$E7,$42,$6C,$6F,$11,$F0
+    db $57,$D7,$90,$93,$50,$EA,$E5,$F0,$44,$1F,$21,$D7,$E0,$83,$D0,$D3
+    db $A0,$D7,$E0,$DE,$F0,$33,$85,$E1,$F7,$16,$E8,$D0,$EE,$7D,$E0,$7D
+    db $A0,$E0,$3C,$F3,$D4,$8E,$E2,$10,$4F,$D9,$D3,$10,$35,$1A,$E4,$FE
+    db $1F,$70,$5F,$F0,$A1,$44,$03,$6D,$94,$8D,$BA,$9F,$DC,$F8,$F7,$EE
+    db $46,$BE,$7D,$E2,$D4,$DD,$B0,$DF,$14,$E0,$5F,$FE,$7B,$DC,$C3,$C0
+    db $DD,$EA,$48,$91,$83,$84,$84,$D9,$F0,$CE,$EE,$E1,$E1,$AD,$FF,$F5
+    db $11,$F0,$D4,$D7,$60,$95,$C0,$F6,$E0,$6F,$14,$E4,$E4,$FD,$F6,$FF
+    db $F0,$E4,$00,$FE,$01,$53,$55,$55,$80
+; NIGHT EXPRESS audio (original), made by snd.py (do not edit)
+; Night Express (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+NxTitleMel:
+    db $44
+    dw sndtiny_1
+    db 10
+    db $02,$40,$13,$66,$1C,$00,$1F,$00,$23,$00,$28,$00,$26,$00,$23,$00
+    db $1F,$00,$21,$00,$23,$00,$00,$00,$21,$1F,$1E,$00,$1C,$00,$00,$00
+    db $00,$00,$01,$01,$1C,$00,$1F,$00,$23,$00,$28,$00,$2A,$00,$28,$00
+    db $26,$00,$23,$00,$24,$00,$23,$00,$21,$00,$1E,$00,$1C,$00,$00,$00
+    db $00,$00,$01,$01
+    db $FF
+NxTitleHarm:
+    db $84
+    dw sndtiny_2
+    db 10
+    db $02,$50,$14,$CC,$13,$00,$00,$00,$17,$00,$00,$00,$17,$00,$00,$00
+    db $1A,$00,$00,$00,$12,$00,$00,$00,$17,$00,$00,$00,$13,$00,$00,$00
+    db $00,$00,$01,$01,$13,$00,$00,$00,$17,$00,$00,$00,$12,$00,$00,$00
+    db $17,$00,$00,$00,$15,$00,$00,$00,$18,$00,$00,$00,$13,$00,$00,$00
+    db $00,$00,$01,$01
+    db $FF
+NxTitleBassVol:
+    db $02,$33,$14,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22,$02,$33,$14,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$0D,$14,$66,$22,$02,$33,$14,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22
+    db $02,$33,$14,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22,$02,$33,$14,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$0D,$14,$66,$22,$02,$33,$14,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22
+    db $02,$33,$26,$14,$66,$22,$02,$33,$26,$14,$66,$22,$02,$33,$14,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$0D,$14,$66,$22,$02,$33,$14,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22
+    db $02,$33,$14,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22,$02,$33,$14,$14,$66,$02,$45,$05,$13,$11
+    db $02,$33,$0D,$14,$66,$22,$02,$33,$14,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22
+    db $02,$33,$14,$14,$66,$02,$45,$05,$13,$11,$02,$33,$0D,$14,$66,$22,$02,$33,$26,$14,$66,$22
+    db $02,$33,$26,$14,$66,$22
+    db $10
+NxTitleBassPitch:
+    db $C0,$88,$F0,$28,$C0,$5A,$F0,$28,$C0,$72,$F0,$28,$C0,$98,$F0,$28,$C0,$5A,$F0,$28,$C0,$79,$F0,$28
+    db $C0,$88,$F0,$28,$C0,$5A,$F0,$28,$C0,$88,$F0,$28,$C0,$5A,$F0,$50,$C0,$79,$F0,$28,$C0,$66,$F0,$28
+    db $C0,$88,$F0,$50,$C0,$5A,$F0,$26,$E2
+    db $D0
+NxRunMel:
+    db $44
+    dw sndtiny_1
+    db 12
+    db $02,$60,$13,$88,$1C,$00,$1F,$00,$23,$00,$00,$00,$21,$00,$1F,$00
+    db $1E,$00,$00,$00,$1C,$00,$1F,$00,$23,$00,$28,$00,$26,$00,$00,$00
+    db $23,$00,$00,$00,$24,$00,$00,$00,$23,$00,$21,$00,$1F,$00,$00,$00
+    db $1E,$00,$00,$00,$1C,$00,$1E,$00,$1F,$00,$23,$00,$1C,$00,$00,$00
+    db $01,$01,$01,$01,$FF
+NxRunBass:
+    db $84
+    dw sndtiny_2
+    db 12
+    db $02,$70,$F1,$22,$10,$01,$17,$01,$10,$01,$17,$01,$0E,$01,$15,$01
+    db $0E,$01,$15,$01,$10,$01,$17,$01,$10,$01,$17,$01,$13,$01,$1A,$01
+    db $13,$01,$1A,$01,$0C,$01,$13,$01,$0C,$01,$13,$01,$0B,$01,$12,$01
+    db $0B,$01,$12,$01,$10,$01,$17,$01,$10,$01,$17,$01,$0B,$01,$12,$01
+    db $0B,$01,$0F,$01,$FF
+NxRunDrum:
+    db $02,$75,$03,$13,$11,$23,$02,$85,$03,$13,$11,$3F,$28,$02,$75,$03
+    db $13,$11,$23,$02,$85,$03,$13,$11,$3F,$27,$10
+NxWinA:
+    db $40,$AA,$30,$06,$40,$7F,$30,$06,$40,$65,$30,$06,$40,$55,$30,$0C
+    db $40,$65,$30,$06,$42,$55,$30,$28,$1C,$33,$50
+NxWinB:
+    db $80,$FE,$50,$12,$80,$53,$51,$12,$82,$FE,$50,$28,$1A,$33,$90
+NxLoseA:
+    db $40,$AA,$30,$0C,$40,$B4,$30,$0C,$40,$BE,$30,$0C,$42,$CA,$30,$28
+    db $1C,$44,$50
+NxLoseB:
+    db $80,$FE,$50,$0C,$80,$0D,$51,$0C,$80,$1D,$51,$0C,$82,$2E,$51,$28
+    db $1A,$44,$90
+NxGrab:
+    db $00,$00,$54,$02,$00,$00,$24,$03,$00,$00,$35,$03,$00,$00,$75,$03
+    db $10
+NxThud:
+    db $00,$00,$06,$02,$00,$00,$22,$03,$02,$46,$0C,$18,$11,$10
+NxThrow:
+    db $00,$00,$65,$02,$00,$00,$25,$02,$00,$00,$36,$03,$00,$00,$86,$03
+    db $10
+NxJump:
+    db $40,$1D,$31,$02,$40,$D6,$30,$02,$40,$AA,$40,$02,$40,$8F,$60,$03
+    db $50
+NxClick:
+    db $40,$40,$40,$01,$40,$40,$90,$01,$50
+NxFall:
+    db $80,$A9,$10,$04,$80,$D6,$20,$04,$80,$1D,$31,$05,$80,$7C,$41,$06
+    db $80,$3B,$62,$08,$80,$56,$93,$0A,$90
+NxTaunt:
+    db $C0,$8F,$30,$06,$C0,$AA,$30,$06,$C0,$7F,$30,$06,$C0,$AA,$40,$0A
+    db $D0
+NxTick:
+    db $C0,$71,$40,$02,$C0,$AA,$80,$02,$D0
+NxWhistle:
+    db $C0,$87,$40,$03,$C0,$7F,$20,$28,$C0,$87,$40,$0E,$C0,$8F,$80,$0A
+    db $D0
+NxSoundTable:
+    dw NxTitleMel,$702B
+    dw NxTitleHarm,$7035
+    dw NxTitleBassVol,$703F
+    dw NxTitleBassPitch,$7049
+    dw NxRunMel,$702B
+    dw NxRunBass,$7035
+    dw NxRunDrum,$703F
+    dw NxWinA,$702B
+    dw NxWinB,$7035
+    dw NxLoseA,$702B
+    dw NxLoseB,$7035
+    dw NxGrab,$7053
+    dw NxThud,$7053
+    dw NxThrow,$7053
+    dw NxJump,$705D
+    dw NxClick,$705D
+    dw NxFall,$7067
+    dw NxTaunt,$7071
+    dw NxTick,$7071
+    dw NxWhistle,$7071
+NxChain:
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    outi
+    ret
+}

@@ -1,0 +1,1344 @@
+cartridge "FLYNN'S GOLD/PASQUALE LONGO/1985"
+
+' FLYNN'S GOLD - ColecoVision port of "Flynn's Gold" (article "Gold
+' Grabber" by Pasquale Longo, RUN Magazine, 1985, pages 31-32; file GOLD
+' GRABBER on the ReRUN disk Fall 1985, Commodore 64: a BASIC loader that
+' POKEs 2,563 bytes of machine code to $C000). Rules from the disassembled
+' machine code (orig/gold.dis) and bots on the running original (c64/);
+' the story words from the article (orig/article-gold-grabber.png).
+'
+' The game: Flynn the adventurer hides behind a hill. Bags of gold fall
+' from the sky; walk under one to catch it (10 points x (level + 1)),
+' carry it back to the hill on the right and press the button to bury it:
+' (255 - X) / 20 + 1 times the catch value, X being where the bag fell
+' (bags falling farthest to the left are worth more, up to 11 times). He
+' carries one bag at a time (a new catch replaces it). Giant 10-ton
+' weights rain down when he leaves the hill (the grey one whenever he is
+' out, the red one every 50 steps while he is in the left half) and an
+' eagle soars and swoops overhead. A hit costs a Flynn (and the bag
+' carried). Behind the hill he is safe, but nothing can be caught there.
+' Bury 25 bags and the game ends with a bonus of Flynns left x level x
+' 100; no Flynns left (of 3): game over.
+' Level 1-9 is chosen on the title (the original's F3 key) and sets only
+' the speed (and the points).
+'
+' Controls (controller 1 or 2): stick left/right walks; button buries the
+' bag (behind the hill). Menus: stick up/down, left/right for LEVEL,
+' button.
+'
+' Timing: the original has no frame sync; one pass of its main loop is one
+' "step" (every object moves 1 C64 pixel). Measured in jsc64, steps per
+' 1/60 s = 15705 / (381 x (15 - level) + 505): 2.69 at level 1 .. 5.63 at
+' level 9 (StepQ, in 1/256). The port runs that many steps per frame with
+' the original's own coordinates, order and +-8 / Y = 229 contact rules,
+' and draws the result scaled into the ColecoVision screen.
+'
+' Liberties: the walking pose is shown at most every 4 frames; ColecoVision sky and hill scenery, logo, sprites and colours;
+' title menu with LEVEL / HOW TO PLAY / CREDITS instead of "PRESS F1";
+' Flynn lies flat for 40 frames after a hit (the original resets at once);
+' a bag icon in the HUD while he carries one; an original title tune;
+' a noise thump with the hit and a menu click; objects are shown only
+' below the clouds (the C64 shows them from the top border); game over
+' (or 25 bags) shows a results page and goes back to the title. The
+' original's RUN/STOP quit is not ported.
+
+const TRock1 = 128
+const TRock2 = 129
+const TVein = 130
+const TCloud1 = 131
+const TCloud2 = 132
+const TCloud3 = 133
+const TSpk1 = 134
+const TSpk2 = 135
+const TGlint = 136
+const TFloor = 137
+const TFloor2 = 138
+const TDirt = 139
+const THillL = 140
+const THillR = 141
+const TEarth1 = 142
+const TEarth2 = 143
+const TBuried = 144
+const TArchL = 145
+const TArch = 146
+const TArchR = 147
+const TMound = 148
+const TIcBag = 149
+const TIcMan = 150
+const TBags00 = 151
+const TBags01 = 152
+const TBags10 = 153
+const TBags11 = 154
+const TLF00 = 155
+const TLF01 = 156
+const TLF10 = 157
+const TLF11 = 158
+const TLL00 = 159
+const TLL01 = 160
+const TLL10 = 161
+const TLL11 = 162
+const TLY00 = 163
+const TLY01 = 164
+const TLY10 = 165
+const TLY11 = 166
+const TLN00 = 167
+const TLN01 = 168
+const TLN10 = 169
+const TLN11 = 170
+const TLS00 = 171
+const TLS01 = 172
+const TLS10 = 173
+const TLS11 = 174
+const TLG00 = 175
+const TLG01 = 176
+const TLG10 = 177
+const TLG11 = 178
+const TLO00 = 179
+const TLO01 = 180
+const TLO10 = 181
+const TLO11 = 182
+const TLD00 = 183
+const TLD01 = 184
+const TLD10 = 185
+const TLD11 = 186
+const TLq00 = 187
+const TLq10 = 188
+const SHatR0 = 0
+const SManR0 = 4
+const SHatR1 = 8
+const SManR1 = 12
+const SHatR2 = 16
+const SManR2 = 20
+const SHatL0 = 24
+const SManL0 = 28
+const SHatL1 = 32
+const SManL1 = 36
+const SHatL2 = 40
+const SManL2 = 44
+const SHatX = 48
+const SManX = 52
+const SBag = 56
+const STon = 60
+const SEagle0 = 64
+const SEagle1 = 68
+const SEagle2 = 72
+const NTiles8 = 488
+const SprBytes = 608
+const SndTuneMel = 1
+const SndTuneHar = 2
+const SndBassPitch = 3
+const SndBassVol = 4
+const SndThump = 5
+const SndClick = 6
+const SndBeep = 7
+const SndBank = 8
+const SndJingle = 9
+const TuneFrames = 432
+const NSpr = 7
+const HideY = 192
+' original coordinates
+const ManY = 229
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+
+' steps per frame in 1/256, levels 1-9 (measured, see the header)
+data StepQ words 689,737,792,856,932,1022,1132,1267,1440
+' the original's frame tables: next index, walking frames, eagle (Bat*) frames
+data NxtT bytes 1,2,3,0
+data RFrT bytes 1,2,1,0
+data LFrT bytes 4,5,4,3
+data BatT bytes 0,1,2,1
+data HatT bytes 0,8,16,24,32,40,48
+data ManT bytes 4,12,20,28,36,44,52
+
+' --- the original's state (C64 units) ---
+u16 Px = 0
+u8 PxL = 0
+u8 G1on = 0
+u8 G1x = 0
+u8 G1y = 0
+u8 G2on = 0
+u8 G2x = 0
+u8 G2y = 0
+u8 G2c = 0
+u8 W0on = 0
+u8 W0x = 0
+u8 W0y = 0
+u8 W5on = 0
+u8 W5x = 0
+u8 W5y = 0
+u8 W5c = 0
+u8 Bx = 0
+u8 By = 0
+u8 Bdx = 0
+u8 Bdy = 0
+u8 BatC = 0
+u8 BatI = 0
+u8 BatF = 0
+u8 RunL = 0
+u8 RunR = 0
+u8 IdxL = 0
+u8 IdxR = 0
+u8 ManF = 0
+u8 ShowF = 3
+u8 Carry = 0
+u8 CarryX = 0
+u16 Score = 0
+u16 Hi = 0
+u8 Men = 0
+u8 Golds = 0
+u8 Level = 1
+u8 Lv1 = 2
+u8 Dead = 0
+u8 GEnd = 0
+u8 Freeze = 0
+u16 Acc = 0
+u8 NSteps = 0
+u8 Si = 0
+u8 Bonus = 0
+u8 HudDirty = 0
+u8 Ev = 0
+' --- shell ---
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Li = 0
+u8 Ri = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Sx = 0
+u8 Sy = 0
+u16 Q16 = 0
+
+  tile screen
+  set sound table FgSoundTable areas 7
+  sprites 16x16
+  nmi off
+  decompress zx0 SprPatZ to vram.spr_pat
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 2 then
+    HowTo
+    goto title
+  end if
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  if GEnd = 1 then goto game_end
+  goto play_loop
+
+game_end:
+  EndPage
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (the original's main loop, one call = one step)
+
+' 16-bit xorshift: stepped every title frame (the original read the SID's
+' noise voice)
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+' the original's contact test: same row (Y = 229) and X within 8 (mod 256)
+function NearMan(u8 Ox) as u8
+  u8 Dd = 0
+  u8 Rv = 0
+  Dd = Ox - PxL
+  if Dd <= 8 then Rv = 1
+  if Dd >= 248 then Rv = 1
+  return Rv
+
+sub NewGame:
+  Men = 3
+  Score = 0
+  Golds = 0
+  Lv1 = Level + 1
+  Acc = 0
+  Freeze = 0
+  GEnd = 0
+  ResetAll
+  DrawPlay
+  State = StPlay
+  return
+end sub
+
+' the original's reset ($C474): everything off, sprites at 0,0, Flynn home
+sub ResetAll:
+  G1on = 0
+  G2on = 0
+  W0on = 0
+  W5on = 0
+  G2c = 0
+  BatI = 0
+  Carry = 0
+  G1x = 0
+  G1y = 0
+  G2x = 0
+  G2y = 0
+  W0x = 0
+  W0y = 0
+  W5x = 0
+  W5y = 0
+  Bx = 0
+  By = 0
+  Bdx = 2
+  Bdy = 1
+  RunL = 1
+  RunR = 1
+  IdxL = 3
+  IdxR = 3
+  BatC = 20
+  BatF = 0
+  ManF = 3
+  ShowF = 3
+  Px = 281
+  Dead = 0
+  HudDirty = 1
+  return
+end sub
+
+' one frame: as many original steps as the level's speed gives
+sub PlayFrame:
+  if Freeze > 0 then
+    dec Freeze
+    if Freeze = 0 then
+      ResetAll
+      dec Men
+      if Men = 0 then GEnd = 1
+    end if
+  else
+    Q16 = StepQ[Level - 1]
+    Acc += Q16
+    NSteps = highbyte Acc
+    Acc = Acc & 255
+    Si = 0
+    while Si < NSteps
+      OneStep
+      inc Si
+      if Dead = 1 then Si = 99
+      if GEnd = 1 then Si = 99
+    end while
+    if Dead = 1 then
+      Freeze = 40
+      Carry = 0
+      HudDirty = 1
+      play sound SndBeep
+      play sound SndThump
+    end if
+  end if
+  if HudDirty = 1 then ShowHud
+  DrawSprites
+  return
+end sub
+
+sub OneStep:
+  PxL = lowbyte Px
+  ' the grey weight: dropped where Flynn stands whenever he is out of the hill (X < 256)
+  if W0on = 1 then
+    inc W0y
+    if W0y = 0 then W0on = 0
+  else
+    if Px < 256 then
+      W0on = 1
+      W0x = PxL
+    end if
+  end if
+  ' the red weight: every 50 steps, if Flynn is in the left half
+  if W5on = 1 then
+    inc W5y
+    if W5y = 0 then W5on = 0
+  else
+    dec W5c
+    if W5c = 0 then
+      W5c = 50
+      if Px < 128 then
+        W5on = 1
+        W5x = PxL
+      end if
+    end if
+  end if
+  MoveBat
+  ' the stick: left first, then right, then the button
+  T = Jk & 4
+  if T > 0 then
+    WalkLeft
+  else
+    T = Jk & 8
+    if T > 0 then
+      WalkRight
+    else
+      if Btn > 0 then BankIt
+    end if
+  end if
+  ' the eagle's wings, every 20 steps
+  dec BatC
+  if BatC = 0 then
+    BatC = 20
+    BatF = BatT[BatI]
+    BatI = NxtT[BatI]
+  end if
+  ' bag 1: a new one at once, X 128-255
+  if G1on = 1 then
+    inc G1y
+    if G1y = 0 then G1on = 0
+  else
+    Rand
+    T = lowbyte Rs
+    T = T | 128
+    G1x = T
+    G1on = 1
+  end if
+  ' bag 2: every 100 steps (after its fall), X 55-255
+  if G2on = 1 then
+    inc G2y
+    if G2y = 0 then G2on = 0
+  else
+    dec G2c
+    if G2c = 0 then
+      G2c = 100
+      Rand
+      W16 = Rs % 201
+      T = lowbyte W16
+      G2x = T + 55
+      G2on = 1
+    end if
+  end if
+  if Golds = 25 then
+    GEnd = 1
+  else
+    CatchHit
+  end if
+  return
+end sub
+
+sub CatchHit:
+  if Px >= 256 then return
+  PxL = lowbyte Px
+  if G1y = ManY then
+    T = NearMan(G1x)
+    if T = 1 then
+      Carry = 1
+      CarryX = G1x
+      Score += Lv1
+      G1on = 0
+      G1y = 0
+      HudDirty = 1
+      play sound SndBeep
+    end if
+  end if
+  if G2y = ManY then
+    T = NearMan(G2x)
+    if T = 1 then
+      Carry = 1
+      CarryX = G2x
+      Score += Lv1
+      G2on = 0
+      G2y = 0
+      HudDirty = 1
+      play sound SndBeep
+    end if
+  end if
+  if W0y = ManY then
+    T = NearMan(W0x)
+    if T = 1 then Dead = 1
+  end if
+  if By = ManY then
+    T = NearMan(Bx)
+    if T = 1 then Dead = 1
+  end if
+  if W5y = ManY then
+    T = NearMan(W5x)
+    if T = 1 then Dead = 1
+  end if
+  return
+end sub
+
+sub MoveBat:
+  ' up and down between 75 and 234
+  if Bdy = 255 then
+    T = By - 1
+    if T < 75 then Bdy = 1
+    By = T
+  else
+    T = By + 1
+    if T >= 235 then Bdy = 255
+    By = T
+  end if
+  ' 1 or 2 pixels a step; at X 50 or 255 a new random speed the other way
+  if Bdx >= 128 then
+    K = 0 - Bdx
+    J = 0
+    while J < K
+      T = Bx - 1
+      if T = 50 then
+        Rand
+        T = lowbyte Rs
+        if T >= 128 then
+          Bdx = 1
+        else
+          Bdx = 2
+        end if
+        J = 9
+      else
+        Bx = T
+        inc J
+      end if
+    end while
+  else
+    K = Bdx
+    J = 0
+    while J < K
+      T = Bx + 1
+      if T = 0 then
+        Rand
+        T = lowbyte Rs
+        if T >= 128 then
+          Bdx = 255
+        else
+          Bdx = 254
+        end if
+        J = 9
+      else
+        Bx = T
+        inc J
+      end if
+    end while
+  end if
+  return
+end sub
+
+sub WalkLeft:
+  dec RunL
+  if RunL = 0 then
+    RunL = 8
+    IdxR = 3
+    RunR = 1
+    J = IdxL
+    IdxL = NxtT[J]
+    ManF = LFrT[J]
+  end if
+  if Px >= 256 then
+    Px -= 1
+  else
+    PxL = lowbyte Px
+    T = PxL - 1
+    if T <> 25 then Px = T
+  end if
+  return
+end sub
+
+sub WalkRight:
+  dec RunR
+  if RunR = 0 then
+    RunR = 8
+    IdxL = 3
+    RunL = 1
+    J = IdxR
+    IdxR = NxtT[J]
+    ManF = RFrT[J]
+  end if
+  if Px >= 256 then
+    if Px < 319 then Px += 1
+  else
+    Px += 1
+  end if
+  return
+end sub
+
+' behind the hill with a bag: bury it
+sub BankIt:
+  if Px < 256 then return
+  if Carry = 0 then return
+  T = 255 - CarryX
+  K = T / 20
+  K += 1
+  T = K * Lv1
+  Score += T
+  Carry = 0
+  inc Golds
+  HudDirty = 1
+  play sound SndBank
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing: original coordinates scaled into columns 2-29, rows 4-21
+
+' X: 16 + (x - 24) * 0.7 ; returns 0 when the C64 shows it in the border
+function ScrX(u16 Xc) as u8
+  u8 Rv = 0
+  u16 Tq = 0
+  if Xc >= 24 then
+    Tq = Xc - 24
+    Tq = Tq * 179
+    Rv = highbyte Tq
+    Rv += 16
+  end if
+  return Rv
+
+' Y: 0.8 y - 23 (Flynn's 229 -> 160); 0 when above the roof (y < 69)
+function ScrY(u8 Yc) as u8
+  u8 Rv = 0
+  u16 Tq = 0
+  if Yc >= 69 then
+    Tq = Yc
+    Tq = Tq * 205
+    Rv = highbyte Tq
+    Rv -= 23
+  end if
+  return Rv
+
+sub PutObj:
+  ' K = slot, Sx/Sy = C64 position, J = pattern, V = colour
+  if Sy > 236 then V = 0
+  T = ScrY(Sy)
+  if T = 0 then V = 0
+  C = ScrX(Sx)
+  if C = 0 then V = 0
+  if V = 0 then
+    set sprite K to HideY,0,J,0
+  else
+    T -= 1
+    set sprite K to T,C,J,V
+  end if
+  return
+end sub
+
+sub DrawSprites:
+  C = ScrX(Px)
+  T = 159
+  ' the walking pose shown changes at most every 4 frames (at level 9 the
+  ' original's 8-step pose changes come 1-2 frames apart); a turn shows at once
+  K = Tick & 3
+  if K = 0 then ShowF = ManF
+  if ManF >= 3 then
+    if ShowF < 3 then ShowF = ManF
+  else
+    if ShowF >= 3 then ShowF = ManF
+  end if
+  J = ShowF
+  if Freeze > 0 then J = 6
+  K = HatT[J]
+  set sprite 0 to T,C,K,10
+  K = ManT[J]
+  set sprite 1 to T,C,K,5
+  K = 2
+  Sx = Bx
+  Sy = By
+  J = BatF << 2
+  J += SEagle0
+  V = 15
+  PutObj
+  K = 3
+  Sx = G1x
+  Sy = G1y
+  J = SBag
+  V = 11
+  if G1on = 0 then V = 0
+  PutObj
+  K = 4
+  Sx = G2x
+  Sy = G2y
+  J = SBag
+  V = 11
+  if G2on = 0 then V = 0
+  PutObj
+  K = 5
+  Sx = W0x
+  Sy = W0y
+  J = STon
+  V = 14
+  if W0on = 0 then V = 0
+  PutObj
+  K = 6
+  Sx = W5x
+  Sy = W5y
+  J = STon
+  V = 8
+  if W5on = 0 then V = 0
+  PutObj
+  update sprites
+  return
+end sub
+
+sub ShowHud:
+  HudDirty = 0
+  print at 3,1, "SCORE"
+  NumU = Score
+  print at 9,1, digits$(NumU, 5)
+  print at 14,1, "0"
+  print at 18,1, "HIGH"
+  NumU = Hi
+  print at 23,1, digits$(NumU, 5)
+  print at 28,1, "0"
+  print at 3,3, "LEVEL"
+  NumU = Level
+  print at 9,3, digits$(NumU, 1)
+  print at 12,3, "GOLD"
+  NumU = Golds
+  print at 17,3, digits$(NumU, 2)
+  print at 21,3, "MEN"
+  NumU = Men
+  print at 25,3, digits$(NumU, 1)
+  T = 32
+  if Carry = 1 then T = TIcBag
+  put char T at 28,3
+  return
+end sub
+
+' the field: stone HUD band with clouds, night sky, grass, the hill on the
+' right; all inside columns 2-29, rows 1-22 (the overscan edges stay black)
+sub DrawCave:
+  for Li = 2 to 29
+    C = Li & 3
+    T = TRock2
+    if C = 2 then T = TVein
+    put char T at Li,2
+    C = Li % 3
+    T = TCloud1 + C
+    put char T at Li,4
+    C = Li & 1
+    T = TFloor + C
+    put char T at Li,22
+  next
+  put char TSpk1 at 4,7
+  put char TSpk2 at 13,9
+  put char TGlint at 19,6
+  put char TSpk1 at 8,13
+  put char TSpk2 at 17,15
+  put char TSpk1 at 22,10
+  put char TGlint at 6,18
+  put char TSpk2 at 26,7
+  put char TSpk1 at 12,19
+  DrawHill
+  return
+end sub
+
+sub DrawHill:
+  ' the grassy slope rising to the right, rows 12-17
+  for Li = 0 to 5
+    C = 27 - Li
+    T = Li + 12
+    put char THillL at C,T
+    for Ri = C to 29
+      if Ri > C then
+        V = Ri & 1
+        V += TEarth1
+        put char V at Ri,T
+      end if
+    next
+  next
+  put char TBuried at 28,14
+  put char TBuried at 26,16
+  put char TBuried at 29,17
+  ' the hollow at its foot: row 18 arch, rows 19-21 dark, earth on each side
+  put char TEarth2 at 21,18
+  put char TArchL at 22,18
+  for Li = 23 to 26
+    put char TArch at Li,18
+  next
+  put char TArchR at 27,18
+  put char TEarth1 at 28,18
+  put char TEarth2 at 29,18
+  for Li = 19 to 21
+    put char TEarth1 at 21,Li
+    put char TEarth2 at 28,Li
+    put char TEarth1 at 29,Li
+  next
+  put char TBuried at 28,20
+  put char TMound at 27,21
+  for Li = 22 to 27
+    C = Li & 1
+    T = TFloor + C
+    put char T at Li,22
+  next
+  return
+end sub
+
+sub DrawPlay:
+  NewScreen
+  DrawCave
+  ShowHud
+  ShowScreen
+  DrawSprites
+  return
+end sub
+
+' the end: results; the original's end jingle
+sub EndPage:
+  play sound SndJingle
+  if Golds = 25 then
+    Bonus = Men * Level
+    Q16 = Bonus
+    Q16 = Q16 * 10
+    Score += Q16
+  end if
+  if Score > Hi then Hi = Score
+  NewScreen
+  DrawLogo
+  if Golds = 25 then
+    print at 7,9, "ALL 25 BAGS BURIED!"
+    print at 10,11, "BONUS"
+    NumU = Bonus
+    print at 16,11, digits$(NumU, 2)
+    print at 18,11, "00"
+  else
+    print at 11,9, "GAME OVER"
+    print at 9,11, "BAGS BURIED"
+    NumU = Golds
+    print at 21,11, digits$(NumU, 2)
+  end if
+  print at 10,14, "SCORE"
+  NumU = Score
+  print at 16,14, digits$(NumU, 5)
+  print at 21,14, "0"
+  print at 10,16, "HIGH"
+  NumU = Hi
+  print at 16,16, digits$(NumU, 5)
+  print at 21,16, "0"
+  print at 8,20, "PRESS THE BUTTON"
+  ShowScreen
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens (the template's house patterns)
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneMel
+      stop sound SndTuneHar
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites stable 0 to 1
+  sprites flicker on
+  for J = 0 to 6
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  fill mode 2 text color with $F1
+  decompress zx0 TileColZ to vram.color + 1024
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' FLYNN'S (rows 2-3, columns 9-21) and GOLD (rows 5-6, columns 12-19) in
+' 2 x 2 gold letters
+sub DrawLogo:
+  Ri = 2
+  C = 9
+  T = TLF00
+  Big2
+  T = TLL00
+  Big2
+  T = TLY00
+  Big2
+  T = TLN00
+  Big2
+  T = TLN00
+  Big2
+  put char TLq00 at C,2
+  put char TLq10 at C,3
+  inc C
+  T = TLS00
+  Big2
+  Ri = 5
+  C = 12
+  T = TLG00
+  Big2
+  T = TLO00
+  Big2
+  T = TLL00
+  Big2
+  T = TLD00
+  Big2
+  return
+end sub
+
+' a 2 x 2 letter: tiles T, T+1 / T+2, T+3 at column C, row Ri; C moves on 2
+sub Big2:
+  J = Ri + 1
+  K = C + 1
+  put char T at C,Ri
+  V = T + 1
+  put char V at K,Ri
+  V = T + 2
+  put char V at C,J
+  V = T + 3
+  put char V at K,J
+  C += 2
+  return
+end sub
+
+sub TitlePage:
+  State = StTitle
+  NewScreen
+  DrawLogo
+  ' the scene: clouds, grass, a pile of bags of gold
+  for Li = 4 to 27
+    C = Li % 3
+    T = TCloud1 + C
+    put char T at Li,8
+    C = Li & 1
+    T = TFloor + C
+    put char T at Li,13
+  next
+  put char TBags00 at 23,11
+  put char TBags01 at 24,11
+  put char TBags10 at 23,12
+  put char TBags11 at 24,12
+  set sprite 0 to 87,80,SHatR1,10
+  set sprite 1 to 87,80,SManR1,5
+  set sprite 2 to 70,82,SBag,11
+  set sprite 3 to 74,150,SEagle1,15
+  update sprites
+  print at 12,15, "START"
+  print at 12,17, "LEVEL"
+  print at 12,19, "HOW TO PLAY"
+  print at 12,21, "CREDITS"
+  Menu = 0
+  ShowMenu
+  ShowLevel
+  ShowScreen
+  play sound SndTuneMel
+  play sound SndTuneHar
+  play sound SndBassPitch
+  play sound SndBassVol
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 3
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 3 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Menu = 1 then
+    K = Edge & 12
+    if K > 0 then
+      if K = 4 then
+        if Level > 1 then dec Level
+      else
+        if Level < 9 then inc Level
+      end if
+      play sound SndClick
+      ShowLevel
+    end if
+  end if
+  if Press = 0 then goto tp_loop
+  ' the button on LEVEL starts too
+  if Menu = 1 then Menu = 0
+  stop sound SndTuneMel
+  stop sound SndTuneHar
+  stop sound SndBassPitch
+  stop sound SndBassVol
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 10,15
+  put char 32 at 10,17
+  put char 32 at 10,19
+  put char 32 at 10,21
+  C = Menu << 1
+  C += 15
+  put char 62 at 10,C
+  return
+end sub
+
+sub ShowLevel:
+  print at 18,17, "<"
+  NumU = Level
+  print at 20,17, digits$(NumU, 1)
+  print at 22,17, ">"
+  return
+end sub
+
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen
+  print at 12,1, "CREDITS"
+  print at 3,3, "FLYNN'S GOLD (FILE GOLD"
+  print at 3,5, "GRABBER) BY PASQUALE"
+  print at 3,7, "LONGO. RUN MAGAZINE 1985,"
+  print at 3,9, "RERUN DISK FALL 1985,"
+  print at 3,11, "COMMODORE 64."
+  print at 3,13, "PORT: CLAUDE (ANTHROPIC),"
+  print at 3,15, "IN AMY BY AMY BIENVENU."
+  print at 3,17, "TITLE MUSIC: PROSPECTOR'S"
+  print at 3,19, "JIG (ORIGINAL)."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' a strip of sky for the HOW TO PLAY pictures: clouds row Ri, grass row J
+sub Strip:
+  for Li = 8 to 23
+    C = Li % 3
+    T = TCloud1 + C
+    put char T at Li,Ri
+    C = Li & 1
+    T = TFloor + C
+    put char T at Li,J
+  next
+  return
+end sub
+
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  Ri = 3
+  J = 8
+  Strip
+  set sprite 0 to 47,96,SHatR0,10
+  set sprite 1 to 47,96,SManR0,5
+  set sprite 2 to 27,98,SBag,11
+  set sprite 3 to 33,140,SBag,11
+  update sprites
+  print at 3,10, "BAGS OF GOLD FALL FROM"
+  print at 3,12, "THE SKY. WALK UNDER ONE"
+  print at 3,14, "TO CATCH IT: 10 TIMES THE"
+  print at 3,16, "LEVEL PLUS ONE. YOU HOLD"
+  print at 3,18, "ONE BAG AT A TIME: A NEW"
+  print at 3,20, "CATCH REPLACES IT."
+  print at 3,22, "STICK LEFT/RIGHT: WALK."
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    ' a little hill with a bag buried in it
+    put char THillL at 15,4
+    put char THillR at 16,4
+    put char THillL at 14,5
+    put char TEarth1 at 15,5
+    put char TEarth2 at 16,5
+    put char THillR at 17,5
+    put char THillL at 13,6
+    put char TEarth2 at 14,6
+    put char TBuried at 15,6
+    put char TEarth1 at 16,6
+    put char TEarth2 at 17,6
+    put char THillR at 18,6
+    for Li = 12 to 19
+      V = Li & 1
+      V += TEarth1
+      put char V at Li,7
+    next
+    for Li = 11 to 20
+      put char TFloor at Li,8
+    next
+    put char TIcBag at 21,6
+    set sprite 0 to 47,120,SHatL0,10
+    set sprite 1 to 47,120,SManL0,5
+    update sprites
+    print at 3,10, "CARRY IT BACK TO THE HILL"
+    print at 3,12, "AND PRESS THE BUTTON TO"
+    print at 3,14, "BURY IT. BAGS FROM FAR"
+    print at 3,16, "LEFT PAY UP TO 11 TIMES."
+    print at 3,18, "BURY 25: BONUS OF FLYNNS"
+    print at 3,20, "LEFT X LEVEL X 100."
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    Ri = 3
+    J = 8
+    Strip
+    set sprite 0 to 47,72,SHatR1,10
+    set sprite 1 to 47,72,SManR1,5
+    set sprite 2 to 29,74,STon,14
+    set sprite 3 to 35,150,SEagle0,15
+    set sprite 4 to 39,110,STon,8
+    update sprites
+    print at 3,10, "10-TON WEIGHTS RAIN DOWN"
+    print at 3,12, "WHEN YOU LEAVE THE HILL;"
+    print at 3,14, "THE EAGLE SWOOPS. A HIT"
+    print at 3,16, "COSTS A FLYNN (OF 3) AND"
+    print at 3,18, "THE BAG YOU CARRY. BEHIND"
+    print at 3,20, "THE HILL YOU ARE SAFE."
+    print at 3,22, "TIP: DON'T STAND STILL."
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+data TilePatZ bytes
+  $55,$8B,$44,$10,$81,$08,$20,$02,$40,$09,$00,$44,$00,$10,$82,$00,$20,$04,$00,$04,$0C,$70,$C0,$02
+  $00,$20,$00,$21,$08,$00,$81,$38,$00,$88,$9E,$E7,$01,$87,$30,$F1,$29,$08,$81,$FF,$C0,$0E,$00,$FE
+  $B9,$DB,$FE,$20,$E9,$D1,$E9,$08,$23,$42,$40,$A8,$EE,$20,$8B,$08,$08,$8A,$BC,$10,$AE,$01,$EC,$90
+  $A3,$01,$03,$07,$F0,$E0,$C0,$80,$00,$80,$C0,$E0,$F0,$03,$01,$FF,$D0,$25,$98,$FF,$A9,$C7,$D5,$92
+  $8B,$14,$08,$1C,$C1,$C1,$1C,$1F,$A8,$FF,$CB,$95,$34,$7F,$98,$9B,$BE,$80,$98,$F4,$78,$80,$C1,$00
+  $18,$C3,$FD,$7F,$A5,$18,$24,$24,$00,$73,$A2,$EE,$C0,$48,$20,$E2,$E0,$A8,$23,$70,$43,$03,$83,$8F
+  $D4,$88,$B0,$BE,$81,$D3,$DB,$E9,$18,$FE,$BF,$E0,$00,$07,$E9,$E4,$7A,$DF,$00,$3C,$FE,$A4,$18,$F0
+  $E2,$F9,$B5,$E6,$FF,$98,$E0,$9F,$06,$06,$01,$F1,$AA,$FE,$60,$24,$80,$01,$F9,$29,$FE,$F8,$C0,$61
+  $E1,$E1,$19,$19,$19,$BB,$98,$FF,$19,$C9,$62,$FF,$98,$87,$87,$F0,$78,$FA,$00,$07,$03,$73,$F4,$E7
+  $FB,$30,$DF,$C0,$81,$E2,$E9,$A4,$87,$19,$BC,$A2,$C0,$7D,$CB,$DF,$8C,$C0,$29,$18,$7F,$D0,$D7,$C0
+  $FD,$D0,$F0,$FB,$EE,$10,$38,$59,$FE,$35,$55,$58
+end data
+data TileColZ bytes
+  $96,$4E,$EE,$0E,$FC,$FA,$2F,$BE,$FE,$B9,$0E,$F1,$61,$FE,$EF,$0F,$1F,$F1,$01,$01,$EF,$EE,$E0,$7A
+  $FC,$BD,$E1,$FE,$AE,$41,$F6,$E6,$D6,$4F,$02,$C2,$C6,$A6,$06,$06,$FB,$8E,$F0,$EC,$F9,$F9,$FC,$BA
+  $21,$FF,$12,$62,$02,$21,$7F,$F0,$FF,$C1,$FD,$FB,$FD,$FE,$EE,$FC,$3A,$0C,$BC,$FF,$CB,$8F,$BC,$0C
+  $DA,$EA,$C0,$21,$7F,$FD,$60,$FE,$E0,$FE,$AA,$01,$B1,$2A,$16,$22,$06,$B1,$98,$1B,$6A,$01,$B1,$1B
+  $91,$15,$51,$3F,$D0,$FB,$DA,$F0,$9F,$EC,$C0,$7F,$F0,$E2,$D2,$1F,$1B,$1F,$F1,$E9,$FB,$FE,$82,$B1
+  $1A,$A1,$09,$61,$01,$A1,$01,$62,$F1,$B1,$1F,$E2,$7E,$C4,$64,$A1,$1A,$16,$F8,$F1,$C0,$3D,$F0,$BC
+  $A1,$80,$F7,$F0,$BE,$D0,$35,$C0,$16,$21,$1A,$1A,$F7,$D0,$CF,$00,$C1,$CF,$50,$B0,$3C,$40,$7B,$E5
+  $1B,$DA,$40,$1A,$5F,$00,$57,$B8,$50,$C0,$1F,$40,$5F,$C5,$83,$FE,$55,$55,$80
+end data
+data SprPatZ bytes
+  $6A,$00,$07,$0F,$00,$42,$09,$80,$D0,$E0,$00,$58,$6A,$05,$07,$03,$0F,$17,$07,$A2,$04,$26,$0D,$00
+  $A1,$80,$87,$00,$C0,$A0,$90,$80,$90,$80,$28,$27,$82,$08,$10,$20,$30,$56,$84,$60,$0F,$7F,$82,$81
+  $03,$03,$06,$07,$06,$8E,$A0,$C6,$23,$03,$17,$C6,$80,$20,$C0,$E0,$1E,$91,$A3,$01,$0B,$13,$B8,$F5
+  $02,$FF,$98,$03,$00,$6A,$40,$C0,$80,$E0,$D0,$C0,$A2,$40,$E5,$60,$80,$4A,$0C,$06,$88,$C8,$21,$20
+  $10,$08,$18,$06,$E9,$0B,$F4,$F6,$01,$00,$01,$00,$9D,$E0,$FC,$7D,$F9,$A8,$22,$0F,$1F,$F4,$68,$F5
+  $6A,$BD,$3F,$E0,$29,$F8,$67,$04,$03,$07,$F6,$87,$FF,$EA,$0A,$80,$FA,$49,$39,$E0,$FA,$09,$CD,$0F
+  $B9,$1B,$FF,$79,$3B,$3F,$7F,$44,$6D,$6C,$7F,$5B,$49,$20,$C0,$F0,$F0,$18,$58,$58,$1C,$FC,$FE,$56
+  $4E,$56,$FE,$F8,$AC,$F2,$73,$3B,$8B,$43,$38,$05,$09,$88,$92,$02,$06,$0E,$9C,$B8,$F0,$27,$80,$40
+  $20,$DD,$62,$9F,$8B,$FF,$7D,$1D,$C1,$83,$12,$67,$8D,$FE,$7C,$70,$A1,$C1,$00,$24,$84,$0F,$1D,$38
+  $60,$C0,$82,$87,$E0,$70,$38,$0C,$06,$B5,$E0,$55,$58
+end data
+
+asm {
+; Prospector's Jig (original)
+; Tiny Sound, 9 frames per step
+FgTuneMel:
+    db $44
+    dw sndtiny_1
+    db 9
+    db $02,$40,$1A,$21,$21,$01,$26,$01,$26,$28,$2A,$01,$28,$01,$26,$01
+    db $23,$01,$A1,$00,$21,$01,$26,$01,$2A,$01,$2D,$01,$2B,$01,$2A,$01
+    db $A8,$00,$00,$01,$2A,$01,$28,$01,$26,$01,$23,$01,$21,$01,$25,$01
+    db $A6,$00,$00,$01
+    db $FF
+FgTuneHar:
+    db $84
+    dw sndtiny_2
+    db 9
+    db $02,$60,$1A,$21,$9E,$00,$00,$00,$21,$00,$00,$01,$1F,$00,$00,$00
+    db $9C,$00,$00,$01,$1E,$00,$00,$00,$1A,$00,$00,$01,$23,$00,$00,$00
+    db $99,$00,$00,$01,$21,$00,$00,$00,$1E,$00,$00,$00,$1C,$00,$00,$00
+    db $9E,$00,$00,$01
+    db $FF
+FgBassPitch:
+    db $C0,$4C,$F0,$16,$C0,$33,$F0,$0E,$C0,$4C,$F0,$16,$C0,$33,$F0,$0E
+    db $C0,$39,$F0,$16,$C0,$4C,$F0,$0E,$C0,$33,$F0,$16,$C0,$44,$F0,$0E
+    db $C0,$4C,$F0,$16,$C0,$33,$F0,$0E,$C0,$4C,$F0,$16,$C0,$33,$F0,$0E
+    db $C0,$39,$F0,$16,$C0,$4C,$F0,$0E,$C0,$33,$F0,$16,$C0,$51,$F0,$0E
+    db $C0,$4C,$F0,$16,$C0,$33,$F0,$0E,$C0,$5A,$F0,$16,$C0,$3C,$F0,$0E
+    db $C0,$33,$F0,$16,$C0,$44,$F0,$0E,$C0,$4C,$F0,$10,$F4
+    db $D0
+FgBassVol:
+    db $02,$33,$10,$14,$44,$22,$02,$45,$04,$13,$11,$02,$33,$0C,$14,$44
+    db $22,$02,$33,$10,$14,$44,$22,$02,$45,$04,$13,$11
+    db $02,$33,$0C,$14,$44,$22,$02,$33,$10,$14,$44,$22
+    db $02,$45,$04,$13,$11,$02,$33,$0C,$14,$44,$22,$02,$33,$10,$14,$44
+    db $22,$02,$45,$04,$13,$11,$02,$33,$0C,$14,$44,$22
+    db $02,$33,$10,$14,$44,$22,$02,$45,$04,$13,$11,$02,$33,$0C,$14,$44
+    db $22,$02,$33,$10,$14,$44,$22,$02,$45,$04,$13,$11
+    db $02,$33,$0C,$14,$44,$22,$02,$33,$10,$14,$44,$22
+    db $02,$45,$04,$13,$11,$02,$33,$0C,$14,$44,$22,$02,$33,$10,$14,$44
+    db $22,$02,$45,$04,$13,$11,$02,$33,$0C,$14,$44,$22
+    db $02,$33,$10,$14,$44,$22,$02,$45,$04,$13,$11,$02,$33,$0C,$14,$44
+    db $22,$02,$33,$10,$14,$44,$22,$02,$45,$04,$13,$11
+    db $02,$33,$0C,$14,$44,$22,$02,$33,$10,$14,$44,$22
+    db $02,$45,$04,$13,$11,$02,$33,$0C,$14,$44,$22,$02,$33,$10,$14,$44
+    db $34
+    db $10
+FgThump:
+    db $02,$06,$0C,$13,$11
+    db $10
+FgClick:
+    db $40,$6B,$20,$02
+    db $50
+FgBeep:
+    db $40,$7F,$10,$05,$61,$40,$78,$10,$05,$61
+    db $42,$71,$10,$28,$1E,$33
+    db $50
+FgBank:
+    db $40,$7F,$10,$05,$61,$40,$78,$10,$05,$61
+    db $40,$71,$10,$01,$40,$7F,$10,$05,$61,$40,$78,$10,$05
+    db $61,$42,$71,$10,$28,$1E,$33
+    db $50
+FgJingle:
+    db $80,$68,$21,$07,$A1,$80,$53,$21,$07,$A1
+    db $80,$68,$21,$0F,$A9,$80,$68,$21,$07,$A1
+    db $80,$53,$21,$07,$A1,$80,$53,$21,$0F,$A9
+    db $80,$68,$21,$07,$A1,$80,$53,$21,$07,$A1
+    db $80,$53,$21,$07,$A1,$80,$7D,$21,$07,$A1
+    db $80,$7D,$21,$07,$A1,$80,$AC,$21,$07,$A1
+    db $80,$AC,$21,$07,$A1,$80,$1B,$22,$07,$A1
+    db $80,$3B,$22,$03,$A1,$82,$81,$22,$28,$1D,$33
+    db $90
+
+FgSoundTable:
+    dw FgTuneMel,$702B
+    dw FgTuneHar,$7035
+    dw FgBassPitch,$703F
+    dw FgBassVol,$7049
+    dw FgThump,$7053
+    dw FgClick,$705D
+    dw FgBeep,$705D
+    dw FgBank,$705D
+    dw FgJingle,$7067
+}

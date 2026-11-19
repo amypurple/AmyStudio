@@ -1,0 +1,6824 @@
+cartridge "GRAPPLE/AMY & CLAUDE/2026"
+
+' GRAPPLE - an original game by Amy & Claude for Amy Studio, 2026, in Amy.
+' Phase 2: three cave maps of six varied galleries, bats and falling
+' stalactites, hero animation, sound and a title tune.
+' Phase 3: a side-view hero with a miner's helmet, a 4-frame walk cycle that
+' turns into a run (1.5 px a frame after 0.4 s), facing his way (left poses
+' mirrored into VRAM at start); a green exit arrow over the exit hole of the
+' hero's gallery; a CAVE n card before each cave; HOW TO PLAY in 3 pages
+' with the goal first; a clean GAME OVER panel (score, cave); stale sprite
+' entries re-checked after hero jumps (never 5 on a line); 120 bytes of
+' rope buffers moved to the RAM Amy keeps for its own sprite table (stack).
+' Every gallery is proven passable by solver.mjs (reachability over the
+' map and this hero physics, with timing windows) and replay.mjs (the
+' solver's moves played on this ROM).
+'
+' A cave descent. The button fires a grappling hook; the stick aims it (up,
+' up-left, up-right, left, right; no direction = up-forward). When the hook
+' bites rock the rope tightens and the hero swings as a pendulum: LEFT/RIGHT
+' pump the swing, UP/DOWN reel in/out, the button lets go and the hero flies
+' with the swing's speed. Drop through the holes, gallery after gallery, to
+' the cave passage at the bottom (cave clear; phase 5: was a pool of water). Spikes, bats and falling stalactites
+' (they shake before they fall) cost a life, and so does the time bar.
+' Catches in the air chain: each counted catch scores 10 x chain; a gem
+' (phase 6: one a gallery, off the plain route) 100, 200 if grabbed in free
+' flight; landing in a gallery deeper than ever this cave 200; the time
+' left at the passage is a bonus (10 a second). Caves 1-3 use
+' maps 1-3 (harder each: smaller holes and ledges, more and faster bats);
+' from cave 4 the maps repeat with faster bats and less time.
+'
+' Screen: HUD row 1 (icons), cave rows 2-22, columns 2-29 (CRT safe area).
+' Pattern and colour tables are shared by the three thirds (R4 = 0, R3 = $9F).
+'   tiles 128..    scroll combos: (cell above, cell below) for 7 visual cell
+'                  kinds (air, two rock textures, lit top edge, underside,
+'                  spikes, water); rewritten from 8 pre-shifted copies when
+'                  the scroll's pixel shift changes (the map's used ones)
+'   PoolA, PoolB   rope tiles, two pools of 24 used on alternate frames
+'   IcBase..       HUD and title icons
+' The maps are stored as name rows: a map byte IS the combo tile of the cell
+' (with the cell below); its collision kind is CollT[name].
+' Sprites (16x16): the hero (2 layers, 10 poses), then by priority (phase
+' 6) the score popup (its own entry, always shown: the others near it yield),
+' the stalactites, bats, the flying hook, gems, the catch puff, a drip and
+' the exit arrow, each added only if none of its 16 lines already has 4
+' sprites (GpAdd: counts the accepted sprites overlapping it) -> never 5 on
+' a line.
+'
+' Pendulum: theta 16 bits a turn; sin/cos from ROM tables only (SinT, AccT),
+' no runtime trig and no multiply in the per-frame physics (one multiply
+' per catch).
+'
+' Frame: Frame1 waits for the vertical blank, then GpBlit writes the sprite
+' table, the combo tiles (if the shift changed), the rope tiles and names,
+' the HUD; then the logic of the next frame runs.
+
+const PassX = 200
+const PassAY = 618
+const ChamY = 600
+const NRows = 84
+const MapW = 28
+const NGems = 12
+const NGal = 6
+const AirCol = 17
+const RopeCol = 241
+const CmBase = 128
+const NCombo = 34
+const PoolA = 162
+const PoolCol = 1296
+const PoolB = 186
+const IcBase = 186
+const IcVram = 1488
+const NLen = 7
+const NMaps = 3
+const FallEnd = 55
+const SprBytes = 1568
+const IconBytes = 120
+const CamMax = 504
+const NWave = 4
+const WaveMap = 144
+const WaveStep = 36
+const PHang = 0
+const PLeanR = 1
+const PLeanL = 2
+const PFire = 3
+const PStand = 4
+const PSquash = 5
+const PTuck = 6
+const PFall = 7
+const PDeadA = 8
+const PDeadB = 9
+const PWalk0 = 10
+const PWalk1 = 11
+const PWalk2 = 12
+const PWalk3 = 13
+const SHook = 112
+const SPuffA = 116
+const SPuffB = 120
+const SGem = 124
+const SGemS = 128
+const SBatA = 132
+const SBatB = 136
+const SStal = 140
+const SArrow = 144
+const SDrip = 148
+const SPop = 152
+const PMir = 25
+const TRopeS = 152
+const TLife = 186
+const TClock = 187
+const TBarf = 188
+const TBare = 189
+const TLink = 190
+const TGem = 191
+const TBlock = 192
+const TRopev = 193
+const THook = 194
+const TCave = 195
+const TBat = 196
+const TStal = 197
+const TBlockt = 198
+const TWater = 199
+const TSpike = 200
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndTuneE = 5
+const SndTuneF = 6
+const SndTuneG = 7
+const SndTuneH = 8
+const SndHit = 9
+const SndCatch = 10
+const SndRelease = 11
+const SndFire = 12
+const SndClick = 13
+const SndClear = 14
+const SndGem = 15
+const SndPop = 16
+const TuneFrames = 448
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+const StCard = 13
+const PhPlay = 0
+const PhDead = 1
+const PhClear = 2
+const RcMax = 16
+const Grav = 8
+const MaxVY = 256
+const PumpA = 3
+const TimeFull = 7200
+const HookStep = 8
+const HookMax = 12
+
+' rope buffers used by the asm only, in the RAM Amy keeps for its own
+' sprite table ($7090-$710F; this game writes its sprite table itself):
+' frees 120 bytes of variable RAM for the stack
+const RcKey = $7090
+const OldKey = $70B0
+const RcCol = $70D0
+const OldBg = $70F8
+' --- scroll / blit state (read by the asm) ---
+u16 CamY = 0
+u16 CamR = 0
+u8 CamS = 0
+u16 DrR = 0
+u8 DrS = 255
+u8 FullR = 1
+u8 InPlay = 0
+u8 PoolNow = PoolA
+u8 Sat[49]
+u8 ChkY = 0
+u8 LnP = 0
+u8 LnN = 0
+u8 LnB[10]
+' (phase 6) 1 while the hazards are added: a hazard that fits only without
+' the gems, puff, drip and arrow (entries 7-10) is added and those near it
+' are hidden (GpPrec)
+u8 HzMode = 0
+' exact tests left this frame (2; none with a rope line of 7+ cells: budget)
+u8 PrecN = 0
+u8 SatW = 0
+u8 SatE = 0
+u8 LastHY = 200
+u8 ArrX = 0
+u16 ArrY = 0
+u16 LastCam = 0
+u8 HzOdd = 0
+u8 SpY = 0
+u8 SpX = 0
+u8 SpP = 0
+u8 SpC = 0
+u16 MapBase = 0
+u16 MTp = 0
+u16 MRp = 0
+u8 RkLo = 0
+u8 MapI = 0
+u8 MOff = 0
+u8 GOff = 0
+u8 Boost = 0
+' --- animation, effects ---
+u8 FireT = 0
+u8 LandT = 0
+u8 PufT = 0
+u8 PufX = 0
+u16 PufY = 0
+u8 PopT = 0
+u8 PopX = 0
+u8 PopP = 0
+u8 PopC = 0
+u16 PopY = 0
+' (phase 6) up to 2 popups waiting: the next starts when the shown one has
+' had 16 frames (catches come 16+ frames apart; a gem can come with one)
+u8 PqN = 0
+' (phase 6) the deepest gallery landed in this cave (+200 each new one)
+u8 GBest = 0
+u8 PqF = 0
+u8 PqX = 0
+u8 PqP = 0
+u8 PqC = 0
+u16 PqY = 0
+u8 PrX = 0
+u8 PrP = 0
+u8 PrC = 0
+u16 PrY = 0
+u8 PkX = 0
+u16 PkY = 0
+u8 DrT = 0
+u8 DrX = 0
+u16 DrY = 0
+u8 WaveP = 0
+u8 WaveF = 0
+u8 HitH = 0
+u8 DieWhy = 0
+u8 PopSnd = 0
+' --- hazards (slots of the map: 2 a gallery) ---
+' HzR: bat x (+0), bat direction (+12), stalactite state (+24: 0 hanging,
+' 1-30 shaking, 31.. falling (drop FallT[state - 31]), then gone until it
+' wraps to 0: hanging again)
+u8 HzR[36]
+u16 WaveO = 0
+' --- title tune ---
+u8 TzOn = 0
+u16 TzLeft = 0
+u8 TzSec = 0
+' --- title scene (phase 5): swing frame, bat x / direction, sparkle clock ---
+u8 TsT = 0
+u8 TsBx = 16
+u8 TsBd = 1
+u8 TsG = 0
+u8 TsA = 0
+u8 TsB = 0
+' --- rope cells (raster -> compose -> blit) ---
+u8 R0X = 0
+u8 R0Y = 0
+u8 R1X = 0
+u8 R1Y = 0
+u8 RcN = 0
+u8 RcBg[16]
+u8 RcRaw[144]
+u16 PatBase = 0
+u16 ColPtr = 0
+u8 GkI = 0
+u8 GemNew = 0
+u8 CRow = 0
+u16 KeyP = 0
+u16 BgP = 0
+u16 PatP = 0
+u8 SlowN = 0
+u16 RKey = 0
+u16 MP = 0
+u8 SlowL[5]
+u8 HudP = 0
+u8 HSy = 0
+u8 DidFull = 0
+u8 HvyB = 0
+u8 PgFH = $18
+u16 BldBase = 0
+u8 BldRow = 23
+u8 HudW = 0
+u8 CamF = 0
+u8 HudBuf[28]
+u8 DgI = 0
+u8 DgN = 0
+u16 TxS = 0
+u16 TxO = 0
+u8 CatchF = 0
+u8 LcX = 0
+u8 HoleDv = 0
+u16 LcY = 0
+u8 GLo = 0
+u8 GHi = 12
+u8 CCol = 0
+u8 PcA[6]
+u8 OldN = 0
+u16 CurPtr = 0
+u8 Cy = 0
+u8 Ddx = 0
+u8 Ddy = 0
+u8 Dsx = 0
+u8 Cnt = 0
+' --- map probe ---
+u8 Qx = 0
+u16 Qy = 0
+u8 Qt = 0
+' --- hero: 1/64 px world position, 1/64 px a frame speed ---
+u16 HeroX = 0
+u16 HeroY = 0
+u16 PX = 0
+u16 PY = 0
+i16 VX = 0
+i16 VY = 0
+i16 RVX = 0
+i16 RVY = 0
+u8 Hx = 0
+u16 Hy = 0
+u8 OnGnd = 0
+u8 Facing = 1
+u8 RunT = 0
+u8 WalkP = 0
+' --- rope ---
+u8 RSt = 0
+u8 AX = 0
+u16 AY = 0
+u8 TX = 0
+u16 TY = 0
+u8 HDir = 0
+u8 HookN = 0
+u8 HookCD = 0
+u16 Th = 0
+u16 PrevTh = 0
+u8 PrevLI = 0
+i16 Om = 0
+u8 LI = 0
+u8 ReelT = 0
+' --- probes ---
+u8 HitR = 0
+u8 HitS = 0
+u8 HitW = 0
+' --- game ---
+u8 State = 0
+u8 Ph = 0
+u8 PhT = 0
+u8 Lives = 3
+u8 Chain = 0
+u8 Sect = 1
+u16 Score = 0
+u16 TimeL = 0
+u16 Catches = 0
+u16 GemCnt = 0
+u16 Deaths = 0
+u16 Clears = 0
+u16 Lets = 0
+' gems still there: one bit each (gem k: byte k / 8, bit $80 >> (k & 7))
+u8 GemOn[2]
+u8 HudF = 0
+u8 BarN = 0
+u16 Waited = 0
+u8 TimedOut = 0
+' --- frame, menus, input ---
+u8 Tick = 0
+u8 Menu = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u16 NumU = 0
+' scratch (never kept across a sub call)
+u8 T = 0
+u8 U = 0
+u8 K = 0
+u8 Gi = 0
+u16 W = 0
+u16 W2 = 0
+i16 Si = 0
+i16 Sj = 0
+
+  tile screen
+  set sound table GpSoundTable areas 4
+  ShareTables
+  PatBase = address of RcRaw
+  PatBase += 7
+  PatBase = PatBase & $FFF8
+  sprites 16x16
+  nmi off
+  copy SprPat count SprBytes to vram.spr_pat
+  MirrorPoses
+  HideSpr
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayStep
+  if State = StPlay then goto play_loop
+
+  ' game over: a clean panel over the cave (score, cave reached); one
+  ' press (after 1 s) returns to the title
+  InPlay = 0
+  HideSpr
+  OverPanel
+  Waited = 0
+go_wait:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited < 60 then Press = 0
+  if Waited >= 1800 then Press = 1
+  if Press = 0 then goto go_wait
+  goto title
+
+' ===========================================================================
+' play
+
+sub NewGame:
+  Score = 0
+  Lives = 3
+  Sect = 1
+  Catches = 0
+  GemCnt = 0
+  Deaths = 0
+  Clears = 0
+  Lets = 0
+  NewSection
+  return
+end sub
+
+sub NewSection:
+  InPlay = 0
+  State = 12
+  CaveCard
+  NewScreen
+  ' caves 1-3: maps 1-3; then the maps again with faster bats
+  MapI = Sect - 1
+  Boost = 0
+  while MapI >= NMaps
+    MapI -= NMaps
+    Boost = 1
+  end while
+  MOff = MapI * 6
+  GOff = MapI * 12
+  MapBase = MapPtr[MapI]
+  RkLo = RockLo[MapI]
+  HazReset
+  ' (phase 6) one gem a gallery: the first of its 2 slots ($AA)
+  GemOn[0] = $AA
+  GemOn[1] = $AA
+  GBest = 0
+  fill RopeCol count 384 to vram.color + PoolCol
+  fill 0 count 8 to vram.pattern + 1024
+  fill AirCol count 8 to vram.color + 1024
+  PcA[0] = 0
+  Chain = 0
+  SectTime
+  BarN = 6
+  CamY = 0
+  CamR = 0
+  CamS = 0
+  GemRange
+  Gi = 0
+  Spawn
+  FullR = 1
+  DrS = 255
+  RcN = 0
+  OldN = 0
+  fill array HudBuf with 32
+  HudF = 1
+  HudP = 0
+  Hud
+  Hud
+  Hud
+  DrawBar
+  BuildSat
+  ' the first page, drawn with the display off
+  Blit
+  ShowScreen
+  Ph = PhPlay
+  InPlay = 1
+  State = StPlay
+  return
+end sub
+
+' the time bar: 120 s for the first cave, 20 s less each time round, 20 s
+' at least (every game ends: the cave repeats faster)
+sub SectTime:
+  TimeL = TimeFull
+  for K = 2 to 6
+    if Sect >= K then TimeL -= 1200
+  next
+  return
+end sub
+
+' bats back at the start of their flight, stalactites hanging, effects off
+sub HazReset:
+  for K = 0 to 11
+    T = GOff + K
+    HzR[K] = BatX0[T]
+    U = K + 12
+    HzR[U] = 1
+    U += 12
+    HzR[U] = 0
+  next
+  PufT = 0
+  PopT = 0
+  PqN = 0
+  DrT = 0
+  return
+end sub
+
+' the hero stands on the ledge of gallery Gi
+sub Spawn:
+  K = MOff + Gi
+  W = GalRY[K]
+  Hy = W
+  Hx = GalRX[K]
+  HeroX = Hx
+  HeroX = HeroX << 6
+  HeroY = Hy << 6
+  VX = 0
+  VY = 0
+  OnGnd = 1
+  RSt = 0
+  HookCD = 0
+  Chain = 0
+  FireT = 0
+  LandT = 0
+  HoleD
+  LcX = HoleDv
+  LcY = Hy
+  return
+end sub
+
+sub PlayStep:
+  if Ph = PhDead then
+    dec PhT
+    if PhT = 0 then
+      dec Lives
+      if Lives = 0 then
+        State = StOver
+        return
+      end if
+      ' back on the ledge of the gallery the hero died in
+      Gi = 0
+      for K = 1 to 5
+        W = GalTop[K]
+        if Hy >= W then Gi = K
+      next
+      HazReset
+      DieWhy = 0
+      Spawn
+      SectTime
+      Ph = PhPlay
+      HudF = 1
+    end if
+    goto ps_draw
+  end if
+  if Ph = PhClear then
+    dec PhT
+    if PhT = 0 then
+      inc Sect
+      NewSection
+      return
+    end if
+    goto ps_draw
+  end if
+  ' the clock
+  dec TimeL
+  if TimeL = 0 then
+    DieWhy = 2
+    Die
+    goto ps_draw
+  end if
+  if HookCD > 0 then dec HookCD
+  if FireT > 0 then dec FireT
+  if LandT > 0 then dec LandT
+  PX = HeroX
+  PY = HeroY
+  if RSt = 3 then
+    ' the hook bit last frame: this frame is the catch, nothing else moves
+    Catch
+  else
+    if RSt = 2 then
+      RopeStep
+    else
+      if Press = 1 then
+        if RSt = 0 then
+          if HookCD = 0 then FireHook
+        end if
+      end if
+      FreeStep
+      if RSt = 1 then HookStepS
+    end if
+  end if
+  Camera
+ps_draw:
+  ' the HUD waits on catch frames and full-redraw frames (frame budget)
+  ' (odd frames only: the even ones carry the hazards)
+  T = Tick & 1
+  if HudF > 0 then
+    if T = 0 then goto ps_nohud
+    ' and not under a long rope line (frame budget): the HUD can wait
+    if RcN >= 8 then goto ps_nohud
+    if DidFull = 0 then
+      if CatchF = 0 then
+        if RSt <> 1 then Hud
+      end if
+    end if
+  end if
+ps_nohud:
+  ' the bar: 6 cells of 20 s
+  T = Tick & 15
+  if T = 0 then
+    W = TimeL
+    T = 0
+    while W > 1200
+      W -= 1200
+      inc T
+    end while
+    if T <> BarN then
+      BarN = T
+      DrawBar
+    end if
+  end if
+  RopeLine
+  CatchF = 0
+  GemNew = 0
+  PopSnd = 0
+  BuildSat
+  if HitH > 0 then
+    if Ph = PhPlay then
+      DieWhy = HitH + 2
+      Die
+    end if
+  end if
+  if PopSnd > 0 then play sound SndPop
+  while GemNew > 0
+    dec GemNew
+    inc GemCnt
+    ' (phase 6) 100, or 200 caught in free flight (let go into it)
+    W = 100
+    T = 9
+    if OnGnd = 0 then
+      if RSt < 2 then
+        W = 200
+        T = 10
+      end if
+    end if
+    Score += W
+    HudF = 1
+    U = 11
+    PopNew
+    play sound SndGem
+  end while
+  ' (phase 6) landing in a gallery deeper than ever this cave: +200
+  if LandT = 8 then
+    if Ph = PhPlay then
+      T = 0
+      for K = 1 to 5
+        W = GalTop[K]
+        if Hy >= W then T = K
+      next
+      if Hy >= ChamY then T = 6
+      if T > GBest then
+        GBest = T
+        Score += 200
+        HudF = 1
+        PkX = Hx
+        PkY = Hy
+        T = 10
+        U = 3
+        PopNew
+      end if
+    end if
+  end if
+  ' passage dust motes drift while the camera rests at the bottom (a step every 16 frames)
+  if CamY = CamMax then
+    T = Tick & 15
+    if T = 0 then
+      WaveP += 1
+      WaveP = WaveP & 3
+      WaveO = MapI * WaveMap
+      W = WaveP * WaveStep
+      WaveO += W
+      WaveF = 1
+    end if
+  end if
+  ' a drip from the stalactite of the hero's gallery, now and then
+  if DrT = 0 then
+    T = Tick & 63
+    if T = 0 then
+      if Ph = PhPlay then
+        Gi = 0
+        for K = 1 to 5
+          W = GalTop[K]
+          if Hy >= W then Gi = K
+        next
+        K = MOff + Gi
+        DrX = DripX[K]
+        DrY = DripY[K]
+        W = GalTop[Gi]
+        W += 70
+        W -= DrY
+        W = W >> 2
+        DrT = lowbyte W
+      end if
+    end if
+  end if
+  return
+end sub
+
+' a score popup (pattern T = value / 10 - 1, colour U) at PkX, PkY
+' (phase 6) a popup shown for less than 16 frames is not cut: the new one
+' waits (2 places; a third would take the second's: never seen in QA)
+sub PopNew:
+  T = T << 2
+  T += SPop
+  ' (inside the cave walls: x 36..220, the "+" clear of the wall rock)
+  if PkX < 36 then PkX = 36
+  if PkX > 220 then PkX = 220
+  PqF = 0
+  if PopT > 24 then PqF = 1
+  if PqN > 0 then PqF = 1
+  if PqF = 1 then
+    if PqN = 0 then
+      PqX = PkX
+      PqY = PkY
+      PqP = T
+      PqC = U
+      PqN = 1
+    else
+      PrX = PkX
+      PrY = PkY
+      PrP = T
+      PrC = U
+      PqN = 2
+    end if
+    return
+  end if
+  PopT = 40
+  PopX = PkX
+  PopY = PkY
+  PopP = T
+  PopC = U
+  ' (placed at the next frame even on a long-rope frame)
+  Sat[44] = 200
+  return
+end sub
+
+' on the rope: pump, reel, let go; the pendulum step; collisions (Z80,
+' phase 4: the frame budget; model.mjs ropeStep line by line)
+sub RopeStep:
+  asm {
+    ld a,(Press)
+    dec a
+    jr nz,GpRp0
+    call LetGo
+    jp FreeStep
+GpRp0:
+    ; a bonk goes back to this frame's start: angle, rope length, position
+    ld a,(LI)
+    ld (PrevLI),a
+    ; pump: RIGHT while Om >= 0, LEFT while Om <= 0
+    ld a,(Jk)
+    ld c,a
+    ld hl,(Om)
+    bit 3,c
+    jr z,GpRp1
+    bit 7,h
+    jr nz,GpRp1
+    ld de,PumpA
+    add hl,de
+GpRp1:
+    bit 2,c
+    jr z,GpRp2
+    ld a,h
+    or l
+    jr z,GpRp1a
+    bit 7,h
+    jr z,GpRp2
+GpRp1a:
+    ld de,-PumpA
+    add hl,de
+GpRp2:
+    ld (Om),hl
+    ; reel every 4th frame: UP in (Om += Om/8), DOWN out (Om -= Om/8)
+    ld hl,ReelT
+    inc (hl)
+    ld a,(hl)
+    and 3
+    jr nz,GpRp4
+    bit 0,c
+    jr z,GpRp3
+    ld a,(LI)
+    or a
+    jr z,GpRp3
+    dec a
+    ld (LI),a
+    call GpOm8
+    add hl,de
+    ld (Om),hl
+GpRp3:
+    bit 1,c
+    jr z,GpRp4
+    ld a,(LI)
+    cp 6
+    jr nc,GpRp4
+    inc a
+    ld (LI),a
+    call GpOm8
+    or a
+    sbc hl,de
+    ld (Om),hl
+GpRp4:
+    call OmCap
+    ld hl,(Th)
+    ld (PrevTh),hl
+    call PendStep
+    ld hl,(HeroX)
+    ld de,(PX)
+    or a
+    sbc hl,de
+    ld (RVX),hl
+    ld hl,(HeroY)
+    ld de,(PY)
+    or a
+    sbc hl,de
+    ld (RVY),hl
+    call HxHy
+    call BodyTest
+    ld a,(HitS)
+    or a
+    jp nz,Die
+    ld a,(HitW)
+    or a
+    jp nz,SectClear
+    ; the rope line must stay clear of rock too
+    ld a,(HitR)
+    or a
+    call z,RopeChk
+    ld a,(HitR)
+    or a
+    ret z
+    ; bonk: back to the last good angle and length, a small bounce
+    ld hl,(PrevTh)
+    ld (Th),hl
+    ld a,(PrevLI)
+    ld (LI),a
+    ld hl,(PX)
+    ld (HeroX),hl
+    ld hl,(PY)
+    ld (HeroY),hl
+    call HxHy
+    ld hl,(Om)
+    sra h
+    rr l
+    sra h
+    rr l
+    ex de,hl
+    ld hl,0
+    or a
+    sbc hl,de
+    ld (Om),hl
+    ld hl,0
+    ld (RVX),hl
+    ld (RVY),hl
+    ret
+; hl = Om, de = Om >> 3 (arithmetic)
+GpOm8:
+    ld hl,(Om)
+    ld d,h
+    ld e,l
+    sra d
+    rr e
+    sra d
+    rr e
+    sra d
+    rr e
+    ret
+  }
+end sub
+
+sub LetGo:
+  play sound SndRelease
+  RSt = 0
+  HookCD = 6
+  inc Lets
+  ' the last pendulum step is the flight's speed, plus a small lift
+  VX = RVX
+  VY = RVY
+  VY -= 24
+  if VX > 0 then Facing = 1
+  if VX < 0 then Facing = 0
+  return
+end sub
+
+' free flight or standing
+sub FreeStep:
+  if OnGnd = 1 then
+    VX = 0
+    VY = 0
+    ' feet planted while the hook flies (the stick aims it); a walk of
+    ' 1 px a frame turns into a run of 1.5 px after 24 frames the same way
+    ' (WalkP: the stride, 4 or 6 a frame -> 4 walk frames, 32 apart)
+    if RSt = 0 then
+      T = Jk & 12
+      if T = 4 then
+        if Facing = 1 then RunT = 0
+        Facing = 0
+      end if
+      if T = 8 then
+        if Facing = 0 then RunT = 0
+        Facing = 1
+      end if
+      if T = 4 then goto fs_walk
+      if T = 8 then goto fs_walk
+      RunT = 0
+      goto fs_still
+fs_walk:
+      if RunT < 255 then inc RunT
+      U = 64
+      K = 4
+      if RunT > 24 then
+        U = 96
+        K = 6
+      end if
+      if Facing = 0 then
+        HeroX -= U
+      else
+        HeroX += U
+      end if
+      WalkP += K
+    end if
+fs_still:
+    HxHy
+    BodyTest
+    ' (phase 5) walking into the cave passage clears the cave
+    if HitW > 0 then
+      SectClear
+      return
+    end if
+    if HitR > 0 then
+      HeroX = PX
+      HxHy
+    end if
+    ' still something under the feet?
+    Qy = Hy + 14
+    Qx = Hx - 3
+    CellAt
+    T = Qt
+    Qx = Hx + 3
+    CellAt
+    U = Qt
+    ' one foot on rock is enough to stand; the hero does not walk onto
+    ' spikes (the step is undone); air under both feet: he falls
+    if T = 1 then return
+    if U = 1 then return
+    if T = 2 then
+      HeroX = PX
+      HxHy
+      return
+    end if
+    if U = 2 then
+      HeroX = PX
+      HxHy
+      return
+    end if
+    OnGnd = 0
+    return
+  end if
+  VY += Grav
+  if VY > MaxVY then VY = MaxVY
+  HeroX += VX
+  HxHy
+  BodyTest
+  if HitR > 0 then
+    HeroX = PX
+    VX = 0
+    HxHy
+  end if
+  HeroY += VY
+  HxHy
+  BodyTest
+  if HitS > 0 then
+    Die
+    return
+  end if
+  if HitW > 0 then
+    SectClear
+    return
+  end if
+  if HitR > 0 then
+    if VY > 0 then
+      ' land on the cell top under the feet
+      W = Hy + 13
+      W = W & $FFF8
+      Hy = W - 14
+      HeroY = Hy << 6
+      OnGnd = 1
+      LandT = 8
+      Chain = 0
+      HoleD
+      LcX = HoleDv
+      LcY = Hy
+      HudF = 1
+    else
+      HeroY = PY
+    end if
+    VY = 0
+    VX = 0
+    HxHy
+  end if
+  return
+end sub
+
+' Hx = HeroX / 64 (low byte), Hy = HeroY / 64 (Z80: the Amy shifts cost
+' 1.7k cycles, this 0.1k - phase 4 frame budget)
+sub HxHy:
+  asm {
+    ld hl,(HeroX)
+    add hl,hl
+    add hl,hl
+    ld a,h
+    ld (Hx),a
+    ld hl,(HeroY)
+    xor a
+    add hl,hl
+    rla
+    add hl,hl
+    rla
+    ld l,h
+    ld h,a
+    ld (Hy),hl
+    ret
+  }
+end sub
+
+' body probes (rows Hy+2, Hy+7, Hy+13 at x = Hx -+ 4: every cell the
+' 9 x 12 box [Hx-4, Hx+4] x [Hy+2, Hy+13] touches) -> HitR (rock), HitS (spikes, their drawn rows 3-7 only),
+' HitW (the cave passage: goal); a GpMapRow a probed row
+sub BodyTest:
+  asm {
+    xor a
+    ld (HitR),a
+    ld (HitS),a
+    ld (HitW),a
+    ld hl,(Hy)
+    inc hl
+    inc hl
+    ld a,l
+    and 7
+    ld (Cy),a
+    ld e,l
+    ld d,h
+    srl d
+    rr e
+    srl d
+    rr e
+    srl d
+    rr e
+    push de
+    ex de,hl
+    call GpMapRow
+    ld de,-2
+    add hl,de
+    ld (MP),hl
+    ; column of x -+ 4 and x
+    ld a,(Hx)
+    sub 4
+    rrca
+    rrca
+    rrca
+    and 31
+    ld (CCol),a
+    ld a,(Hx)
+    add a,4
+    rrca
+    rrca
+    rrca
+    and 31
+    ld (CRow),a
+    ; hands: row of Hy+2
+    ld a,(CCol)
+    call GpBp
+    ld a,(CRow)
+    call GpBp
+    ; feet: row of Hy+13 (+1 or +2 rows)
+    ld hl,(Hy)
+    ld de,13
+    add hl,de
+    ld a,l
+    and 7
+    ld (Cy),a
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    pop de
+    call GpMapRow
+    ld de,-2
+    add hl,de
+    ld (MP),hl
+    ld a,(CRow)
+    call GpBp
+    ld a,(CCol)
+    call GpBp
+    ; middle: Hy+7 is the row of the feet or the one above
+    ld hl,(Hy)
+    ld de,7
+    add hl,de
+    ld a,l
+    and 7
+    ld (Cy),a
+    ld a,(Hy)
+    add a,13
+    xor l
+    and $F8
+    jr z,GpBt2
+    ld hl,(MTp)
+    dec hl
+    ld a,(hl)
+    dec hl
+    ld l,(hl)
+    ld h,a
+    ld de,-2
+    add hl,de
+    ld (MP),hl
+GpBt2:
+    ; (both sides: with the corners, every cell of the 9 x 12 box)
+    ld a,(CCol)
+    call GpBp
+    ld a,(CRow)
+; probe column a in row MP (pixel row Cy)
+GpBp:
+    ld e,a
+    ld d,0
+    ld hl,(MP)
+    add hl,de
+    ld e,(hl)
+    ld hl,CollT - CmBase
+    add hl,de
+    ld a,(hl)
+    or a
+    ret z
+    cp 1
+    jr nz,GpBp2
+    ld (HitR),a
+    ret
+GpBp2:
+    cp 2
+    jr nz,GpBp3
+    ld a,(Cy)
+    cp 3
+    ret c
+    ld a,2
+    ld (HitS),a
+    ret
+GpBp3:
+    ld (HitW),a
+    ret
+  }
+end sub
+
+sub FireHook:
+  ' aim: 0 up, 1 up-right, 2 up-left, 3 right, 4 left
+  T = Jk & 1
+  U = Jk & 12
+  if T > 0 then
+    HDir = 0
+    if U = 8 then HDir = 1
+    if U = 4 then HDir = 2
+  else
+    if U = 8 then
+      HDir = 3
+    else
+      if U = 4 then
+        HDir = 4
+      else
+        HDir = 2
+        if Facing = 1 then HDir = 1
+      end if
+    end if
+  end if
+  ' from the top of the hero's box (always air): a hook never starts
+  ' inside a thin platform over his head
+  TX = Hx
+  TY = Hy + 2
+  HookN = 0
+  RSt = 1
+  FireT = 10
+  play sound SndFire
+  return
+end sub
+
+' the hook flies 3 steps of 8 px (diagonal 6 + 6) a frame, up to 12 steps
+' (96 px; the rope then tightens to at most 64 px, pulling the hero in);
+' rock catches, spikes/water or the full length miss. On rock the hook is
+' walked back to the last pixel before it (1 px steps from the previous
+' point): the anchor hangs in air, on the rock's face (Z80)
+sub HookStepS:
+  asm {
+    ld b,3
+GpHk1:
+    push bc
+    ld a,(RSt)
+    cp 1
+    jr nz,GpHk9
+    ld hl,HookN
+    inc (hl)
+    ld a,(HDir)
+    ld e,a
+    ld d,0
+    ld hl,HkDX
+    add hl,de
+    ld a,(TX)
+    add a,(hl)
+    ld (TX),a
+    ld (Qx),a
+    ld hl,HkDY
+    add hl,de
+    ld a,(hl)
+    ld e,a
+    rlca
+    sbc a,a
+    ld d,a
+    ld hl,(TY)
+    add hl,de
+    ld (TY),hl
+    ld (Qy),hl
+    call GpCaA
+    cp 1
+    jr nz,GpHk2
+    ; back to the previous point, then 1 px steps until the rock
+    ld a,(HDir)
+    ld e,a
+    ld d,0
+    ld hl,HkDX
+    add hl,de
+    ld a,(TX)
+    sub (hl)
+    ld (TX),a
+    ld hl,HkDY
+    add hl,de
+    ld c,(hl)
+    ld a,c
+    rlca
+    sbc a,a
+    ld b,a
+    ld hl,(TY)
+    or a
+    sbc hl,bc
+    ld (TY),hl
+    ; 3 halving steps toward the rock (4,2,1 px; diagonals 3,2,1): HkUX/HkUY
+    ; rows of 5 aims
+    ld a,(HDir)
+    ld e,a
+    ld d,0
+    ld b,3
+GpRf1:
+    push bc
+    push de
+    ld hl,HkUX
+    add hl,de
+    ld a,(TX)
+    add a,(hl)
+    ld (Qx),a
+    ld hl,HkUY
+    add hl,de
+    ld a,(hl)
+    ld e,a
+    rlca
+    sbc a,a
+    ld d,a
+    ld hl,(TY)
+    add hl,de
+    ld (Qy),hl
+    call GpCaA
+    pop de
+    pop bc
+    cp 1
+    jr z,GpRf1b
+    ld a,(Qx)
+    ld (TX),a
+    ld hl,(Qy)
+    ld (TY),hl
+GpRf1b:
+    ld a,e
+    add a,5
+    ld e,a
+    djnz GpRf1
+GpRf2:
+    ; the catch is made at the start of the next frame (RSt 3): that frame
+    ; does only the catch (frame budget)
+    ld a,3
+    ld (RSt),a
+    jr GpHk9
+GpHk2:
+    or a
+    jr nz,GpHkM
+    ld a,(HookN)
+    cp HookMax
+    jr c,GpHk9
+GpHkM:
+    xor a
+    ld (RSt),a
+    ld a,8
+    ld (HookCD),a
+GpHk9:
+    pop bc
+    djnz GpHk1
+    ret
+  }
+end sub
+
+' the hook bites: rope length from the distance, angle from the aim,
+' omega from the hero's speed along the swing (one multiply)
+sub Catch:
+  CatchA
+  if HitR > 0 then
+    ' no room to hang there, or the rope line is blocked: the hook lets go
+    RSt = 0
+    HookCD = 8
+    HeroX = PX
+    HeroY = PY
+    HxHy
+    return
+  end if
+  ' omega from the speed along the swing: vt (1/64 px a frame),
+  ' 0.707 = 1/2 + 1/8 + 1/16 + 1/64; one multiply per catch
+  Om = 0
+  if OnGnd = 0 then
+    Si = 0
+    if HDir = 0 then Si = VX
+    if HDir = 1 then
+      Sj = VX + VY
+      Si = Sj >> 1
+      Si += Sj >> 3
+      Si += Sj >> 4
+      Si += Sj >> 6
+    end if
+    if HDir = 2 then
+      Sj = VX - VY
+      Si = Sj >> 1
+      Si += Sj >> 3
+      Si += Sj >> 4
+      Si += Sj >> 6
+    end if
+    if HDir = 3 then Si = VY
+    if HDir = 4 then
+      Si = 0
+      Si -= VY
+    end if
+    if Si > 200 then Si = 200
+    if Si < -200 then Si = -200
+    Si *= InvL8[LI]
+    Om = Si >> 4
+    ' a catch counts (chain, points) only for progress: 24 px closer to
+    ' this gallery's exit hole, or 32 px lower, since the last counted one
+    HoleD
+    U = 0
+    if LcX >= 24 then
+      T = LcX - 24
+      if HoleDv <= T then U = 1
+    end if
+    W = LcY + 32
+    if Hy >= W then U = 1
+    if U = 1 then
+      LcX = HoleDv
+      LcY = Hy
+      inc Chain
+      if Chain > 9 then Chain = 9
+      W = Chain * 10
+      Score += W
+      HudF = 1
+      PkX = Hx
+      PkY = Hy
+      T = Chain - 1
+      U = 15
+      PopNew
+    end if
+  end if
+  play sound SndCatch
+  PufT = 12
+  PufX = AX
+  PufY = AY
+  OnGnd = 0
+  RSt = 2
+  RVX = 0
+  RVY = 0
+  CatchF = 1
+  inc Catches
+  PX = HeroX
+  PY = HeroY
+  return
+end sub
+
+' gems: pick-up test (while playing) and sprites for the visible ones (GpAdd)
+' (one gem in four sparkles at a time: 8 frames in 32, under 2 Hz)
+sub GemSpr:
+  ' (phase 5: the loop runs in registers - IX on GemY, C the gem's GemOn
+  ' bit, HL its byte, B the count - same result as before: gems out of
+  ' view cost ~70-240 cycles instead of ~440; frame budget for the gems of
+  ' the lower galleries, live since the GemRange fix)
+  asm {
+    push ix
+    ld a,(GLo)
+    ld (GkI),a
+    ld e,a
+    ld a,(GOff)
+    add a,e
+    ld l,a
+    ld h,0
+    add hl,hl
+    ld de,GemY
+    add hl,de
+    push hl
+    pop ix
+    call GpGb
+    ld c,a
+    ld a,(GkI)
+    ld e,a
+    ld a,(GHi)
+    sub e
+    ld b,a
+GpG1:
+    ld a,c
+    and (hl)
+    jr z,GpGn
+    push hl
+    push bc
+    ; screen y (+9) = gy + 9 - CamY, visible rows 2-22 only
+    ld l,(ix+0)
+    ld h,(ix+1)
+    ld de,9
+    add hl,de
+    ld de,(CamY)
+    or a
+    sbc hl,de
+    jr c,GpGx
+    ld a,h
+    or a
+    jr nz,GpGx
+    ld a,l
+    cp 16
+    jr c,GpGx
+    cp 172
+    jr c,GpGv
+GpGx:
+    pop bc
+    pop hl
+GpGn:
+    inc ix
+    inc ix
+    rrc c
+    jr nc,GpGn1
+    inc hl
+GpGn1:
+    djnz GpG1
+    ld a,(GHi)
+    ld (GkI),a
+    pop ix
+    ret
+GpGv:
+    ; visible: e = screen y, c = table index (ix - GemY) / 2, d = gem x
+    ld e,a
+    push ix
+    pop hl
+    ld bc,GemY
+    or a
+    sbc hl,bc
+    srl h
+    rr l
+    ld c,l
+    ld b,0
+    ld hl,GemX
+    add hl,bc
+    ld d,(hl)
+    ; picked up? (playing; hero centre HSy within 13 rows, Hx within 11 px)
+    ld a,(Ph)
+    or a
+    jr nz,GpG5
+    ld a,(HSy)
+    sub e
+    jr nc,GpG2
+    neg
+GpG2:
+    cp 14
+    jr nc,GpG5
+    ld a,(Hx)
+    sub d
+    jr nc,GpG3
+    neg
+GpG3:
+    cp 12
+    jr nc,GpG5
+    ld a,d
+    ld (PkX),a
+    ld l,(ix+0)
+    ld h,(ix+1)
+    ld (PkY),hl
+    pop bc
+    pop hl
+    ld a,c
+    cpl
+    and (hl)
+    ld (hl),a
+    ld a,(GemNew)
+    inc a
+    ld (GemNew),a
+    jr GpGn
+GpG5:
+    ld a,e
+    ld (SpY),a
+    ld a,d
+    sub 8
+    ld (SpX),a
+    ld a,(Tick)
+    rrca
+    rrca
+    rrca
+    add a,c
+    and 3
+    ld a,SGem
+    jr nz,GpG6
+    ld a,SGemS
+GpG6:
+    ld (SpP),a
+    ld a,13
+    ld (SpC),a
+    push ix
+    call GpAdd
+    pop ix
+    pop bc
+    pop hl
+    jr GpGn
+; gem GkI's bit: hl = its GemOn byte, a = its mask
+GpGb:
+    ld a,(GkI)
+    ld hl,GemOn
+    cp 8
+    jr c,GpGb1
+    inc hl
+GpGb1:
+    and 7
+    ld e,a
+    ld d,0
+    push hl
+    ld hl,BitT
+    add hl,de
+    ld a,(hl)
+    pop hl
+    ret
+  }
+end sub
+
+' DieWhy (for the tests): 1 spikes, 2 time, 3 bat, 4 stalactite
+sub Die:
+  if DieWhy = 0 then DieWhy = 1
+  play sound SndHit
+  Ph = PhDead
+  PhT = 90
+  RSt = 0
+  Chain = 0
+  inc Deaths
+  HudF = 1
+  return
+end sub
+
+sub SectClear:
+  Ph = PhClear
+  PhT = 150
+  RSt = 0
+  inc Clears
+  play sound SndClear
+  ' time bonus: 10 a second left
+  W = TimeL / 60
+  W = W * 10
+  Score += W
+  HudF = 1
+  TxS = address of MsgClear
+  TxO = 330
+  TxtBoth
+  return
+end sub
+
+' HoleDv = distance (px) from the hero to the exit hole of his gallery
+sub HoleD:
+  Gi = 0
+  for K = 1 to 5
+    W = GalTop[K]
+    W2 = Hy + 14
+    if W2 >= W then Gi = K
+  next
+  K = MOff + Gi
+  T = GalHX[K]
+  ' (the exit arrow of this gallery: drawn by BuildSat)
+  ArrX = T
+  ArrY = GalTop[Gi]
+  ArrY += 61
+  ' under the last gallery: the arrow shows the cave passage (the goal)
+  W = Hy + 14
+  if W >= ChamY then
+    T = PassX
+    ArrX = T
+    ArrY = PassAY
+  end if
+  if Hx > T then
+    HoleDv = Hx - T
+  else
+    HoleDv = T - Hx
+  end if
+  return
+end sub
+
+' camera: keeps the hero about 72 px under the top; descends only, 1 px a
+' frame
+sub Camera:
+  ' the camera holds while the hook flies (at most 4 frames) and on a catch
+  ' frame: those frames draw the longest lines (frame budget)
+  if CatchF = 1 then return
+  if RSt = 1 then return
+  ' after a heavy blank the rope keeps its cells: the camera holds too
+  if RSt = 2 then
+    if DidFull = 1 then return
+  end if
+  if RSt = 3 then return
+  if Hy < 72 then return
+  ' on the rope the camera holds unless the hero is low on the screen: a
+  ' camera step rewrites the combo tiles in the next blank, and that with
+  ' a rope frame's raster and rope test overran the frame (phase 4 budget)
+  if RSt = 2 then
+    W2 = CamY + 120
+    if Hy <= W2 then return
+  end if
+  W = Hy - 72
+  if W <= CamY then return
+  W -= CamY
+  ' 1 px a frame: a cell crossing every 8 frames at most, the hidden page
+  ' is built 3 rows a frame (the holes alternate sides, so the hero never
+  ' falls two galleries at once and stays on screen)
+  ' (2 px while the hero is more than 120 px down the screen: he and the
+  ' floor under him stay in view; the hidden page gets 3 more rows a frame)
+  ' (never on the rope: a 2 px frame + a long rope line overran the frame)
+  CamF = 0
+  if W > 1 then
+    W = 1
+    if RSt = 0 then
+      W2 = CamY + 104
+      if Hy > W2 then
+        W = 2
+        CamF = 1
+      end if
+    end if
+  end if
+  ' (phase 5) no cell-row crossing while the hidden page still lacks 10+
+  ' rows (rope frames do not build it): that build in one blank took 51k
+  ' cycles and lost a frame (romcheck, cave 2) - the camera waits a frame
+  T = lowbyte W
+  T += CamS
+  if T >= 8 then
+    if BldRow < 14 then return
+  end if
+  CamY += W
+  if CamY > CamMax then CamY = CamMax
+  W = CamY >> 3
+  CamR = W
+  T = lowbyte CamY
+  CamS = T & 7
+  ' gems worth testing follow the camera every cell row (phase 5 fix: this
+  ' was "lowbyte CamY = 0", only at multiples of 256 px and missed by a
+  ' 2 px step, so from gallery 3-4 down the gems of the galleries in view
+  ' were never shown nor picked up, in every cave)
+  if CamS < 2 then GemRange
+  return
+end sub
+
+' gems worth testing: those of the galleries around the view (2 a gallery)
+sub GemRange:
+  T = 0
+  W = CamY + 16
+  for K = 1 to 5
+    W2 = GalTop[K]
+    if W >= W2 then T = K
+  next
+  GLo = 0
+  if T > 0 then GLo = T * 2 - 2
+  GHi = GLo + 6
+  if GHi > NGems then GHi = NGems
+  return
+end sub
+
+' the rope line (screen coordinates + 64 on y) -> raster -> compose
+sub RopeLine:
+  ' a catch frame keeps the last frame's cells (the hook line; the camera
+  ' holds this frame, so they stay right) - frame budget
+  if CatchF = 1 then return
+  ' (and so does the frame the hook bites: the catch is made next frame,
+  ' and a frame after a heavy blank, when the camera held: frame budget)
+  if RSt = 3 then return
+  if DidFull = 1 then return
+  RcN = 0
+  if RSt = 0 then return
+  if Ph <> PhPlay then
+    RcN = 0
+    return
+  end if
+  if RSt = 2 then
+    T = AX
+    W = AY
+  else
+    T = TX
+    W = TY
+  end if
+  ' y + 64 - CamY + 16
+  W += 80
+  W -= CamY
+  if W > 32768 then W = 0
+  if W > 255 then W = 255
+  U = lowbyte W
+  W = Hy + 80
+  W -= CamY
+  if W > 255 then W = 255
+  K = lowbyte W
+  if U <= K then
+    R0X = T
+    R0Y = U
+    R1X = Hx
+    R1Y = K
+  else
+    R0X = Hx
+    R0Y = K
+    R1X = T
+    R1Y = U
+  end if
+  Raster
+  Compose
+  return
+end sub
+
+' sprite table (12 entries + the end mark): 0-1 the hero, 2 the flying hook,
+' 3-6 hazards (stalactites first, then bats), 7-9 gems, the catch puff, a
+' drip, 10 the exit arrow, 11 the score popup (phase 6: every frame).
+' The hazard entries are rebuilt on even frames,
+' the others on odd frames (each half then follows the camera on the other
+' frame): half the work a frame. GpAdd keeps every line at 4 sprites or
+' fewer (hero counted with an 8-line margin for his move till the next
+' rebuild; the hook is checked every frame, last).
+sub BuildSat:
+  ' exact tests: 2 a frame (none on the rope, but for the hazards: 2 on even
+  ' frames)
+  PrecN = 2
+  if RSt = 2 then PrecN = 0
+  if RcN >= 7 then PrecN = 0
+  HeroSpr
+  SatShift
+  ' a long rope line this frame (10+ cells): the halves keep last frame's
+  ' sprites (they follow the camera) - frame budget
+  if RcN >= 10 then goto bs_hook
+  ' (and after a heavy blank: 10+ hidden-page rows built in it)
+  if HvyB = 1 then goto bs_hook
+  T = Tick & 1
+  if T = 0 then
+    HzOdd = 0
+    SatW = 12
+    SatE = 28
+    Sat[12] = 200
+    Sat[16] = 200
+    Sat[20] = 200
+    Sat[24] = 200
+    HzMode = 1
+    Hazards
+    HzMode = 0
+  else
+    HzOdd = 1
+    if RcN < 8 then Sat[40] = 200
+    SatW = 28
+    SatE = 40
+    Sat[28] = 200
+    Sat[32] = 200
+    Sat[36] = 200
+    GemSpr
+    if PufT > 0 then
+      PufT -= 2
+      SpP = SPuffB
+      if PufT > 6 then SpP = SPuffA
+      SpX = PufX
+      W = PufY
+      SpC = 14
+      AddW
+    end if
+    if DrT > 0 then
+      DrY += 4
+      dec DrT
+      if DrT > 0 then
+        SpX = DrX
+        W = DrY
+        SpP = SDrip
+        SpC = 5
+        AddW
+      end if
+    end if
+    ' the exit marker (its own entry, Sat+40): a green arrow bobbing over the
+    ' exit hole of the hero's gallery (phase 6: built last, after the gems:
+    ' the least important); rebuilt on odd frames with a short
+    ' rope line (else it keeps its place and follows the camera: budget)
+    if RcN < 8 then
+      Sat[40] = 200
+      if Ph = PhPlay then
+        SatW = 40
+        SatE = 44
+        SpX = ArrX
+        W = ArrY
+        T = Tick >> 1
+        T = T & 31
+        U = BobT[T]
+        if U >= 128 then
+          U = 0 - U
+          W -= U
+        else
+          W += U
+        end if
+        SpP = SArrow
+        SpC = 3
+        AddW
+      end if
+    end if
+  end if
+bs_hook:
+  Sat[8] = 200
+  ' (phase 6) the score popup: its own entry (Sat+44), placed every frame
+  ' right after the hero, 18 px over the point, rising 1 px every 2 frames
+  ' for 40 frames; then the entries near it (12-40, least important first:
+  ' arrow, drip, puff, gems, bats, stalactites) yield if a line would get a
+  ' 5th sprite. The hook (GpAdd, next) counts it. (On a long-rope frame or
+  ' after a heavy blank it keeps its place, following the camera, and its
+  ' clock waits a frame: frame budget)
+  ' (a new popup not on screen yet is placed anyway)
+  T = Sat[44]
+  if T < 192 then
+    if RcN >= 7 then goto bs_pop
+    if HvyB = 1 then goto bs_pop
+  end if
+  Sat[44] = 200
+  if PqN > 0 then
+    if PopT <= 25 then
+      PopT = 41
+      PopX = PqX
+      PopY = PqY
+      PopP = PqP
+      PopC = PqC
+      PqX = PrX
+      PqY = PrY
+      PqP = PrP
+      PqC = PrC
+      dec PqN
+    end if
+  end if
+  if PopT > 0 then
+    dec PopT
+    T = 40 - PopT
+    T = T >> 1
+    T += 18
+    W = PopY - T
+    SpX = PopX
+    SpP = PopP
+    SpC = PopC
+    AddF
+    T = Sat[44]
+    if T < 192 then
+      ChkY = T
+      SatW = 12
+      SatE = 44
+      StaleChk
+    end if
+  end if
+bs_pop:
+  if RSt = 1 then
+    SatW = 8
+    SatE = 12
+    SpX = TX
+    W = TY
+    SpP = SHook
+    SpC = 15
+    AddW
+  end if
+  ' entries kept from an earlier frame were checked against the hero where
+  ' he was then (8 lines of margin): after a long-rope frame (no rebuild)
+  ' or a jump of the hero (a catch tightening the rope, a respawn) they are
+  ' checked again against everything now on screen
+  T = Sat[0]
+  if T >= LastHY then
+    U = T - LastHY
+  else
+    U = LastHY - T
+  end if
+  LastHY = T
+  ChkY = T
+  if RcN >= 10 then
+    SatW = 12
+    SatE = 44
+    StaleChk
+    return
+  end if
+  if U > 4 then
+    SatW = 12
+    SatE = 28
+    if HzOdd = 0 then
+      SatW = 28
+      SatE = 44
+    end if
+    StaleChk
+  end if
+  return
+end sub
+
+' the entries from Sat + SatW to Sat + SatE - 4, last (least important)
+' first: hidden if 4 others are within 15 lines of it (then none of its
+' lines can carry a 5th sprite)
+sub StaleChk:
+  asm {
+    ld a,(SatE)
+GpSc1:
+    sub 4
+    ld hl,SatW
+    cp (hl)
+    ret c
+    ld (Cnt),a
+    ld e,a
+    ld d,0
+    ld hl,Sat
+    add hl,de
+    ld a,(hl)
+    cp 192
+    jr nc,GpSc9
+    ld d,a
+    ; only an entry within 15 lines of the hero (the one that moved) can
+    ; have gained a 5th sprite (phase 6: or of the popup: ChkY; 255: all)
+    ld a,(ChkY)
+    cp 255
+    jr z,GpScA
+    sub d
+    jr nc,GpSc0
+    neg
+GpSc0:
+    cp 16
+    jr nc,GpSc9
+GpScA:
+    ld c,0
+    ld b,0
+    ld hl,Sat
+GpSc2:
+    ld a,(Cnt)
+    cp b
+    jr z,GpSc3
+    ld a,(hl)
+    cp 192
+    jr nc,GpSc3
+    sub d
+    jr nc,GpSc4
+    neg
+GpSc4:
+    cp 16
+    jr nc,GpSc3
+    inc c
+GpSc3:
+    inc hl
+    inc hl
+    inc hl
+    inc hl
+    ld a,b
+    add a,4
+    ld b,a
+    cp 48
+    jr c,GpSc2
+    ld a,c
+    cp 4
+    jr c,GpSc9
+    ld a,(Cnt)
+    ld e,a
+    ld d,0
+    ld hl,Sat
+    add hl,de
+    ; (phase 6) the pairwise count said 4+: the exact test (hidden meanwhile)
+    ld a,(PrecN)
+    or a
+    jr z,GpSc7
+    dec a
+    ld (PrecN),a
+    ld a,(hl)
+    ld (hl),200
+    ld (SpY),a
+    push hl
+    push af
+    call GpExact
+    pop de
+    pop hl
+    or a
+    jr nz,GpSc8
+    ld (hl),d
+    jr GpSc9
+GpSc8:
+    ld (hl),d
+GpSc7:
+    ;@QASTALE
+    ld (hl),200
+GpSc9:
+    ld a,(Cnt)
+    jr GpSc1
+  }
+end sub
+
+' the hazard and other entries (3-11, phase 6: with the popup) follow the camera's move this frame
+sub SatShift:
+  asm {
+    ld hl,(CamY)
+    ld de,(LastCam)
+    ld (LastCam),hl
+    or a
+    sbc hl,de
+    ld a,l
+    or a
+    ret z
+    ld c,a
+    ld hl,Sat+12
+    ld b,9
+GpSs1:
+    ld a,(hl)
+    cp 192
+    jr nc,GpSs2
+    sub c
+    cp 11
+    jr nc,GpSs3
+    ld a,200
+GpSs3:
+    ld (hl),a
+GpSs2:
+    inc hl
+    inc hl
+    inc hl
+    inc hl
+    djnz GpSs1
+    ret
+  }
+end sub
+
+' the hero's pose and his two sprites (SatN = 2)
+sub HeroSpr:
+  ' (phase 5: Z80, the same result as the Amy version it replaces - frame
+  ' budget for the row-table map: ~1150 -> ~300 cycles)
+  asm {
+    ld hl,(Hy)
+    ld de,15
+    add hl,de
+    ld a,(Ph)
+    cp PhDead
+    jr nz,GpHs1
+    ; dead: PDeadA / PDeadB (PhT & 8), y + DeadDY[90 - PhT] (signed; 127 = gone)
+    ld a,(PhT)
+    ld b,a
+    ld a,90
+    sub b
+    ld (K),a
+    ld e,a
+    ld d,0
+    ld c,PDeadA
+    ld a,b
+    and 8
+    jr z,GpHd1
+    ld c,PDeadB
+GpHd1:
+    push hl
+    ld hl,DeadDY
+    add hl,de
+    ld a,(hl)
+    pop hl
+    cp 128
+    jr c,GpHd2
+    neg
+    ld e,a
+    ld d,0
+    or a
+    sbc hl,de
+    jr GpHput
+GpHd2:
+    ld e,a
+    ld d,0
+    add hl,de
+    cp 127
+    jr nz,GpHput
+    ld hl,1000
+    jr GpHput
+GpHs1:
+    ld a,(RSt)
+    cp 2
+    jr nz,GpHs2
+    ; on the rope: hang, or lean past |Th| > 2500 (signed)
+    ld c,PHang
+    ld de,(Th)
+    ld (Si),de
+    push hl
+    ld a,d
+    xor $80
+    ld d,a
+    ld hl,$89C4
+    or a
+    sbc hl,de
+    jr nc,GpHr2
+    ld c,PLeanR
+    jr GpHr3
+GpHr2:
+    ex de,hl
+    ld de,$763C
+    or a
+    sbc hl,de
+    jr nc,GpHr3
+    ld c,PLeanL
+GpHr3:
+    pop hl
+    jr GpHput
+GpHs2:
+    or a
+    jr nz,GpHfi
+    ld a,(FireT)
+    or a
+    jr z,GpHs3
+GpHfi:
+    ld c,PFire
+    jr GpHput
+GpHs3:
+    ld a,(OnGnd)
+    cp 1
+    jr nz,GpHfa
+    ld a,(LandT)
+    cp 5
+    jr c,GpHg1
+    ld c,PSquash
+    jr GpHput
+GpHg1:
+    or a
+    jr z,GpHg2
+    dec hl
+GpHg2:
+    ; standing, or the walk cycle (4 frames by the stride) while he moves;
+    ; facing left = the mirrored poses
+    ld c,0
+    push hl
+    ld hl,(HeroX)
+    ld de,(PX)
+    or a
+    sbc hl,de
+    pop hl
+    jr z,GpHg3
+    ld a,(WalkP)
+    rlca
+    rlca
+    rlca
+    and 3
+    inc a
+    ld c,a
+GpHg3:
+    ld a,(Facing)
+    or a
+    jr nz,GpHg4
+    ld a,c
+    add a,PMir
+    ld c,a
+    jr GpHput
+GpHg4:
+    ld a,c
+    or a
+    jr nz,GpHg5
+    ld c,PStand
+    jr GpHput
+GpHg5:
+    add a,PWalk0 - 1
+    ld c,a
+    jr GpHput
+GpHfa:
+    ld c,PFall
+    ld a,(VY+1)
+    bit 7,a
+    jr z,GpHput
+    ld c,PTuck
+GpHput:
+    ; screen y = max(W, CamY) - CamY, past 169 -> 200 (hidden)
+    ld de,(CamY)
+    or a
+    sbc hl,de
+    jr nc,GpHp1
+    ld hl,0
+GpHp1:
+    ld a,h
+    or a
+    jr nz,GpHp2
+    ld a,l
+    cp 170
+    jr c,GpHp3
+GpHp2:
+    ld hl,200
+GpHp3:
+    ld a,l
+    ld (Sat),a
+    ld (Sat+4),a
+    ld a,(Hx)
+    sub 7
+    ld (Sat+1),a
+    ld (Sat+5),a
+    ld (U),a
+    ld a,c
+    add a,a
+    add a,a
+    add a,a
+    ld (Sat+2),a
+    add a,4
+    ld (Sat+6),a
+    ld (T),a
+    ld a,7
+    ld (Sat+3),a
+    ld a,11
+    ld (Sat+7),a
+    ld a,208
+    ld (Sat+48),a
+    ; HSy = Hy + 16 - CamY (255 past the byte)
+    ld hl,(Hy)
+    ld de,16
+    add hl,de
+    ld de,(CamY)
+    or a
+    sbc hl,de
+    ld a,h
+    or a
+    jr z,GpHp4
+    ld hl,255
+GpHp4:
+    ld (W),hl
+    ld a,l
+    ld (HSy),a
+    ret
+  }
+end sub
+
+' a small sprite centred on world x SpX, y W (SpP, SpC) if inside rows 2-22
+sub AddW:
+  asm {
+    ld hl,(W)
+    ld de,7
+    add hl,de
+    ld de,(CamY)
+    or a
+    sbc hl,de
+    ret c
+    ld a,h
+    or a
+    ret nz
+    ld a,l
+    cp 11
+    ret c
+    cp 171
+    ret nc
+    ld (SpY),a
+    ld a,(SpX)
+    sub 8
+    ld (SpX),a
+    jp GpAdd
+  }
+end sub
+
+' (phase 6) the popup: like AddW into Sat+44, always, held inside rows 2-22
+' at the view's edge (StaleChk then makes
+' room around it)
+sub AddF:
+  asm {
+    ld hl,(W)
+    ld de,7
+    add hl,de
+    ld de,(CamY)
+    or a
+    sbc hl,de
+    jr c,GpAf1
+    ld a,h
+    or a
+    jr nz,GpAf2
+    ld a,l
+    cp 11
+    jr c,GpAf1
+    cp 171
+    jr c,GpAf3
+GpAf2:
+    ld a,170
+    jr GpAf3
+GpAf1:
+    ld a,11
+GpAf3:
+    ld (SpY),a
+    ld a,(SpX)
+    sub 8
+    ld (SpX),a
+    ld a,44
+    ld (SatW),a
+    jp GpPut
+  }
+end sub
+
+' SpY, SpX, SpP, SpC -> the entry at Sat + SatW (up to SatE), unless one of
+' its 16 lines would get a 5th sprite: it counts the sprites within 15
+' lines of it (the hero within 23) - an upper bound for each of its lines
+sub GpAddS:
+  asm {
+GpAdd:
+    ld a,(SatW)
+    ld hl,SatE
+    cp (hl)
+    ret nc ;@QAJP
+    ld a,(SpY)
+    ld d,a
+    ld c,0
+    ld a,(Sat)
+    sub d
+    jr nc,GpAa
+    neg
+GpAa:
+    cp 24
+    jr nc,GpAb
+    ld c,2
+GpAb:
+    ld a,(Sat+8)
+    sub d
+    jr nc,GpAc2
+    neg
+GpAc2:
+    cp 16
+    jr nc,GpAe2
+    inc c
+GpAe2:
+    ld a,(Sat+12)
+    sub d
+    jr nc,GpAc3
+    neg
+GpAc3:
+    cp 16
+    jr nc,GpAe3
+    inc c
+GpAe3:
+    ld a,(Sat+16)
+    sub d
+    jr nc,GpAc4
+    neg
+GpAc4:
+    cp 16
+    jr nc,GpAe4
+    inc c
+GpAe4:
+    ld a,(Sat+20)
+    sub d
+    jr nc,GpAc5
+    neg
+GpAc5:
+    cp 16
+    jr nc,GpAe5
+    inc c
+GpAe5:
+    ld a,(Sat+24)
+    sub d
+    jr nc,GpAc6
+    neg
+GpAc6:
+    cp 16
+    jr nc,GpAe6
+    inc c
+GpAe6:
+    ld a,(Sat+28)
+    sub d
+    jr nc,GpAc7
+    neg
+GpAc7:
+    cp 16
+    jr nc,GpAe7
+    inc c
+GpAe7:
+    ld a,(Sat+32)
+    sub d
+    jr nc,GpAc8
+    neg
+GpAc8:
+    cp 16
+    jr nc,GpAe8
+    inc c
+GpAe8:
+    ld a,(Sat+36)
+    sub d
+    jr nc,GpAc9
+    neg
+GpAc9:
+    cp 16
+    jr nc,GpAe9
+    inc c
+GpAe9:
+    ld a,(Sat+40)
+    sub d
+    jr nc,GpAc10
+    neg
+GpAc10:
+    cp 16
+    jr nc,GpAe10
+    inc c
+GpAe10:
+    ld a,(Sat+44)
+    sub d
+    jr nc,GpAc11
+    neg
+GpAc11:
+    cp 16
+    jr nc,GpAe11
+    inc c
+GpAe11:
+    ld a,c
+    cp 4
+    jp nc,GpPrec
+GpPut:
+    ld a,(SatW)
+    ld e,a
+    add a,4
+    ld (SatW),a
+    ld d,0
+    ld hl,Sat
+    add hl,de
+    ld a,(SpY)
+    ld (hl),a
+    inc hl
+    ld a,(SpX)
+    ld (hl),a
+    inc hl
+    ld a,(SpP)
+    ld (hl),a
+    inc hl
+    ld a,(SpC)
+    ld (hl),a
+    ret
+  }
+end sub
+
+' (phase 6) GpAdd's pairwise count said 4+: the exact test - the most
+' sprites on any one of the candidate's 16 lines (the hero over his 32-line
+' margin), tried at the lines where a sprite starts (rare path, ~4k cycles)
+sub GpPrecS:
+  asm {
+GpPrec:
+    ; a hazard (HzMode): it counts without the gems, puff, drip and arrow
+    ; (entries 7-10); those within 15 lines of it are hidden (rebuilt next
+    ; frame around it)
+    ld a,(HzMode)
+    or a
+    jr z,GpPrO
+    ld b,0
+    ld hl,Sat+28
+    ld e,4
+GpPh1:
+    ld a,(SpY)
+    ld d,a
+    ld a,(hl)
+    cp 192
+    jr nc,GpPh2
+    sub d
+    jr nc,GpPh3
+    neg
+GpPh3:
+    cp 16
+    jr nc,GpPh2
+    inc b
+GpPh2:
+    inc hl
+    inc hl
+    inc hl
+    inc hl
+    dec e
+    jr nz,GpPh1
+    ld a,c
+    sub b
+    cp 4
+    jr nc,GpPrR
+    ld hl,Sat+28
+    ld e,4
+GpPh4:
+    ld a,(SpY)
+    ld d,a
+    ld a,(hl)
+    cp 192
+    jr nc,GpPh5
+    sub d
+    jr nc,GpPh6
+    neg
+GpPh6:
+    cp 16
+    jr nc,GpPh5
+    ld (hl),200
+GpPh5:
+    inc hl
+    inc hl
+    inc hl
+    inc hl
+    dec e
+    jr nz,GpPh4
+    jp GpPut
+GpPrO:
+    ld a,(PrecN)
+    or a
+    jr z,GpPrR
+    dec a
+    ld (PrecN),a
+    call GpExact
+    or a
+    jp z,GpPut
+GpPrR:
+    ret ;@QARJ
+; a = 0 if a sprite at SpY fits (no line of its 16 over 4 with it), else 1
+; (the entries within 15 lines into LnB first, then the count at each line
+; where one of them - or the hero's margin - starts)
+GpExact:
+    xor a
+    ld (LnN),a
+    ld de,LnB
+    ld hl,Sat+8
+    ld b,10
+GpEx1:
+    ld a,(SpY)
+    ld c,a
+    ld a,(hl)
+    cp 192
+    jr nc,GpEx3
+    sub c
+    jr nc,GpEx4
+    neg
+GpEx4:
+    cp 16
+    jr nc,GpEx3
+    ld a,(hl)
+    ld (de),a
+    inc de
+    ld a,(LnN)
+    inc a
+    ld (LnN),a
+GpEx3:
+    inc hl
+    inc hl
+    inc hl
+    inc hl
+    djnz GpEx1
+    ; test line: the candidate's top
+    ld a,(SpY)
+    call GpCnt
+    cp 4
+    jr nc,GpExN
+    ; each buffered start below it
+    ld a,(LnN)
+    or a
+    jr z,GpEx6
+    ld b,a
+    ld hl,LnB
+GpEx5:
+    ld a,(SpY)
+    ld c,a
+    ld a,(hl)
+    cp c
+    jr c,GpEx7
+    jr z,GpEx7
+    push hl
+    push bc
+    call GpCnt
+    pop bc
+    pop hl
+    cp 4
+    jr nc,GpExN
+GpEx7:
+    inc hl
+    djnz GpEx5
+GpEx6:
+    ; the hero's margin start (Sat0 - 8) if inside the candidate's lines
+    ld a,(Sat)
+    cp 192
+    jr nc,GpExY
+    sub 8
+    jr c,GpExY
+    ld e,a
+    ld a,(SpY)
+    ld c,a
+    ld a,e
+    sub c
+    jr c,GpExY
+    jr z,GpExY
+    cp 16
+    jr nc,GpExY
+    ld a,e
+    call GpCnt
+    cp 4
+    jr nc,GpExN
+GpExY:
+    xor a
+    ret
+GpExN:
+    ld a,1
+    ret
+; a = sprites (without the candidate) on line a: the hero 2 over
+; Sat0-8..Sat0+23, and the LnB entries covering it
+GpCnt:
+    ld (LnP),a
+    ld c,0
+    ld a,(Sat)
+    cp 192
+    jr nc,GpCn2
+    ld e,a
+    ld a,(LnP)
+    add a,8
+    sub e
+    jr c,GpCn2
+    cp 32
+    jr nc,GpCn2
+    ld c,2
+GpCn2:
+    ld a,(LnN)
+    or a
+    jr z,GpCn9
+    ld b,a
+    ld hl,LnB
+GpCn3:
+    ld e,(hl)
+    ld a,(LnP)
+    sub e
+    jr c,GpCn4
+    cp 16
+    jr nc,GpCn4
+    inc c
+GpCn4:
+    inc hl
+    djnz GpCn3
+GpCn9:
+    ld a,c
+    ret
+  }
+end sub
+
+' stalactites, then bats, of the galleries around the view (slots GLo to
+' GHi - 1): move them (while playing), test the hero (HitH = 1), sprites
+sub Hazards:
+  asm {
+    push ix
+    xor a
+    ld (HitH),a
+    call GpHzS
+    call GpHzB
+    pop ix
+    ret
+; ---- stalactites
+GpHzS:
+    ld a,(GLo)
+    ld (GkI),a
+GpSl0:
+    ld a,(GkI)
+    ld hl,GHi
+    cp (hl)
+    ret nc
+    ld e,a
+    ld d,0
+    ld ix,HzR
+    add ix,de
+    ld hl,GOff
+    add a,(hl)
+    ld c,a
+    ld b,0
+    ld hl,StX
+    add hl,bc
+    ld a,(hl)
+    or a
+    jp z,GpSlN
+    ld (SpX),a
+    ld a,(ix+24)
+    cp FallEnd
+    jp nc,GpSl9
+    cp 31
+    jr nc,GpSl5
+    or a
+    jr nz,GpSl3
+    ; hanging: the tell starts when the hero is under it (|dx| < 28)
+    ld a,(Ph)
+    or a
+    jr nz,GpSl6
+    ld a,(SpX)
+    ld hl,Hx
+    sub (hl)
+    jr nc,GpSl1
+    neg
+GpSl1:
+    cp 28
+    jr nc,GpSl6
+    ld hl,StY
+    add hl,bc
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld hl,(Hy)
+    or a
+    sbc hl,de
+    jr c,GpSl6
+    jr z,GpSl6
+    ld a,(HzOdd)
+    or a
+    jr nz,GpSl6
+    ld (ix+24),1
+    jr GpSl6
+GpSl3:
+    ; shaking (the tell), 30 frames (2 a step: steps on even frames)
+    ld a,(Ph)
+    or a
+    jr nz,GpSl6
+    ld a,(HzOdd)
+    or a
+    jr nz,GpSl6
+    inc (ix+24)
+    inc (ix+24)
+    jr GpSl6
+GpSl5:
+    ; falling: drop = FallT[state - 31] (accelerating), until 60 px
+    ld a,(Ph)
+    or a
+    jr nz,GpSl6
+    ld a,(HzOdd)
+    or a
+    jr nz,GpSl6
+    ld a,(ix+24)
+    add a,2
+    ld (ix+24),a
+    sub 31
+    ld e,a
+    ld d,0
+    ld hl,FallT
+    add hl,de
+    ld a,(hl)
+    cp 60
+    jr c,GpSl6
+    ; on the floor: gone (a puff and a crack)
+    ld a,FallEnd
+    ld (ix+24),a
+    ld a,1
+    ld (PopSnd),a
+    ld a,10
+    ld (PufT),a
+    ld a,(SpX)
+    ld (PufX),a
+    ld hl,StY
+    add hl,bc
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld hl,66
+    add hl,de
+    ld (PufY),hl
+    jp GpSlN
+GpSl9:
+    ; gone: counts up (2 a step) past 255, then hangs again
+    ld a,(HzOdd)
+    or a
+    jp nz,GpSlN
+    ld a,(ix+24)
+    add a,2
+    jr nc,GpSl9a
+    xor a
+GpSl9a:
+    ld (ix+24),a
+    jp GpSlN
+GpSl6:
+    ; top y = StY + drop
+    ld hl,StY
+    add hl,bc
+    add hl,bc
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ; drop (0 unless falling)
+    ld a,(ix+24)
+    sub 31
+    ld l,0
+    jr c,GpSl6b
+    push de
+    ld e,a
+    ld d,0
+    ld hl,FallT
+    add hl,de
+    ld l,(hl)
+    pop de
+GpSl6b:
+    ld h,0
+    add hl,de
+    ld (Qy),hl
+    ; hit (falling, playing): |x - Hx| < 7 and top + 12 - Hy in 2..23
+    ld a,(ix+24)
+    cp 31
+    jr c,GpSl7
+    ld a,(Ph)
+    or a
+    jr nz,GpSl7
+    ld a,(SpX)
+    ld hl,Hx
+    sub (hl)
+    jr nc,GpSl6a
+    neg
+GpSl6a:
+    cp 7
+    jr nc,GpSl7
+    ld hl,(Qy)
+    ld de,12
+    add hl,de
+    ld de,(Hy)
+    or a
+    sbc hl,de
+    ld a,h
+    or a
+    jr nz,GpSl7
+    ld a,l
+    cp 2
+    jr c,GpSl7
+    cp 24
+    jr nc,GpSl7
+    ld a,2
+    ld (HitH),a
+GpSl7:
+    ld a,(HzOdd)
+    or a
+    jr nz,GpSlN
+    ; sprite y = top + 15 - CamY
+    ld hl,(Qy)
+    ld de,15
+    add hl,de
+    ld de,(CamY)
+    or a
+    sbc hl,de
+    jr c,GpSlN
+    ld a,h
+    or a
+    jr nz,GpSlN
+    ld a,l
+    cp 11
+    jr c,GpSlN
+    cp 171
+    jr nc,GpSlN
+    ld (SpY),a
+    ; shaking: x -1 / +1 every 2 frames
+    ld a,(ix+24)
+    dec a
+    cp 30
+    ld a,(SpX)
+    jr nc,GpSl8
+    ld d,a
+    ld a,(Tick)
+    and 2
+    dec a
+    add a,d
+GpSl8:
+    sub 8
+    ld (SpX),a
+    ld a,SStal
+    ld (SpP),a
+    ld a,14
+    ld (SpC),a
+    call GpAdd
+GpSlN:
+    ld hl,GkI
+    inc (hl)
+    jp GpSl0
+; ---- bats
+GpHzB:
+    ld a,(GLo)
+    ld (GkI),a
+GpBa0:
+    ld a,(GkI)
+    ld hl,GHi
+    cp (hl)
+    ret nc
+    ld e,a
+    ld d,0
+    ld ix,HzR
+    add ix,de
+    ld hl,GOff
+    add a,(hl)
+    ld c,a
+    ld b,0
+    ld hl,BatSp
+    add hl,bc
+    ld a,(hl)
+    or a
+    jp z,GpBaN
+    ld d,a
+    ld a,(Ph)
+    ld hl,HzOdd
+    or (hl)
+    jr nz,GpBa3
+    ; step (2 frames) = speed (half px a frame) + 2 x Boost
+    ld a,(Boost)
+    add a,a
+    add a,d
+    ld d,a
+    ld a,(ix+12)
+    or a
+    ld a,(ix+0)
+    jr z,GpBaL
+    add a,d
+    ld hl,BatX1
+    add hl,bc
+    cp (hl)
+    jr c,GpBa2
+    ld a,(hl)
+    ld (ix+12),0
+    jr GpBa2
+GpBaL:
+    ld hl,BatX0
+    add hl,bc
+    sub d
+    jr c,GpBaL1
+    cp (hl)
+    jr nc,GpBa2
+GpBaL1:
+    ld a,(hl)
+    ld (ix+12),1
+GpBa2:
+    ld (ix+0),a
+GpBa3:
+    ; y = BatY + BobT[(Tick + 5k) & 31] (a slow bob of +-3 px)
+    ld a,(GkI)
+    ld e,a
+    add a,a
+    add a,a
+    add a,e
+    ld hl,Tick
+    add a,(hl)
+    and 31
+    ld e,a
+    ld d,0
+    ld hl,BobT
+    add hl,de
+    ld a,(hl)
+    ld e,a
+    rlca
+    sbc a,a
+    ld d,a
+    ld hl,BatY
+    add hl,bc
+    add hl,bc
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    add hl,de
+    ld (Qy),hl
+    ; hit (playing): |x - Hx| < 9 and y - Hy + 2 in 0..16
+    ld a,(Ph)
+    or a
+    jr nz,GpBa4
+    ld a,(ix+0)
+    ld hl,Hx
+    sub (hl)
+    jr nc,GpBa3a
+    neg
+GpBa3a:
+    cp 9
+    jr nc,GpBa4
+    ld hl,(Qy)
+    inc hl
+    inc hl
+    ld de,(Hy)
+    or a
+    sbc hl,de
+    ld a,h
+    or a
+    jr nz,GpBa4
+    ld a,l
+    cp 17
+    jr nc,GpBa4
+    ld a,1
+    ld (HitH),a
+GpBa4:
+    ld a,(HzOdd)
+    or a
+    jr nz,GpBaN
+    ; sprite y = y + 7 - CamY
+    ld hl,(Qy)
+    ld de,7
+    add hl,de
+    ld de,(CamY)
+    or a
+    sbc hl,de
+    jr c,GpBaN
+    ld a,h
+    or a
+    jr nz,GpBaN
+    ld a,l
+    cp 11
+    jr c,GpBaN
+    cp 171
+    jr nc,GpBaN
+    ld (SpY),a
+    ld a,(ix+0)
+    sub 8
+    ld (SpX),a
+    ; wings: a pose every 16 frames (phase 6: 1.9 Hz, was 3.75)
+    ld a,(Tick)
+    rrca
+    rrca
+    rrca
+    rrca
+    ld hl,GkI
+    add a,(hl)
+    and 1
+    ld a,SBatA
+    jr z,GpBa5
+    ld a,SBatB
+GpBa5:
+    ld (SpP),a
+    ld a,9
+    ld (SpC),a
+    call GpAdd
+GpBaN:
+    ld hl,GkI
+    inc (hl)
+    jp GpBa0
+  }
+end sub
+
+' the HUD (row 1, both name pages) is built in HudBuf (index = column - 2)
+' in three parts, one a frame (HudF set -> parts 0, 1, 2); the blit writes it
+sub Hud:
+  if HudP = 0 then
+    for K = 0 to 2
+      U = 32
+      if K < Lives then U = TLife
+      HudBuf[K] = U
+    next
+    HudBuf[4] = TClock
+    ' the cave: icon + number (columns 18-19)
+    HudBuf[16] = TCave
+    T = Sect
+    if T > 9 then T = 9
+    HudBuf[17] = T + 48
+    HudBuf[19] = TGem
+  end if
+  if HudP = 1 then
+    ' chain: the link icon and the chain (blank at 0)
+    U = 32
+    T = 32
+    if Chain > 0 then
+      U = TLink
+      T = Chain + 48
+    end if
+    HudBuf[12] = U
+    HudBuf[13] = T
+    NumU = GemCnt
+    DgI = 20
+    DgN = 2
+    DigOut
+  end if
+  if HudP = 2 then
+    NumU = Score
+    DgI = 23
+    DgN = 5
+    DigOut
+  end if
+  HudW = 1
+  inc HudP
+  if HudP = 3 then
+    HudP = 0
+    HudF = 0
+  end if
+  return
+end sub
+
+sub DrawBar:
+  for K = 0 to 5
+    T = K + 5
+    U = TBare
+    if K < BarN then U = TBarf
+    HudBuf[T] = U
+  next
+  HudW = 1
+  return
+end sub
+
+' NumU -> DgN decimal digits at HudBuf[DgI] (subtracting powers of ten)
+sub DigOut:
+  asm {
+    ld a,(DgI)
+    ld e,a
+    ld d,0
+    ld hl,HudBuf
+    add hl,de
+    ex de,hl
+    ld a,(DgN)
+    ld b,a
+    ld a,5
+    sub b
+    add a,a
+    ld c,a
+    ld b,0
+    ld hl,Pow10
+    add hl,bc
+    ld a,(DgN)
+    ld b,a
+GpDg1:
+    push bc
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    inc hl
+    push hl
+    ld hl,(NumU)
+    ld a,47
+GpDg2:
+    inc a
+    or a
+    sbc hl,bc
+    jr nc,GpDg2
+    add hl,bc
+    ld (NumU),hl
+    ld (de),a
+    inc de
+    pop hl
+    pop bc
+    djnz GpDg1
+    ret
+  }
+end sub
+
+'' the card before each cave: its number, the goal, the exit marker
+' (2.5 s, or the button after 0.5 s)
+sub CaveCard:
+  NewScreen
+  State = StCard
+  print at 12,5, "CAVE"
+  T = Sect
+  U = 48
+  while T >= 10
+    T -= 10
+    inc U
+  end while
+  K = 17
+  if U > 48 then
+    put char U at 17,5
+    K = 18
+  end if
+  T += 48
+  put char T at K,5
+  put char TCave at 10,5
+  print at 6,9, "GET DOWN TO THE PASSAGE"
+  print at 5,11, "AT THE BOTTOM OF THE CAVE"
+  print at 7,14, "THE GREEN ARROW SHOWS"
+  print at 7,16, "THE HOLE TO DROP INTO"
+  if Sect > 3 then print at 6,20, "FASTER BATS, LESS TIME"
+  ' the arrow sprite beside its line (bobbing like in the cave)
+  Sat[0] = 109
+  Sat[1] = 24
+  Sat[2] = SArrow
+  Sat[3] = 3
+  Sat[4] = 208
+  SatOut
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+cc_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  T = Waited & 31
+  T = T >> 1
+  U = BobT[T]
+  Sat[0] = 109 + U
+  SatOut
+  if Waited >= 150 then goto cc_end
+  if Waited < 30 then goto cc_loop
+  if Press = 0 then goto cc_loop
+cc_end:
+  HideSpr
+  State = 12
+  return
+end sub
+
+' game over: a framed panel on both name pages (rows 8-14, columns 6-25)
+' with GAME OVER, the score and the cave reached
+sub OverPanel:
+  asm {
+    ld a,$18
+    call GpOp
+    ld a,$1C
+    call GpOp
+    jr GpOpE
+GpOp:
+    ld h,a
+    inc h
+    ld l,6
+    ld c,7
+GpOp1:
+    push hl
+    call GpWa
+    ld b,20
+GpOp2:
+    ld a,c
+    cp 7
+    jr z,GpOp3
+    cp 1
+    jr z,GpOp3
+    ld a,b
+    cp 20
+    jr z,GpOp5
+    cp 1
+    jr z,GpOp5
+    ld a,32
+    jr GpOp4
+GpOp5:
+    ld a,TRopev
+    jr GpOp4
+GpOp3:
+    ld a,TBarf
+GpOp4:
+    out (VDP_DATA_PORT),a
+    djnz GpOp2
+    pop hl
+    ld de,32
+    add hl,de
+    dec c
+    jr nz,GpOp1
+    ret
+GpOpE:
+  }
+  TxS = address of MsgOver
+  TxO = 299
+  TxtBoth
+  ' "SCORE 00000" and "CAVE n" (digits made in the HUD buffer)
+  TxS = address of MsgScore
+  TxO = 362
+  TxtBoth
+  TxS = address of MsgCave
+  TxO = 394
+  TxtBoth
+  NumU = Score
+  DgI = 0
+  DgN = 5
+  DigOut
+  HudBuf[5] = 0
+  TxS = address of HudBuf
+  TxO = 368
+  TxtBoth
+  T = Sect
+  if T > 9 then T = 9
+  HudBuf[0] = T + 48
+  HudBuf[1] = 0
+  TxO = 404
+  TxtBoth
+  return
+end sub
+
+' a message on both name pages: TxS = text (0-terminated), TxO = row * 32 + column
+sub TxtBoth:
+  asm {
+    ld a,$18
+    call GpTx
+    ld a,$1C
+GpTx:
+    ld hl,(TxO)
+    add a,h
+    ld h,a
+    call GpWa
+    ld hl,(TxS)
+GpTx1:
+    ld a,(hl)
+    or a
+    ret z
+    out (VDP_DATA_PORT),a
+    inc hl
+    jr GpTx1
+  }
+end sub
+
+' name page 0 shown (menus and Amy's print use $1800)
+sub Page0:
+  asm {
+    ld a,$18
+    ld (PgFH),a
+    ld a,6
+    out (VDP_CTRL_PORT),a
+    ld a,$82
+    out (VDP_CTRL_PORT),a
+    ret
+  }
+end sub
+
+' ===========================================================================
+' Z80: map probe, pendulum, rope raster/compose, VRAM blit
+
+' VDP R4 = 0: the three screen thirds share one pattern table (R3 = $9F from
+' tile screen already shares the colour table)
+sub ShareTables:
+  asm {
+    ld bc,$0400
+    call WRITE_REGISTER
+    ret
+  }
+end sub
+
+' the hook bites (Z80): anchor = hook point; rope length from the hook's
+' flight (8 px a step, diagonal 8.5; 16..64 px), angle from the aim; the
+' floor assist (the swing's lowest point stays 8 px over the first solid
+' cell under the anchor: 16 px rope minimum + 15 px of hero + 8); the hero
+' is placed on the rope, the box and the rope line tested (one try 8 px
+' shorter) -> HitR = 0 hanging, 1 no room / rope blocked
+sub CatchA:
+  asm {
+    ld a,(TX)
+    ld (AX),a
+    ld hl,(TY)
+    ld (AY),hl
+    ld a,(HookN)
+    ld c,a
+    add a,a
+    add a,a
+    add a,a
+    ld b,a
+    ld a,(HDir)
+    dec a
+    cp 2
+    ld a,b
+    jr nc,GpCt1
+    srl c
+    add a,c
+GpCt1:
+    ld c,0
+    cp 21
+    jr c,GpCt2
+    sub 12
+    rrca
+    rrca
+    rrca
+    and 31
+    ld c,a
+    cp 7
+    jr c,GpCt2
+    ld c,6
+GpCt2:
+    ld a,c
+    ld (LI),a
+    ld a,(HDir)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,ThAim
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld (Th),de
+    call FloorScan
+    ld hl,(AY)
+    ld de,39
+    add hl,de
+    ex de,hl
+    ld hl,(Qy)
+    or a
+    sbc hl,de
+    jr c,GpCt3z
+    jr z,GpCt3z
+    ld a,h
+    or a
+    jr nz,GpCt3m
+    ld a,l
+    cp 65
+    jr c,GpCt3a
+GpCt3m:
+    ld a,64
+GpCt3a:
+    rrca
+    rrca
+    rrca
+    and 31
+    ld c,a
+    ld a,(LI)
+    cp c
+    jr c,GpCt4
+    ld a,c
+GpCt3z0:
+    ld (LI),a
+    jr GpCt4
+GpCt3z:
+    xor a
+    jr GpCt3z0
+GpCt4:
+    call GpPlace
+    ld a,(HitR)
+    or a
+    ret z
+    ld a,(LI)
+    or a
+    ret z
+    dec a
+    ld (LI),a
+GpPlace:
+    call GpPos
+    call HxHy
+    call BodyTest
+    ld a,(HitR)
+    or a
+    ret nz
+    call RopeChk
+    ld a,(HitR)
+    or a
+    ret nz
+; the pull onto the rope: the box is also tested on the way from the
+; frame's start (PX, PY), every 16 px or less (a box needs 17 px across or
+; 20 down to pass a whole cell): 1, 3 or 7 points for pulls of 16-31,
+; 32-63, 64+ px
+GpSwp:
+    ld hl,(HeroX)
+    ld de,(PX)
+    or a
+    sbc hl,de
+    ld (Si),hl
+    call GpAbs
+    push hl
+    ld hl,(HeroY)
+    ld de,(PY)
+    or a
+    sbc hl,de
+    ld (Sj),hl
+    call GpAbs
+    pop de
+    ld a,h
+    cp d
+    jr nc,GpSw1
+    ld a,d
+GpSw1:
+    ld b,1
+    cp 4
+    ret c
+    cp 8
+    jr c,GpSw2
+    inc b
+    cp 16
+    jr c,GpSw2
+    inc b
+GpSw2:
+    ld c,1
+    push bc
+GpSw2a:
+    ld hl,(Si)
+    sra h
+    rr l
+    ld (Si),hl
+    ld hl,(Sj)
+    sra h
+    rr l
+    ld (Sj),hl
+    sla c
+    djnz GpSw2a
+    dec c
+    pop de
+    ld b,0
+    ld hl,(HeroY)
+    push hl
+    ld hl,(HeroX)
+    push hl
+    ld hl,(PX)
+    ld (HeroX),hl
+    ld hl,(PY)
+    ld (HeroY),hl
+GpSw3:
+    push bc
+    ld hl,(HeroX)
+    ld de,(Si)
+    add hl,de
+    ld (HeroX),hl
+    ld hl,(HeroY)
+    ld de,(Sj)
+    add hl,de
+    ld (HeroY),hl
+    call HxHy
+    call BodyTest
+    pop bc
+    ld a,(HitR)
+    or a
+    jr nz,GpSw4
+    dec c
+    jr nz,GpSw3
+GpSw4:
+    pop hl
+    ld (HeroX),hl
+    pop hl
+    ld (HeroY),hl
+    jp HxHy
+GpAbs:
+    bit 7,h
+    ret z
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+    ret
+  }
+end sub
+
+' the rope line from the anchor (AX, AY) to the head (HeroX, HeroY): 8
+' points 1/8 of it apart (at most 8 px: a whole cell cannot be skipped), rock at any -> HitR = 1 (Z80;
+' model.mjs ropeBlocked). x and y step in 1/32 px, so the high byte is the
+' cell column / row; the map pointer (IY) follows the cell (+-1, +-28: a
+' step moves at most one cell), looked up only when the cell changes.
+' Main registers: HL x, DE x step, C last column, B count; the second set
+' (exx): HL y, DE y step, C last row (the NMI is off in the play loop)
+sub RopeChk:
+  asm {
+    push iy
+    ; steps = (hero - anchor) / 8 = L sin / 2 (GpPos left L sin, 1/8 px,
+    ; in Si / Sj; the rope test always follows a GpPos)
+    ld hl,(Sj)
+    sra h
+    rr l
+    ld (Sj),hl
+    ld hl,(AY)
+    call GpX32
+    ld (W2),hl
+    ld hl,(Si)
+    sra h
+    rr l
+    ld (Si),hl
+    ld a,(AX)
+    ld l,a
+    ld h,0
+    call GpX32
+    ld (W),hl
+    ld a,(W2+1)
+    ld l,a
+    ld h,0
+    call GpMapRow
+    ld a,(W+1)
+    sub 2
+    ld e,a
+    ld d,0
+    add hl,de
+    push hl
+    pop iy
+    exx
+    ld hl,(W2)
+    ld de,(Sj)
+    ld c,h
+    exx
+    ld hl,(W)
+    ld de,(Si)
+    ld c,h
+    ld b,8
+GpRk1:
+    add hl,de
+    ld a,h
+    cp c
+    jr z,GpRk2
+    jr c,GpRkLf
+    inc iy
+    jr GpRkC
+GpRkLf:
+    dec iy
+GpRkC:
+    ld c,a
+    sub 2
+    cp 28
+    jr nc,GpRkB
+    exx
+    add hl,de
+    ld a,h
+    cp c
+    call nz,GpRkV
+    exx
+    jr GpRkL
+GpRk2:
+    exx
+    add hl,de
+    ld a,h
+    cp c
+    jr z,GpRk2n
+    call GpRkV
+    exx
+    jr GpRkL
+GpRk2n:
+    exx
+    djnz GpRk1
+    pop iy
+    ret
+GpRkL:
+    ; rock iff name >= RkLo (the map's rock combos are last in its run)
+    ld a,(RkLo)
+    cp (iy+0)
+    jr z,GpRkB
+    jr c,GpRkB
+    djnz GpRk1
+    pop iy
+    ret
+GpRkB:
+    ld a,1
+    ld (HitR),a
+    pop iy
+    ret
+; (second set) the row changed by one (flags of cp c): IY one row down/up
+GpRkV:
+    ld c,a
+    push hl
+    push de
+    ld hl,(MTp)
+    jr nc,GpRkV1
+    dec hl
+    dec hl
+    dec hl
+    dec hl
+GpRkV1:
+    inc hl
+    inc hl
+    ld (MTp),hl
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld hl,(MRp)
+    ex de,hl
+    ld (MRp),hl
+    or a
+    sbc hl,de
+    ex de,hl
+    add iy,de
+    pop de
+    pop hl
+    ret
+GpX32:
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ret
+  }
+end sub
+
+' rope speed cap: |Om| <= 24 InvL8[LI] = 6 px a frame at any length (a
+' frame's step never passes a whole cell, for the hero or the rope) (Z80)
+sub OmCap:
+  asm {
+    ld a,(LI)
+    ld e,a
+    ld d,0
+    ld hl,InvL8
+    add hl,de
+    ld l,(hl)
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld d,h
+    ld e,l
+    add hl,hl
+    add hl,de
+    ex de,hl
+    ld hl,(Om)
+    bit 7,h
+    jr nz,GpOc1
+    or a
+    sbc hl,de
+    ret c
+    ret z
+    ld (Om),de
+    ret
+GpOc1:
+    add hl,de
+    ret c
+    ld hl,0
+    or a
+    sbc hl,de
+    ld (Om),hl
+    ret
+  }
+end sub
+
+' Qx (px), Qy (world px) -> Qt = map cell (0 air, 1 rock, 2 spike, 3 water);
+' outside the map = rock
+sub CellAt:
+  asm {
+GpCaA:
+    ld a,(Qx)
+    cp 16
+    jr c,GpCa9
+    cp 240
+    jr nc,GpCa9
+    rrca
+    rrca
+    rrca
+    and 31
+    sub 2
+    ld c,a
+    ld hl,(Qy)
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld de,NRows
+    or a
+    sbc hl,de
+    jr nc,GpCa9
+    add hl,de
+    call GpMapRow
+    ld b,0
+    add hl,bc
+    ld c,(hl)
+    ld hl,CollT - CmBase
+    add hl,bc
+    ld a,(hl)
+    ld (Qt),a
+    ret
+GpCa9:
+    ld a,1
+    ld (Qt),a
+    ret
+; hl = map row (0..NRows) -> hl = that row's 28 names (MapBase = the
+; map's row pointer table, one word a row: shared rows are stored once);
+; MTp = the table entry, MRp = the row; keeps a, bc
+GpMapRow:
+    add hl,hl
+    ld de,(MapBase)
+    add hl,de
+    ld (MTp),hl
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+    ld (MRp),hl
+    ret
+  }
+end sub
+
+' Qy = top (px) of the first non-air cell under the anchor (AX, AY), within
+' 14 rows (else the 14th row's top): one GpMapRow a row
+sub FloorScan:
+  asm {
+    ld a,(AX)
+    rrca
+    rrca
+    rrca
+    and 31
+    sub 2
+    ld c,a
+    ld b,0
+    ld hl,(AY)
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    inc hl
+    push hl
+    call GpMapRow
+    ld b,14
+GpFs1:
+    ld a,l
+    add a,c
+    ld l,a
+    jr nc,GpFs1a
+    inc h
+GpFs1a:
+    ld e,(hl)
+    ld d,0
+    ld hl,CollT - CmBase
+    add hl,de
+    ld a,(hl)
+    or a
+    jr nz,GpFs2
+    ld hl,(MTp)
+    inc hl
+    inc hl
+    ld (MTp),hl
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    djnz GpFs1
+GpFs2:
+    ld a,14
+    sub b
+    ld e,a
+    ld d,0
+    pop hl
+    add hl,de
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld (Qy),hl
+    ret
+  }
+end sub
+
+' one pendulum step: Om -= g/L sin(Th); Th += Om; hero = anchor + L(sin, cos)
+sub PendStep:
+  asm {
+    ld de,(Th)
+    call GpQ
+    ld a,(LI)
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,AccPtr
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+    ld e,b
+    ld d,0
+    add hl,de
+    ld e,(hl)
+    ld hl,(Om)
+    ld a,c
+    or a
+    jr nz,GpPs1
+    or a
+    sbc hl,de
+    jr GpPs2
+GpPs1:
+    add hl,de
+GpPs2:
+    ld (Om),hl
+    ld de,(Th)
+    add hl,de
+    ld (Th),hl
+    jp GpPos
+  }
+end sub
+
+' hero position from AX, AY, LI, Th (no step)
+sub PendPos:
+  asm {
+GpPos:
+    ld de,(Th)
+    call GpOff
+    ld (Si),hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ex de,hl
+    ld a,(AX)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ld (HeroX),hl
+    ld hl,(Th)
+    ld de,16384
+    add hl,de
+    ex de,hl
+    call GpOff
+    ld (Sj),hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ex de,hl
+    ld hl,(AY)
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    ld (HeroY),hl
+    ret
+; de = theta -> b = quarter-wave index 0..128, c = 1 when sin < 0
+GpQ:
+    ld a,e
+    rlca
+    and 1
+    ld b,a
+    ld a,d
+    and 63
+    add a,a
+    or b
+    ld b,a
+    ld a,d
+    rlca
+    rlca
+    and 3
+    ld c,a
+    and 1
+    jr z,GpQ1
+    ld a,128
+    sub b
+    ld b,a
+GpQ1:
+    srl c
+    ret
+; de = theta -> hl = L * sin(theta) in 1/8 px (signed), from OffT (one
+; quarter wave a rope length: SinT x (LI + 2) / 8, precomputed by gen.py -
+; the multiply cost the frame budget)
+GpOff:
+    call GpQ
+    ld a,(LI)
+    add a,a
+    ld l,a
+    ld h,0
+    ld de,OffPtr
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+    ld e,b
+    ld d,0
+    add hl,de
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+    ld a,c
+    or a
+    ret z
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+    ret
+  }
+end sub
+
+' rope line (R0X,R0Y)-(R1X,R1Y), y + 64, R0Y <= R1Y -> rope cells RcKey
+' (name offset, ascending rows) and their rope pixels RcPat
+sub Raster:
+  asm {
+    push ix
+    call GpRas
+    pop ix
+    ret
+GpRas:
+    xor a
+    ld (RcN),a
+    ld (SlowN),a
+    dec a
+    ld hl,RcKey
+    ld (KeyP),hl
+    ld hl,RcBg
+    ld (BgP),hl
+    ld hl,(PatBase)
+    ld (PatP),hl
+    ld a,(R0Y)
+    ld e,a
+    ld a,(R1Y)
+    sub e
+    ld (Ddy),a
+    cp 128
+    ret nc
+    ld a,(R0X)
+    ld e,a
+    ld a,(R1X)
+    sub e
+    ld d,1
+    jr nc,GpRs1
+    neg
+    ld d,0
+GpRs1:
+    ld (Ddx),a
+    cp 128
+    ret nc
+    ld a,d
+    ld (Dsx),a
+    ; first cell: row = (y >> 3) - 8 (y is screen y + 64), column = x >> 3
+    ld a,(R0Y)
+    rrca
+    rrca
+    rrca
+    and 31
+    sub 8
+    ld (CRow),a
+    ld a,(R0X)
+    rrca
+    rrca
+    rrca
+    and 31
+    ld (CCol),a
+    ld a,(R0Y)
+    and 7
+    ld (Cy),a
+    ; key = row * 32 + column (row may be negative: above the view)
+    ld a,(CRow)
+    ld l,a
+    rlca
+    sbc a,a
+    ld h,a
+    push hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,(CCol)
+    ld e,a
+    ld d,0
+    add hl,de
+    ld (RKey),hl
+    ; map pointer: MapData + (CamR + row - 2) * 28 + column - 2
+    pop hl
+    dec hl
+    dec hl
+    ld de,(CamR)
+    add hl,de
+    call GpMapRow
+    ld a,(CCol)
+    sub 2
+    ld e,a
+    ld d,0
+    add hl,de
+    ld (MP),hl
+    call GpCell
+    ret c
+    ld a,(R0X)
+    and 7
+    ld e,a
+    ld d,0
+    push hl
+    ld hl,BitT
+    add hl,de
+    ld c,(hl)
+    pop hl
+    ld ix,Ddx
+    ld a,(Ddy)
+    cp (ix+0)
+    jr c,GpXm
+    ; y major: b = dy + 1 pixels, e = dx, d = dy - 1 - acc (the DDA
+    ; acc = dy / 2, += dx, x step at >= dy; counted down here: one sub a
+    ; pixel, the borrow is the x step)
+    ld b,a
+    inc b
+    ld d,a
+    srl d
+    sub d
+    dec a
+    ld d,a
+    ld e,(ix+0)
+    ld a,(Dsx)
+    or a
+    jr z,GpYL
+GpYR:
+    ld a,(hl)
+    or c
+    ld (hl),a
+    dec b
+    ret z
+    ld a,d
+    sub e
+    jr nc,GpYR2
+    add a,(ix+1)
+    ld d,a
+    inc hl
+    rrc c
+    jr c,GpYRx
+    ld a,l
+    and 7
+    jr nz,GpYR
+    call GpDown
+    ret c
+    jr GpYR
+GpYR2:
+    ld d,a
+    inc hl
+    ld a,l
+    and 7
+    jr nz,GpYR
+    call GpDown
+    ret c
+    jr GpYR
+GpYRx:
+    ; the column changed (and maybe the row: diagonal cell)
+    ld a,l
+    and 7
+    jr z,GpYRd
+    call GpRight
+    ret c
+    jr GpYR
+GpYRd:
+    call GpSt3
+    ret c
+    jr GpYR
+GpYL:
+    ld a,(hl)
+    or c
+    ld (hl),a
+    dec b
+    ret z
+    ld a,d
+    sub e
+    jr nc,GpYL2
+    add a,(ix+1)
+    ld d,a
+    inc hl
+    rlc c
+    jr c,GpYLx
+    ld a,l
+    and 7
+    jr nz,GpYL
+    call GpDown
+    ret c
+    jr GpYL
+GpYL2:
+    ld d,a
+    inc hl
+    ld a,l
+    and 7
+    jr nz,GpYL
+    call GpDown
+    ret c
+    jr GpYL
+GpYLx:
+    ld a,l
+    and 7
+    jr z,GpYLd
+    call GpLeft
+    ret c
+    jr GpYL
+GpYLd:
+    call GpSt3
+    ret c
+    jr GpYL
+GpXm:
+    ; x major: b = dx + 1 pixels, e = dy, d = dx - 1 - acc (as above)
+    ld a,(ix+0)
+    ld b,a
+    inc b
+    ld d,a
+    srl d
+    sub d
+    dec a
+    ld d,a
+    ld e,(ix+1)
+    ld a,(Dsx)
+    or a
+    jr z,GpXL
+GpXR:
+    ld a,(hl)
+    or c
+    ld (hl),a
+    dec b
+    ret z
+    ld a,d
+    sub e
+    jr nc,GpXR3
+    add a,(ix+0)
+    ld d,a
+    inc hl
+    rrc c
+    jr c,GpXRd
+    ld a,l
+    and 7
+    jr nz,GpXR
+    call GpDown
+    ret c
+    jr GpXR
+GpXR3:
+    ld d,a
+    rrc c
+    jr nc,GpXR
+    call GpRight
+    ret c
+    jr GpXR
+GpXRd:
+    ld a,l
+    and 7
+    jr z,GpXRe
+    call GpRight
+    ret c
+    jr GpXR
+GpXRe:
+    call GpSt3
+    ret c
+    jr GpXR
+GpXL:
+    ld a,(hl)
+    or c
+    ld (hl),a
+    dec b
+    ret z
+    ld a,d
+    sub e
+    jr nc,GpXL3
+    add a,(ix+0)
+    ld d,a
+    inc hl
+    rlc c
+    jr c,GpXLd
+    ld a,l
+    and 7
+    jr nz,GpXL
+    call GpDown
+    ret c
+    jr GpXL
+GpXL3:
+    ld d,a
+    rlc c
+    jr nc,GpXL
+    call GpLeft
+    ret c
+    jr GpXL
+GpXLd:
+    ld a,l
+    and 7
+    jr z,GpXLe
+    call GpLeft
+    ret c
+    jr GpXL
+GpXLe:
+    call GpSt3
+    ret c
+    jr GpXL
+; the line leaves the cell diagonally (down and sideways)
+GpSt3:
+    ; down and sideways: the row moves too
+    ld a,(CRow)
+    inc a
+    ld (CRow),a
+    ld a,(Dsx)
+    or a
+    jr z,GpSt4
+    exx
+    xor a
+    ld (Cy),a
+    ld hl,(RKey)
+    ld de,33
+    add hl,de
+    ld (RKey),hl
+    call GpMpRi
+    jp GpCellX
+GpSt4:
+    exx
+    xor a
+    ld (Cy),a
+    ld hl,(RKey)
+    ld de,31
+    add hl,de
+    ld (RKey),hl
+    call GpMpRd
+    jp GpCellX
+; the line leaves the cell: right / left keep the pixel row, down starts at
+; row 0; the cell key (row * 32 + column) and the map pointer of the cell
+; step with it (+-1, +32 / +28), no multiply per cell
+GpRight:
+    ld a,l
+    and 7
+    exx
+    ld (Cy),a
+    ld hl,(RKey)
+    inc hl
+    ld (RKey),hl
+    ld hl,(MP)
+    inc hl
+    ld (MP),hl
+    jr GpCellX
+GpLeft:
+    ld a,l
+    and 7
+    exx
+    ld (Cy),a
+    ld hl,(RKey)
+    dec hl
+    ld (RKey),hl
+    ld hl,(MP)
+    dec hl
+    ld (MP),hl
+    jr GpCellX
+GpDown:
+    exx
+    xor a
+    ld (Cy),a
+    ld hl,(RKey)
+    ld de,32
+    add hl,de
+    ld (RKey),hl
+    ld hl,CRow
+    inc (hl)
+    call GpMpRe
+    jr GpCellX
+; a row down: MP += (next row - this row), from the row table entry MTp
+; left by GpMapRow (the line only goes down)
+GpMpRe:
+    ld hl,(MTp)
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld (MTp),hl
+    ld a,(hl)
+    inc hl
+    ld h,(hl)
+    ld l,a
+    or a
+    sbc hl,de
+    ld de,(MP)
+    add hl,de
+    ld (MP),hl
+    ret
+; (the same, then a column right / left: the diagonal steps)
+GpMpRi:
+    call GpMpRe
+    inc hl
+    ld (MP),hl
+    ret
+GpMpRd:
+    call GpMpRe
+    dec hl
+    ld (MP),hl
+    ret
+; hl = the cell's pixel row: a new rope cell, or the trash cell above row 2;
+; carry = stop (below row 22, or 16 cells). Loop registers kept (exx).
+GpCell:
+    exx
+GpCellX:
+    ld a,(CRow)
+    bit 7,a
+    jr nz,GpCeT
+    cp 23
+    jp nc,GpCeS
+    cp 2
+    jr c,GpCeT
+    ld a,(RcN)
+    cp RcMax
+    jp nc,GpCeS
+    inc a
+    ld (RcN),a
+    ld de,(RKey)
+    ld hl,(KeyP)
+    ld (hl),e
+    inc hl
+    ld (hl),d
+    inc hl
+    ld (KeyP),hl
+    ; combo = map cell * 4 + the cell below -> RcBg; air/air gets the rope
+    ; colour on all rows here, the others are listed for Compose
+    ld hl,(MP)
+    ld a,(hl)
+    ld hl,(BgP)
+    ld (hl),a
+    inc hl
+    ld (BgP),hl
+    sub CmBase
+    jr z,GpCe1
+    ld a,(SlowN)
+    cp 5
+    jr nc,GpCe1
+    ld e,a
+    inc a
+    ld (SlowN),a
+    ld d,0
+    ld hl,SlowL
+    add hl,de
+    ld a,(RcN)
+    dec a
+    ld (hl),a
+GpCe1:
+    ; clear its 8 pixel rows (8-aligned)
+    ld hl,(PatP)
+    push hl
+    xor a
+    ld (hl),a
+    inc l
+    ld (hl),a
+    inc l
+    ld (hl),a
+    inc l
+    ld (hl),a
+    inc l
+    ld (hl),a
+    inc l
+    ld (hl),a
+    inc l
+    ld (hl),a
+    inc l
+    ld (hl),a
+    inc hl
+    ld (PatP),hl
+    pop hl
+    jr GpCe2
+GpCeT:
+    ld hl,(PatBase)
+    ld de,128
+    add hl,de
+GpCe2:
+    ld a,(Cy)
+    or l
+    ld l,a
+    push hl
+    exx
+    pop hl
+    or a
+    ret
+GpCeS:
+    exx
+    scf
+    ret
+  }
+end sub
+
+' each rope cell = its scroll combo (map cells above/below at the current
+' shift) + the rope pixels on rows where the combo row is air; the rope
+' disappears into rock and spikes. -> RcPat, RcCol, RcBg (the plain name)
+sub Compose:
+  asm {
+    push ix
+    push iy
+    call GpComp
+    pop iy
+    pop ix
+    ret
+GpComp:
+    ld a,(SlowN)
+    or a
+    ret z
+    ld b,a
+    ld hl,SlowL
+    ld (CurPtr),hl
+    ld hl,RcCol
+    ld (ColPtr),hl
+GpCo1:
+    push bc
+    ld hl,(CurPtr)
+    ld a,(hl)
+    inc hl
+    ld (CurPtr),hl
+    ; slow cell k: pattern PatBase + 8k, combo RcBg[k] - CmBase; its colours
+    ; go to RcCol + 8j (j = place in the slow list)
+    ld e,a
+    ld d,0
+    ld hl,RcBg
+    add hl,de
+    ld a,(hl)
+    sub CmBase
+    ld c,a
+    ex de,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,(PatBase)
+    add hl,de
+    push hl
+    pop iy
+GpCo5:
+    ; source offset = ShOff[shift] + combo * 8
+    ld a,(CamS)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,ShOff
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld l,c
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,de
+    push hl
+    ld de,ComboCol
+    add hl,de
+    ex de,hl
+    pop hl
+    ld bc,ComboPat
+    add hl,bc
+    push ix
+    ld ix,(ColPtr)
+    ld b,8
+GpCo6:
+    ld a,(de)
+    cp AirCol
+    jr nz,GpCo7
+    ld (ix+0),RopeCol
+    jr GpCo8
+GpCo7:
+    ld (ix+0),a
+    ld a,(hl)
+    ld (iy+0),a
+GpCo8:
+    inc hl
+    inc de
+    inc iy
+    inc ix
+    djnz GpCo6
+    ld (ColPtr),ix
+    pop ix
+GpCo9:
+    pop bc
+    dec b
+    jp nz,GpCo1
+    ret
+  }
+end sub
+
+' start of the frame (vertical blank): sprites; on a cell crossing the page
+' flip (R2) to the page built in the background; combos when the shift
+' changed; rope tiles; rope names on the shown page; HUD row; then up to 6
+' rows of the hidden page (30 cycles a byte: safe outside the blank)
+sub Blit:
+  asm {
+    push ix
+    push iy
+    call GpBlitM
+    pop iy
+    pop ix
+    ret
+GpBlitM:
+    xor a
+    ld (DidFull),a
+    ld (HvyB),a
+    ld hl,$1B00
+    call GpWa
+    ld hl,Sat
+    ld bc,$3100 + VDP_DATA_PORT
+    otir
+    ld a,(FullR)
+    or a
+    jp nz,GpFull
+    ld hl,(CamR)
+    ld de,(DrR)
+    or a
+    sbc hl,de
+    jr z,GpBl0
+    ; crossed a cell row: the hidden page must be for CamR, complete
+    ld hl,(CamR)
+    ld de,(BldBase)
+    or a
+    sbc hl,de
+    jr z,GpBlX1
+    ld hl,(CamR)
+    ld (BldBase),hl
+    ld a,1
+    ld (BldRow),a
+GpBlX1:
+    ; (phase 5) 10+ rows still to build: a heavy blank, the sprite halves
+    ; wait a frame (BuildSat) - the gems and hazards of the lower
+    ; galleries are live now (the GemRange fix) and overran this frame
+    ld a,(BldRow)
+    cp 14
+    jr nc,GpBlX2
+    ld a,1
+    ld (HvyB),a
+GpBlX2:
+    call GpBuildAll
+    ; flip: R2 = page / $400
+    ld a,(PgFH)
+    xor $04
+    ld (PgFH),a
+    rrca
+    rrca
+    and $3F
+    out (VDP_CTRL_PORT),a
+    ld a,$82
+    out (VDP_CTRL_PORT),a
+    ld hl,(CamR)
+    ld (DrR),hl
+    inc hl
+    ld (BldBase),hl
+    ld a,1
+    ld (BldRow),a
+    ld (DidFull),a
+    xor a
+    ld (OldN),a
+GpBl0:
+    ; (the hidden page's rows are built at the end, slow: the blank is
+    ; kept for the shown tiles)
+    ld a,(CamS)
+    ld hl,DrS
+    cp (hl)
+    jr z,GpBl2
+    ld (hl),a
+    ; a heavy blank (all the combos rewritten): DidFull tells the logic
+    push af
+    ld a,1
+    ld (DidFull),a
+    pop af
+    ; shift offset ShOff[CamS] -> CurPtr; the map's used combos (CmRuns)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,ShOff
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld (CurPtr),de
+    ld a,(MapI)
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,CmRunPtr
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    push de
+    pop iy
+GpCm1:
+    ld a,(iy+1)
+    or a
+    jr z,GpBl2
+    add a,a
+    add a,a
+    add a,a
+    ld (Cnt),a
+    ; tile offset = first * 8
+    ld l,(iy+0)
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    push hl
+    ld de,$0400
+    add hl,de
+    call GpWa
+    pop hl
+    push hl
+    ld de,(CurPtr)
+    add hl,de
+    ld de,ComboPat
+    add hl,de
+    ld a,(Cnt)
+    ld b,a
+    ld c,VDP_DATA_PORT
+    otir
+    pop hl
+    push hl
+    ld de,$2400
+    add hl,de
+    call GpWa
+    pop hl
+    ld de,(CurPtr)
+    add hl,de
+    ld de,ComboCol
+    add hl,de
+    ld a,(Cnt)
+    ld b,a
+    ld c,VDP_DATA_PORT
+    otir
+    inc iy
+    inc iy
+    jr GpCm1
+GpBl2:
+    ; water waves (camera resting on the pool): the water combos' patterns
+    ld a,(WaveF)
+    or a
+    jr z,GpBl2w
+    xor a
+    ld (WaveF),a
+    ; records: tile, its 8 pattern bytes (WaveRec + WaveO)
+    ld hl,WaveRec
+    ld de,(WaveO)
+    add hl,de
+    ld b,NWave
+GpWv1:
+    push bc
+    ld a,(hl)
+    inc hl
+    push hl
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    call GpWa
+    pop hl
+    ld bc,$0800 + VDP_DATA_PORT
+    otir
+    pop bc
+    djnz GpWv1
+GpBl2w:
+    ; rope tiles: patterns at PoolNow * 8
+    ld a,(RcN)
+    or a
+    jr z,GpBl3a
+    add a,a
+    add a,a
+    add a,a
+    ld b,a
+    ld a,(PoolNow)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    call GpWa
+    ld c,VDP_DATA_PORT
+    ld hl,(PatBase)
+    otir
+GpBl3a:
+    ; pool colours: the tiles of this pool given rock colours 2 frames ago
+    ; get the rope colour back, then this frame's rock-crossing cells
+    ld hl,PcA
+    push hl
+    ld a,(hl)
+    or a
+    jr z,GpBc2
+    ld b,a
+    inc hl
+GpBc1:
+    ld a,(hl)
+    inc hl
+    push hl
+    push bc
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,h
+    or $20
+    ld h,a
+    call GpWa
+    ld a,RopeCol
+    ld b,8
+GpBc1a:
+    out (VDP_DATA_PORT),a
+    djnz GpBc1a
+    pop bc
+    pop hl
+    djnz GpBc1
+GpBc2:
+    pop hl
+    ld a,(SlowN)
+    ld (hl),a
+    or a
+    jr z,GpBl3
+    inc hl
+    ld b,a
+    ld ix,SlowL
+    ld de,RcCol
+GpBc3:
+    ld a,(PoolNow)
+    add a,(ix+0)
+    ld (hl),a
+    inc hl
+    push hl
+    push bc
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld a,h
+    or $20
+    ld h,a
+    call GpWa
+    ex de,hl
+    ld bc,$0800 + VDP_DATA_PORT
+    otir
+    ex de,hl
+    pop bc
+    pop hl
+    inc ix
+    djnz GpBc3
+GpBl3:
+    ; names on the shown page (one rope pool, tile k = rope cell k; its
+    ; pattern was rewritten in the blank): pass 1 puts back the old cells
+    ; whose index now holds another cell, pass 2 names the moved/new ones
+    ld a,(OldN)
+    or a
+    jr z,GpBl5
+    ld b,a
+    ld c,0
+    ld ix,OldKey
+    ld iy,OldBg
+GpBl4:
+    ld a,(RcN)
+    cp c
+    jr z,GpBl4r
+    jr c,GpBl4r
+    ld l,c
+    ld h,0
+    add hl,hl
+    ld de,RcKey
+    add hl,de
+    ld a,(hl)
+    cp (ix+0)
+    jr nz,GpBl4r
+    inc hl
+    ld a,(hl)
+    cp (ix+1)
+    jr z,GpBl4n
+GpBl4r:
+    ld a,(ix+1)
+    ld hl,PgFH
+    add a,(hl)
+    ld h,a
+    ld l,(ix+0)
+    call GpWa
+    ld a,(iy+0)
+    out (VDP_DATA_PORT),a
+GpBl4n:
+    inc ix
+    inc ix
+    inc iy
+    inc c
+    djnz GpBl4
+GpBl5:
+    ld a,(RcN)
+    or a
+    jr z,GpBl7
+    ld b,a
+    ld c,0
+    ld ix,RcKey
+GpBl6:
+    ld a,(OldN)
+    cp c
+    jr z,GpBl6w
+    jr c,GpBl6w
+    ld l,c
+    ld h,0
+    add hl,hl
+    ld de,OldKey
+    add hl,de
+    ld a,(hl)
+    cp (ix+0)
+    jr nz,GpBl6w
+    inc hl
+    ld a,(hl)
+    cp (ix+1)
+    jr z,GpBl6n
+GpBl6w:
+    ld a,(ix+1)
+    ld hl,PgFH
+    add a,(hl)
+    ld h,a
+    ld l,(ix+0)
+    call GpWa
+    ld a,(PoolNow)
+    add a,c
+    out (VDP_DATA_PORT),a
+GpBl6n:
+    inc ix
+    inc ix
+    inc c
+    djnz GpBl6
+GpBl7:
+    ; this frame's rope cells are the next frame's old cells
+    ld a,(RcN)
+    ld (OldN),a
+    or a
+    jr z,GpBl8
+    ld c,a
+    ld b,0
+    ld hl,RcBg
+    ld de,OldBg
+    push bc
+    ldir
+    pop bc
+    sla c
+    ld hl,RcKey
+    ld de,OldKey
+    ldir
+GpBl8:
+    ; HUD row (both pages) when it changed, on odd frames only
+    ld a,(Tick)
+    rrca
+    jr nc,GpBl9
+    ld a,(RcN)
+    cp 8
+    jr nc,GpBl9
+    ld a,(HudW)
+    or a
+    jr z,GpBl9
+    xor a
+    ld (HudW),a
+    ld a,(PgFH)
+    call GpHudRow
+    ld a,(PgFH)
+    xor $04
+    call GpHudRow
+GpBl9:
+    ; rows of the hidden page, slow writes: 2 on even frames (the hazard
+    ; frames), 4 on odd ones (24 in 8 frames; 3 more with the camera at 2 px)
+    ld b,2
+    ld a,(Tick)
+    rrca
+    jr nc,GpBl9b
+    ld b,4
+GpBl9b:
+    ; on the rope (the camera mostly holds there): none (a crossing then
+    ; builds the rest at once); the
+    ; rope's raster and rope test need the time (phase 4)
+    ld a,(RSt)
+    cp 2
+    ret z
+GpBl9c:
+    ld a,(CamF)
+    or a
+    jr z,GpBl9a
+    inc b
+    inc b
+    inc b
+GpBl9a:
+    jp GpBuildN
+; HUD buffer -> row 1, columns 2-29 of the page a (high byte)
+GpHudRow:
+    ld h,a
+    ld l,34
+    call GpWa
+    ld hl,HudBuf
+GpOut28:
+    ld b,28
+    ld c,VDP_DATA_PORT
+GpHr1:
+    outi
+    nop
+    jp nz,GpHr1
+    ret
+; build rows of the hidden page (row 1 = HUD, rows 2-22 from NameRows)
+GpBuildAll:
+    ld b,23
+GpBuildN:
+GpBu1:
+    ld a,(BldRow)
+    cp 23
+    ret nc
+    push bc
+    cp 1
+    jr nz,GpBu2
+    ld a,(PgFH)
+    xor $04
+    call GpHudRow
+    jr GpBu4
+GpBu2:
+    ; source NameRows + (BldBase + row - 2) * 28
+    sub 2
+    ld e,a
+    ld d,0
+    ld hl,(BldBase)
+    add hl,de
+    call GpMapRow
+    push hl
+    ; destination: hidden page + row * 32 + 2
+    ld a,(BldRow)
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    inc hl
+    inc hl
+    ld a,(PgFH)
+    xor $04
+    add a,h
+    ld h,a
+    call GpWa
+    pop hl
+    call GpOut28
+GpBu4:
+    ld hl,BldRow
+    inc (hl)
+    pop bc
+    djnz GpBu1
+    ret
+; a new screen (display off): the shown page, all rows, fast
+GpFull:
+    xor a
+    ld (FullR),a
+    ld (OldN),a
+    ld a,255
+    ld (DrS),a
+    ld hl,(CamR)
+    ld (DrR),hl
+    ld (BldBase),hl
+    ld a,1
+    ld (BldRow),a
+    ld a,(PgFH)
+    xor $04
+    ld (PgFH),a
+    call GpBuildAll
+    ld a,(PgFH)
+    xor $04
+    ld (PgFH),a
+    rrca
+    rrca
+    and $3F
+    out (VDP_CTRL_PORT),a
+    ld a,$82
+    out (VDP_CTRL_PORT),a
+    ld hl,(CamR)
+    inc hl
+    ld (BldBase),hl
+    ld a,1
+    ld (BldRow),a
+    jp GpBl0
+; VRAM write address hl (keeps bc, de)
+GpWa:
+    ld a,l
+    out (VDP_CTRL_PORT),a
+    ld a,h
+    or $40
+    out (VDP_CTRL_PORT),a
+    ret
+  }
+end sub
+
+'' the left-facing stand and walk poses: the right-facing ones (Stand,
+' Walk0-3) mirrored into the poses PMir.. (VRAM only: no ROM for them)
+sub MirrorPoses:
+  asm {
+    ld a,PStand
+    ld c,PMir
+    call GpMir1
+    ld a,PWalk0
+    ld c,PMir + 1
+    ld b,4
+GpMz0:
+    push bc
+    push af
+    call GpMir1
+    pop af
+    pop bc
+    inc a
+    inc c
+    djnz GpMz0
+    ret
+; pose a (ROM) -> pose c (VRAM), mirrored: a pose = 2 sprites of 32 bytes
+; (left column 16 bytes, right column 16 bytes)
+GpMir1:
+    push bc
+    ld l,a
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld de,SprPat
+    add hl,de
+    ex de,hl
+    pop bc
+    ld l,c
+    ld h,0
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    add hl,hl
+    ld bc,VRAM_SPR_PAT
+    add hl,bc
+    call GpWa
+    ld c,2
+GpMr1:
+    ld hl,16
+    add hl,de
+    call GpMr16
+    ld h,d
+    ld l,e
+    call GpMr16
+    ld hl,32
+    add hl,de
+    ex de,hl
+    dec c
+    jr nz,GpMr1
+    ret
+; 16 bytes at hl, each bit-reversed, to the VDP
+GpMr16:
+    ld b,16
+GpMr2:
+    push bc
+    ld c,(hl)
+    ld b,8
+GpMr3:
+    rr c
+    rla
+    djnz GpMr3
+    out (VDP_DATA_PORT),a
+    pop bc
+    inc hl
+    djnz GpMr2
+    ret
+  }
+end sub
+
+' the sprite table alone (menus)
+sub SatOut:
+  asm {
+    ld hl,$1B00
+    call GpWa
+    ld hl,Sat
+    ld bc,$1900 + VDP_DATA_PORT
+    otir
+    ret
+  }
+end sub
+
+' ===========================================================================
+' frame, input, screens
+
+' before every wait: the title tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      ' the next section (A A B A, then again: the title loops the piece)
+      inc TzSec
+      TuneSec
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+sub Frame1:
+  Rearm
+  wait
+  nmi off
+  inc Tick
+  if InPlay = 1 then Blit
+  return
+end sub
+
+sub ReadPad:
+  ' (phase 5: Z80, same result: both controllers OR'ed, T = up 1, down 2,
+  ' left 4, right 8, fire 16)
+  asm {
+    ld a,(JOYPAD_1)
+    ld b,a
+    ld a,(JOYPAD_2)
+    or b
+    ld b,a
+    ld c,0
+    bit 0,b
+    jr z,GpJp1
+    set 0,c
+GpJp1:
+    bit 2,b
+    jr z,GpJp2
+    set 1,c
+GpJp2:
+    bit 3,b
+    jr z,GpJp3
+    set 2,c
+GpJp3:
+    bit 1,b
+    jr z,GpJp4
+    set 3,c
+GpJp4:
+    ld a,b
+    and $C0
+    jr z,GpJp5
+    set 4,c
+GpJp5:
+    ld a,c
+    ld (T),a
+    and 15
+    ld (Jk),a
+    ld b,a
+    ld a,(WasJ)
+    xor 15
+    ld (U),a
+    and b
+    ld (Edge),a
+    ld a,b
+    ld (WasJ),a
+    ld a,c
+    and 16
+    ld (Btn),a
+    ld b,a
+    xor a
+    ld (Press),a
+    ld a,b
+    or a
+    jr z,GpJp6
+    ld a,(WasBtn)
+    or a
+    jr nz,GpJp6
+    ld a,1
+    ld (Press),a
+GpJp6:
+    ld a,b
+    ld (WasBtn),a
+    ret
+  }
+end sub
+
+sub HideSpr:
+  Sat[0] = 208
+  SatOut
+  return
+end sub
+
+' every screen: wait, NMI off, display off, font + icons, blank names
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  Page0
+  HideSpr
+  fill mode 2 text color with $F1
+  copy IconPat count IconBytes to vram.pattern + IcVram
+  copy IconCol count IconBytes to vram.color + IcVram
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title tune: section TzSec & 3 of A A B A (7.5 s each, 30 s)
+sub TuneSec:
+  if TzOn = 1 then TuneOff
+  T = TzSec & 3
+  if T = 2 then
+    play sound SndTuneE
+    play sound SndTuneF
+    play sound SndTuneG
+    play sound SndTuneH
+  else
+    play sound SndTuneA
+    play sound SndTuneB
+    play sound SndTuneC
+    play sound SndTuneD
+  end if
+  TzOn = 1
+  TzLeft = TuneFrames
+  return
+end sub
+
+sub TuneOff:
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  TzOn = 0
+  return
+end sub
+
+sub TitlePage:
+  InPlay = 0
+  State = 12
+  NewScreen
+  ' the tune (30 s, A A B A, looping) starts from the top each time the
+  ' title comes back
+  TzSec = 0
+  TuneSec
+  ' the logo: block letters, columns 2-28, rows 3-7
+  W = 0
+  for K = 0 to 4
+    T = K + 3
+    for U = 0 to 26
+      if Logo[W] = 1 then
+        Gi = U + 2
+        put char TBlock at Gi,T
+      end if
+      inc W
+    next
+  next
+  ' the scene: the hero swings on a rope from the A, a bat flaps by along
+  ' the bottom, a gem sparkles on the E (6 sprites, at most 3 on a line)
+  copy TRopeP count 288 to vram.spr_pat + 1216
+  TsT = 0
+  TsBx = 16
+  TsBd = 1
+  TsG = 0
+  TitleAnim
+  SatOut
+  print at 11,14, "START"
+  print at 11,16, "HOW TO PLAY"
+  print at 11,18, "CREDITS"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  State = StTitle
+  WasBtn = 16
+tp_loop:
+  Frame1
+  ' (in the blank: the sprites first)
+  SatOut
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    ShowMenu
+    if TzOn = 0 then play sound SndClick
+  end if
+  TitleAnim
+  if Press = 0 then goto tp_loop
+  if TzOn = 1 then TuneOff
+  ' the score popups' sprite patterns back (the rope bands borrowed them)
+  ' (display off: the next page's NewScreen keeps it off until drawn)
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSpr
+  copy SprPat + 1216 count 288 to vram.spr_pat + 1216
+  return
+end sub
+
+' title scene, next frame's sprites -> Sat (SatOut sends them in the blank):
+' hero (2 layers) at the end of a 32 px rope swinging +-30 deg (TsDX/TsDY:
+' a pendulum from the game's sine table), the rope = 2 sprite bands of the
+' rope's slope (TsK low nibble), pose (high nibble: hang / lean R / lean L);
+' a gem on the E sparkling 8 frames in 32 (under 2 Hz); a bat crossing
+' the bottom rows and back, a wing pose every 16 frames (1.9 Hz, as in the
+' caves; phase 6: was 8 frames, 3.75 Hz)
+sub TitleAnim:
+  inc TsT
+  if TsT >= 80 then TsT = 0
+  inc TsG
+  TsA = TsK[TsT]
+  TsB = TsA >> 4
+  TsB = TsB << 3
+  T = TsDY[TsT]
+  T += 63
+  U = TsDX[TsT]
+  U += 84
+  Sat[0] = T
+  Sat[1] = U
+  Sat[2] = TsB
+  Sat[3] = 7
+  Sat[4] = T
+  Sat[5] = U
+  TsB += 4
+  Sat[6] = TsB
+  Sat[7] = 11
+  ' rope bands: tops at y 64 and 80; x = 91 and 91 + dx / 2 (a band of a
+  ' left slope starts at its right edge: x - 15)
+  TsA = TsA & 15
+  T = TsA << 2
+  T += TRopeS
+  Sat[8] = 63
+  Sat[10] = T
+  Sat[11] = 15
+  Sat[12] = 79
+  Sat[14] = T
+  Sat[15] = 15
+  U = TsDX[TsT]
+  K = U >> 1
+  if U >= 128 then K = K | 128
+  U = 91
+  K += 91
+  if TsA < 4 then
+    U -= 15
+    K -= 15
+  end if
+  Sat[9] = U
+  Sat[13] = K
+  ' gem on the E of the logo
+  Sat[16] = 13
+  Sat[17] = 201
+  T = TsG & 31
+  U = SGem
+  if T < 8 then U = SGemS
+  Sat[18] = U
+  Sat[19] = 13
+  ' bat: 1 px a frame between x 16 and 224
+  if TsBd = 1 then
+    inc TsBx
+    if TsBx >= 224 then TsBd = 0
+  else
+    dec TsBx
+    if TsBx <= 16 then TsBd = 1
+  end if
+  Sat[20] = 160
+  Sat[21] = TsBx
+  T = TsG & 16
+  U = SBatA
+  if T > 0 then U = SBatB
+  Sat[22] = U
+  Sat[23] = 9
+  Sat[24] = 208
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 9,14
+  put char 32 at 9,16
+  put char 32 at 9,18
+  T = Menu << 1
+  T += 14
+  put char 62 at 9,T
+  return
+end sub
+
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = 12
+  NewScreen
+  print at 12,3, "GRAPPLE"
+  print at 5,8, "A GAME BY AMY & CLAUDE"
+  print at 8,10, "AMY STUDIO 2026"
+  print at 4,14, "MADE IN AMY FOR THE"
+  print at 4,16, "COLECOVISION"
+  print at 8,21, "PRESS THE BUTTON"
+  ' (the state once the page is drawn: the frame checks see a still page)
+  State = StCredits
+  PageWait
+  return
+end sub
+
+sub HowTo:
+  State = StHow
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  print at 3,4, "GOAL: GET DOWN TO THE"
+  print at 3,6, "PASSAGE AT THE BOTTOM OF"
+  print at 3,8, "THE CAVE. THEN THE NEXT"
+  print at 3,10, "CAVE STARTS, A HARDER ONE."
+  print at 6,13, "THE GREEN ARROW SHOWS"
+  print at 6,15, "THE HOLE TO DROP INTO."
+  Sat[0] = 108
+  Sat[1] = 20
+  Sat[2] = SArrow
+  Sat[3] = 3
+  Sat[4] = 208
+  SatOut
+  ' a little cave passage: a dark arch in rock
+  for K = 12 to 17
+    put char TBlockt at K,17
+  next
+  put char TBlock at 12,18
+  for K = 13 to 16
+    put char TWater at K,18
+  next
+  put char TBlock at 17,18
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 0 then
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    print at 3,4, "BUTTON: FIRE THE HOOK."
+    print at 3,6, "STICK: WALK, AND AIM IT"
+    print at 3,8, "UP, DIAGONAL OR SIDEWAYS."
+    print at 3,11, "ON THE ROPE:"
+    print at 3,13, "LEFT/RIGHT PUMP THE SWING"
+    print at 3,15, "UP/DOWN REEL IN AND OUT"
+    print at 3,17, "BUTTON: LET GO AND FLY!"
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  if TimedOut = 0 then
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    print at 3,3, "TIP: AT THE LEDGE'S END,"
+    print at 3,5, "AIM UP-AND-ACROSS. SWING!"
+    put char TSpike at 3,7
+    put char TBat at 5,7
+    put char TStal at 7,7
+    print at 9,7, "COST A LIFE, AND"
+    print at 3,9, "SO DOES THE TIME BAR."
+    print at 3,11, "ROCKS SHAKE, THEN FALL."
+    print at 3,13, "CATCH AGAIN IN THE AIR"
+    print at 3,15, "TO CHAIN: MORE POINTS."
+    put char TGem at 3,17
+    print at 5,17, "GEMS: GRAB THEM IN FLIGHT"
+    put char TLink at 3,19
+    put char TLink at 4,19
+    print at 6,19, "CHAIN"
+    put char TClock at 12,19
+    put char TBarf at 13,19
+    put char TBarf at 14,19
+    put char TBare at 15,19
+    put char TLife at 18,19
+    put char TLife at 19,19
+    print at 21,19, "LIVES"
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSpr
+  return
+end sub
+
+data ComboPat bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF
+  $01,$00,$10,$00,$00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04
+  $F7,$DF,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77
+  $F7,$DF,$BF,$FD,$DB,$44,$40,$00,$FF,$DD,$BF,$FD,$F7,$EF,$FE,$77
+  $FF,$DD,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$22,$22,$77,$77,$FF,$01,$00,$10,$00,$00,$80,$00,$04
+  $01,$00,$10,$00,$00,$80,$00,$04,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF
+  $EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$DB,$44,$40,$00
+  $FF,$DD,$00,$FE,$FE,$00,$EF,$EF,$FF,$DD,$00,$FE,$FE,$00,$EF,$EF
+  $EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF
+  $01,$00,$10,$00,$00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04
+  $DD,$AB,$DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00
+  $DD,$AB,$DD,$00,$DB,$44,$40,$00,$FF,$DD,$DD,$00,$BB,$55,$BB,$00
+  $FF,$DD,$DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$F7
+  $00,$10,$00,$00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$F7
+  $DF,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77,$F7
+  $DF,$BF,$FD,$DB,$44,$40,$00,$00,$DD,$BF,$FD,$F7,$EF,$FE,$77,$F7
+  $DD,$BF,$FD,$F7,$EF,$FE,$77,$01,$DF,$BF,$FD,$F7,$EF,$FE,$77,$01
+  $00,$00,$00,$00,$00,$00,$00,$FF,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$22,$22,$77,$77,$FF,$EF,$00,$10,$00,$00,$80,$00,$04,$01
+  $00,$10,$00,$00,$80,$00,$04,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$EF
+  $EF,$00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$DB,$44,$40,$00,$00
+  $DD,$00,$FE,$FE,$00,$EF,$EF,$EF,$DD,$00,$FE,$FE,$00,$EF,$EF,$01
+  $EF,$00,$FE,$FE,$00,$EF,$EF,$01,$00,$00,$00,$00,$00,$00,$00,$FF
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$DD
+  $00,$10,$00,$00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$DD
+  $AB,$DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00,$DD
+  $AB,$DD,$00,$DB,$44,$40,$00,$00,$DD,$DD,$00,$BB,$55,$BB,$00,$DD
+  $DD,$DD,$00,$BB,$55,$BB,$00,$01,$AB,$DD,$00,$BB,$55,$BB,$00,$01
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$DD
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$F7,$DF
+  $10,$00,$00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$F7,$DF
+  $BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF
+  $BF,$FD,$DB,$44,$40,$00,$00,$00,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF
+  $BF,$FD,$F7,$EF,$FE,$77,$01,$00,$BF,$FD,$F7,$EF,$FE,$77,$01,$00
+  $00,$00,$00,$00,$00,$00,$FF,$DD,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$22,$22,$77,$77,$FF,$EF,$EF,$10,$00,$00,$80,$00,$04,$01,$00
+  $10,$00,$00,$80,$00,$04,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$EF,$EF
+  $00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$DB,$44,$40,$00,$00,$00
+  $00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$01,$00
+  $00,$FE,$FE,$00,$EF,$EF,$01,$00,$00,$00,$00,$00,$00,$00,$FF,$DD
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$DD,$AB
+  $10,$00,$00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$DD,$AB
+  $DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00,$DD,$AB
+  $DD,$00,$DB,$44,$40,$00,$00,$00,$DD,$00,$BB,$55,$BB,$00,$DD,$AB
+  $DD,$00,$BB,$55,$BB,$00,$01,$00,$DD,$00,$BB,$55,$BB,$00,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$DD,$BF
+  $00,$00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$F7,$DF,$BF
+  $00,$00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$F7,$DF,$BF
+  $FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF
+  $FD,$DB,$44,$40,$00,$00,$00,$00,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF
+  $FD,$F7,$EF,$FE,$77,$01,$00,$10,$FD,$F7,$EF,$FE,$77,$01,$00,$10
+  $00,$00,$00,$00,$00,$FF,$DD,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $22,$22,$77,$77,$FF,$EF,$EF,$00,$00,$00,$80,$00,$04,$01,$00,$10
+  $00,$00,$80,$00,$04,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00
+  $FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$DB,$44,$40,$00,$00,$00,$00
+  $FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$01,$00,$10
+  $FE,$FE,$00,$EF,$EF,$01,$00,$10,$00,$00,$00,$00,$00,$FF,$DD,$DD
+  $00,$00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$DD,$AB,$DD
+  $00,$00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$DD,$AB,$DD
+  $00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD
+  $00,$DB,$44,$40,$00,$00,$00,$00,$00,$BB,$55,$BB,$00,$DD,$AB,$DD
+  $00,$BB,$55,$BB,$00,$01,$00,$10,$00,$BB,$55,$BB,$00,$01,$00,$10
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$DD,$BF,$FD
+  $00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$F7,$DF,$BF,$FD
+  $00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$F7,$DF,$BF,$FD
+  $F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD
+  $DB,$44,$40,$00,$00,$00,$00,$00,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD
+  $F7,$EF,$FE,$77,$01,$00,$10,$00,$F7,$EF,$FE,$77,$01,$00,$10,$00
+  $00,$00,$00,$00,$FF,$DD,$00,$FE,$00,$00,$00,$00,$00,$00,$00,$22
+  $22,$77,$77,$FF,$EF,$EF,$00,$FE,$00,$80,$00,$04,$01,$00,$10,$00
+  $00,$80,$00,$04,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE
+  $FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$DB,$44,$40,$00,$00,$00,$00,$00
+  $FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$01,$00,$10,$00
+  $FE,$00,$EF,$EF,$01,$00,$10,$00,$00,$00,$00,$00,$FF,$DD,$DD,$00
+  $00,$00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$DD,$AB,$DD,$00
+  $00,$80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$DD,$AB,$DD,$00
+  $BB,$55,$BB,$00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00
+  $DB,$44,$40,$00,$00,$00,$00,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00
+  $BB,$55,$BB,$00,$01,$00,$10,$00,$BB,$55,$BB,$00,$01,$00,$10,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$DD,$BF,$FD,$F7
+  $00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$F7,$DF,$BF,$FD,$F7
+  $80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$F7,$DF,$BF,$FD,$F7
+  $EF,$FE,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$DB
+  $44,$40,$00,$00,$00,$00,$00,$00,$EF,$FE,$77,$F7,$DF,$BF,$FD,$F7
+  $EF,$FE,$77,$01,$00,$10,$00,$00,$EF,$FE,$77,$01,$00,$10,$00,$00
+  $00,$00,$00,$FF,$DD,$00,$FE,$FE,$00,$00,$00,$00,$00,$00,$22,$22
+  $77,$77,$FF,$EF,$EF,$00,$FE,$FE,$80,$00,$04,$01,$00,$10,$00,$00
+  $80,$00,$04,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$FE
+  $00,$EF,$EF,$EF,$EF,$00,$FE,$DB,$44,$40,$00,$00,$00,$00,$00,$00
+  $00,$EF,$EF,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$01,$00,$10,$00,$00
+  $00,$EF,$EF,$01,$00,$10,$00,$00,$00,$00,$00,$FF,$DD,$DD,$00,$BB
+  $00,$00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$DD,$AB,$DD,$00,$BB
+  $80,$00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$DD,$AB,$DD,$00,$BB
+  $55,$BB,$00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00,$DB
+  $44,$40,$00,$00,$00,$00,$00,$00,$55,$BB,$00,$DD,$AB,$DD,$00,$BB
+  $55,$BB,$00,$01,$00,$10,$00,$00,$55,$BB,$00,$01,$00,$10,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$DD,$BF,$FD,$F7,$EF
+  $00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$F7,$DF,$BF,$FD,$F7,$EF
+  $00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$F7,$DF,$BF,$FD,$F7,$EF
+  $FE,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$DB,$44
+  $40,$00,$00,$00,$00,$00,$00,$00,$FE,$77,$F7,$DF,$BF,$FD,$F7,$EF
+  $FE,$77,$01,$00,$10,$00,$00,$80,$FE,$77,$01,$00,$10,$00,$00,$80
+  $00,$00,$FF,$DD,$00,$FE,$FE,$00,$00,$00,$00,$00,$00,$22,$22,$77
+  $77,$FF,$EF,$EF,$00,$FE,$FE,$00,$00,$04,$01,$00,$10,$00,$00,$80
+  $00,$04,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$FE,$00
+  $EF,$EF,$EF,$EF,$00,$FE,$DB,$44,$40,$00,$00,$00,$00,$00,$00,$00
+  $EF,$EF,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$01,$00,$10,$00,$00,$80
+  $EF,$EF,$01,$00,$10,$00,$00,$80,$00,$00,$FF,$DD,$DD,$00,$BB,$55
+  $00,$00,$00,$00,$00,$22,$22,$77,$77,$FF,$DD,$AB,$DD,$00,$BB,$55
+  $00,$04,$01,$00,$10,$00,$00,$80,$00,$04,$DD,$AB,$DD,$00,$BB,$55
+  $BB,$00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00,$DB,$44
+  $40,$00,$00,$00,$00,$00,$00,$00,$BB,$00,$DD,$AB,$DD,$00,$BB,$55
+  $BB,$00,$01,$00,$10,$00,$00,$80,$BB,$00,$01,$00,$10,$00,$00,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$FF,$DD,$BF,$FD,$F7,$EF,$FE
+  $00,$00,$00,$00,$22,$22,$77,$77,$FF,$F7,$DF,$BF,$FD,$F7,$EF,$FE
+  $04,$01,$00,$10,$00,$00,$80,$00,$04,$F7,$DF,$BF,$FD,$F7,$EF,$FE
+  $77,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77,$F7,$DF,$BF,$FD,$DB,$44,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$77,$F7,$DF,$BF,$FD,$F7,$EF,$FE
+  $77,$01,$00,$10,$00,$00,$80,$00,$77,$01,$00,$10,$00,$00,$80,$00
+  $00,$FF,$DD,$00,$FE,$FE,$00,$EF,$00,$00,$00,$00,$22,$22,$77,$77
+  $FF,$EF,$EF,$00,$FE,$FE,$00,$EF,$04,$01,$00,$10,$00,$00,$80,$00
+  $04,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$EF,$EF,$00,$FE,$FE,$00,$EF
+  $EF,$EF,$EF,$00,$FE,$DB,$44,$40,$00,$00,$00,$00,$00,$00,$00,$00
+  $EF,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF,$01,$00,$10,$00,$00,$80,$00
+  $EF,$01,$00,$10,$00,$00,$80,$00,$00,$FF,$DD,$DD,$00,$BB,$55,$BB
+  $00,$00,$00,$00,$22,$22,$77,$77,$FF,$DD,$AB,$DD,$00,$BB,$55,$BB
+  $04,$01,$00,$10,$00,$00,$80,$00,$04,$DD,$AB,$DD,$00,$BB,$55,$BB
+  $00,$DD,$AB,$DD,$00,$BB,$55,$BB,$00,$DD,$AB,$DD,$00,$DB,$44,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$DD,$AB,$DD,$00,$BB,$55,$BB
+  $00,$01,$00,$10,$00,$00,$80,$00,$00,$01,$00,$10,$00,$00,$80,$00
+end data
+data ComboCol bytes
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1
+  $E1,$11,$41,$11,$11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41
+  $A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6
+  $A6,$A6,$6A,$A6,$61,$61,$61,$61,$BA,$AB,$6A,$A6,$6A,$A6,$6A,$A6
+  $BA,$AB,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$81,$81,$E1,$E1,$E1,$E1,$11,$41,$11,$11,$E1,$11,$41
+  $E1,$11,$41,$11,$11,$E1,$11,$41,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4
+  $E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$41,$41,$41,$41
+  $FE,$EF,$41,$E4,$E4,$41,$E4,$E4,$FE,$EF,$41,$E4,$E4,$41,$E4,$E4
+  $E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1
+  $E1,$11,$41,$11,$11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41
+  $C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1
+  $C2,$2C,$C2,$C1,$C1,$C1,$C1,$C1,$3C,$C3,$C2,$C1,$2C,$C2,$2C,$C1
+  $3C,$C3,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$BA
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$A6
+  $11,$41,$11,$11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$A6
+  $A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6
+  $A6,$6A,$A6,$61,$61,$61,$61,$11,$AB,$6A,$A6,$6A,$A6,$6A,$A6,$A6
+  $AB,$6A,$A6,$6A,$A6,$6A,$A6,$E1,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$E1
+  $11,$11,$11,$11,$11,$11,$11,$FE,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$11,$81,$81,$E1,$E1,$E1,$E4,$11,$41,$11,$11,$E1,$11,$41,$E1
+  $11,$41,$11,$11,$E1,$11,$41,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E4
+  $E4,$41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$41,$41,$41,$41,$11
+  $EF,$41,$E4,$E4,$41,$E4,$E4,$E4,$EF,$41,$E4,$E4,$41,$E4,$E4,$E1
+  $E4,$41,$E4,$E4,$41,$E4,$E4,$E1,$11,$11,$11,$11,$11,$11,$11,$3C
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$C2
+  $11,$41,$11,$11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$C2
+  $2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2
+  $2C,$C2,$C1,$C1,$C1,$C1,$C1,$11,$C3,$C2,$C1,$2C,$C2,$2C,$C1,$C2
+  $C3,$C2,$C1,$2C,$C2,$2C,$C1,$E1,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$E1
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$BA,$AB
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$A6,$A6
+  $41,$11,$11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$A6,$A6
+  $6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6
+  $6A,$A6,$61,$61,$61,$61,$11,$11,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6
+  $6A,$A6,$6A,$A6,$6A,$A6,$E1,$11,$6A,$A6,$6A,$A6,$6A,$A6,$E1,$11
+  $11,$11,$11,$11,$11,$11,$FE,$EF,$11,$11,$11,$11,$11,$11,$11,$11
+  $11,$81,$81,$E1,$E1,$E1,$E4,$E4,$41,$11,$11,$E1,$11,$41,$E1,$11
+  $41,$11,$11,$E1,$11,$41,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E4,$E4
+  $41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$41,$41,$41,$41,$11,$11
+  $41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E1,$11
+  $41,$E4,$E4,$41,$E4,$E4,$E1,$11,$11,$11,$11,$11,$11,$11,$3C,$C3
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$C2,$2C
+  $41,$11,$11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$C2,$2C
+  $C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C
+  $C2,$C1,$C1,$C1,$C1,$C1,$11,$11,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C
+  $C2,$C1,$2C,$C2,$2C,$C1,$E1,$11,$C2,$C1,$2C,$C2,$2C,$C1,$E1,$11
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$BA,$AB,$6A
+  $11,$11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$A6,$A6,$6A
+  $11,$11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$A6,$A6,$6A
+  $A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A
+  $A6,$61,$61,$61,$61,$11,$11,$11,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A
+  $A6,$6A,$A6,$6A,$A6,$E1,$11,$41,$A6,$6A,$A6,$6A,$A6,$E1,$11,$41
+  $11,$11,$11,$11,$11,$FE,$EF,$41,$11,$11,$11,$11,$11,$11,$11,$11
+  $81,$81,$E1,$E1,$E1,$E4,$E4,$41,$11,$11,$E1,$11,$41,$E1,$11,$41
+  $11,$11,$E1,$11,$41,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41
+  $E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$41,$41,$41,$41,$11,$11,$11
+  $E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E1,$11,$41
+  $E4,$E4,$41,$E4,$E4,$E1,$11,$41,$11,$11,$11,$11,$11,$3C,$C3,$C2
+  $11,$11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$C2,$2C,$C2
+  $11,$11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$C2,$2C,$C2
+  $C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2
+  $C1,$C1,$C1,$C1,$C1,$11,$11,$11,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2
+  $C1,$2C,$C2,$2C,$C1,$E1,$11,$41,$C1,$2C,$C2,$2C,$C1,$E1,$11,$41
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$BA,$AB,$6A,$A6
+  $11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$A6,$A6,$6A,$A6
+  $11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$A6,$A6,$6A,$A6
+  $6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6
+  $61,$61,$61,$61,$11,$11,$11,$11,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6
+  $6A,$A6,$6A,$A6,$E1,$11,$41,$11,$6A,$A6,$6A,$A6,$E1,$11,$41,$11
+  $11,$11,$11,$11,$FE,$EF,$41,$E4,$11,$11,$11,$11,$11,$11,$11,$81
+  $81,$E1,$E1,$E1,$E4,$E4,$41,$E4,$11,$E1,$11,$41,$E1,$11,$41,$11
+  $11,$E1,$11,$41,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4
+  $E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$41,$41,$41,$41,$11,$11,$11,$11
+  $E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E1,$11,$41,$11
+  $E4,$41,$E4,$E4,$E1,$11,$41,$11,$11,$11,$11,$11,$3C,$C3,$C2,$C1
+  $11,$11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$C2,$2C,$C2,$C1
+  $11,$E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$C2,$2C,$C2,$C1
+  $2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1
+  $C1,$C1,$C1,$C1,$11,$11,$11,$11,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1
+  $2C,$C2,$2C,$C1,$E1,$11,$41,$11,$2C,$C2,$2C,$C1,$E1,$11,$41,$11
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$BA,$AB,$6A,$A6,$6A
+  $11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$A6,$A6,$6A,$A6,$6A
+  $E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$A6,$A6,$6A,$A6,$6A
+  $A6,$6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$61
+  $61,$61,$61,$11,$11,$11,$11,$11,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$6A
+  $A6,$6A,$A6,$E1,$11,$41,$11,$11,$A6,$6A,$A6,$E1,$11,$41,$11,$11
+  $11,$11,$11,$FE,$EF,$41,$E4,$E4,$11,$11,$11,$11,$11,$11,$81,$81
+  $E1,$E1,$E1,$E4,$E4,$41,$E4,$E4,$E1,$11,$41,$E1,$11,$41,$11,$11
+  $E1,$11,$41,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$E4
+  $41,$E4,$E4,$E4,$E4,$41,$E4,$41,$41,$41,$41,$11,$11,$11,$11,$11
+  $41,$E4,$E4,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E1,$11,$41,$11,$11
+  $41,$E4,$E4,$E1,$11,$41,$11,$11,$11,$11,$11,$3C,$C3,$C2,$C1,$2C
+  $11,$11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$C2,$2C,$C2,$C1,$2C
+  $E1,$11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$C2,$2C,$C2,$C1,$2C
+  $C2,$2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$C1
+  $C1,$C1,$C1,$11,$11,$11,$11,$11,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$2C
+  $C2,$2C,$C1,$E1,$11,$41,$11,$11,$C2,$2C,$C1,$E1,$11,$41,$11,$11
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$11,$BA,$AB,$6A,$A6,$6A,$A6
+  $11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$A6,$A6,$6A,$A6,$6A,$A6
+  $11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$A6,$A6,$6A,$A6,$6A,$A6
+  $6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$61,$61
+  $61,$61,$11,$11,$11,$11,$11,$11,$6A,$A6,$A6,$A6,$6A,$A6,$6A,$A6
+  $6A,$A6,$E1,$11,$41,$11,$11,$E1,$6A,$A6,$E1,$11,$41,$11,$11,$E1
+  $11,$11,$FE,$EF,$41,$E4,$E4,$41,$11,$11,$11,$11,$11,$81,$81,$E1
+  $E1,$E1,$E4,$E4,$41,$E4,$E4,$41,$11,$41,$E1,$11,$41,$11,$11,$E1
+  $11,$41,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$E4,$41
+  $E4,$E4,$E4,$E4,$41,$E4,$41,$41,$41,$41,$11,$11,$11,$11,$11,$11
+  $E4,$E4,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E1,$11,$41,$11,$11,$E1
+  $E4,$E4,$E1,$11,$41,$11,$11,$E1,$11,$11,$3C,$C3,$C2,$C1,$2C,$C2
+  $11,$11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$C2,$2C,$C2,$C1,$2C,$C2
+  $11,$41,$E1,$11,$41,$11,$11,$E1,$11,$41,$C2,$2C,$C2,$C1,$2C,$C2
+  $2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$C1,$C1
+  $C1,$C1,$11,$11,$11,$11,$11,$11,$2C,$C1,$C2,$2C,$C2,$C1,$2C,$C2
+  $2C,$C1,$E1,$11,$41,$11,$11,$E1,$2C,$C1,$E1,$11,$41,$11,$11,$E1
+  $11,$11,$11,$11,$11,$11,$11,$11,$11,$BA,$AB,$6A,$A6,$6A,$A6,$6A
+  $11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$A6,$A6,$6A,$A6,$6A,$A6,$6A
+  $41,$E1,$11,$41,$11,$11,$E1,$11,$41,$A6,$A6,$6A,$A6,$6A,$A6,$6A
+  $A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A,$A6,$A6,$A6,$6A,$A6,$61,$61,$61
+  $61,$11,$11,$11,$11,$11,$11,$11,$A6,$A6,$A6,$6A,$A6,$6A,$A6,$6A
+  $A6,$E1,$11,$41,$11,$11,$E1,$11,$A6,$E1,$11,$41,$11,$11,$E1,$11
+  $11,$FE,$EF,$41,$E4,$E4,$41,$E4,$11,$11,$11,$11,$81,$81,$E1,$E1
+  $E1,$E4,$E4,$41,$E4,$E4,$41,$E4,$41,$E1,$11,$41,$11,$11,$E1,$11
+  $41,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E4,$E4,$41,$E4,$E4,$41,$E4
+  $E4,$E4,$E4,$41,$E4,$41,$41,$41,$41,$11,$11,$11,$11,$11,$11,$11
+  $E4,$E4,$E4,$41,$E4,$E4,$41,$E4,$E4,$E1,$11,$41,$11,$11,$E1,$11
+  $E4,$E1,$11,$41,$11,$11,$E1,$11,$11,$3C,$C3,$C2,$C1,$2C,$C2,$2C
+  $11,$11,$11,$11,$81,$81,$E1,$E1,$E1,$C2,$2C,$C2,$C1,$2C,$C2,$2C
+  $41,$E1,$11,$41,$11,$11,$E1,$11,$41,$C2,$2C,$C2,$C1,$2C,$C2,$2C
+  $C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C,$C1,$C2,$2C,$C2,$C1,$C1,$C1,$C1
+  $C1,$11,$11,$11,$11,$11,$11,$11,$C1,$C2,$2C,$C2,$C1,$2C,$C2,$2C
+  $C1,$E1,$11,$41,$11,$11,$E1,$11,$C1,$E1,$11,$41,$11,$11,$E1,$11
+end data
+data ShOff words
+  0, 272, 544, 816, 1088, 1360, 1632, 1904
+end data
+data CollT bytes
+  $00,$00,$00,$02,$03,$03,$01,$01,$01,$01,$01,$01,$00,$00,$02,$03
+  $03,$01,$01,$01,$01,$01,$01,$00,$00,$02,$03,$03,$01,$01,$01,$01
+  $01,$01
+end data
+data RockLo bytes
+  $86,$91,$9C
+end data
+data MapR0 bytes
+  $86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86,$86
+end data
+data MapR1 bytes
+  $86,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$86
+end data
+data MapR2 bytes
+  $86,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$86
+end data
+data MapR3 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR4 bytes
+  $86,$81,$81,$81,$81,$81,$81,$81,$81,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR5 bytes
+  $86,$89,$89,$89,$89,$89,$89,$89,$89,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR6 bytes
+  $86,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR7 bytes
+  $86,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR8 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$82,$82,$82,$82,$82,$81,$81,$81,$81,$82,$82,$81,$81,$81,$81,$81,$81,$81,$81,$86
+end data
+data MapR9 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$83,$83,$83,$83,$83,$89,$89,$89,$89,$83,$83,$89,$89,$89,$89,$89,$89,$89,$89,$86
+end data
+data MapR10 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$87,$86,$87,$87,$87,$87,$86,$87,$87,$87,$87,$86,$87,$87,$87,$87,$87,$87,$87,$86
+end data
+data MapR11 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$88,$86,$88,$88,$88,$88,$87,$88,$88,$88,$88,$86,$88,$88,$88,$88,$88,$88,$88,$86
+end data
+data MapR12 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$87,$80,$80,$80,$80,$88,$80,$80,$80,$80,$87,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR13 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR14 bytes
+  $86,$87,$87,$87,$87,$87,$87,$87,$87,$86,$87,$87,$87,$87,$87,$87,$87,$87,$86,$87,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR15 bytes
+  $86,$88,$88,$88,$88,$88,$88,$88,$88,$86,$88,$88,$88,$88,$88,$88,$88,$88,$86,$88,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR16 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$87,$80,$80,$80,$80,$80,$80,$80,$80,$86,$80,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR17 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$80,$87,$80,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR18 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR19 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$82,$81,$81,$81,$81,$81,$81,$81,$81,$86
+end data
+data MapR20 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$83,$89,$89,$89,$89,$89,$89,$89,$89,$86
+end data
+data MapR21 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$86
+end data
+data MapR22 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$86
+end data
+data MapR23 bytes
+  $86,$81,$81,$81,$81,$81,$81,$81,$81,$82,$82,$81,$81,$81,$81,$82,$82,$82,$82,$82,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR24 bytes
+  $86,$89,$89,$89,$89,$89,$89,$89,$89,$83,$83,$89,$89,$89,$89,$83,$83,$83,$83,$83,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR25 bytes
+  $86,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$87,$86,$86,$87,$87,$87,$87,$87,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR26 bytes
+  $86,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$87,$86,$88,$88,$88,$88,$88,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR27 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$88,$87,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR28 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$88,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$86
+end data
+data MapR29 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$81,$81,$81,$81,$81,$81,$81,$81,$86
+end data
+data MapR30 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$89,$89,$8A,$8A,$8A,$8A,$8A,$8A,$86
+end data
+data MapR31 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8B,$8B,$84,$84,$84,$84,$84,$84,$86
+end data
+data MapR32 bytes
+  $86,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$84,$84,$84,$84,$84,$84,$84,$84,$86
+end data
+data MapR33 bytes
+  $86,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$81,$85,$85,$85,$85,$85,$85,$85,$85,$86
+end data
+data MapR34 bytes
+  $86,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$89,$86,$86,$86,$86,$86,$86,$86,$86,$86
+end data
+data MapR35 bytes
+  $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+end data
+data MapR36 bytes
+  $91,$92,$92,$92,$92,$92,$92,$92,$92,$91,$92,$92,$92,$92,$92,$92,$92,$92,$91,$92,$92,$92,$92,$92,$92,$92,$92,$91
+end data
+data MapR37 bytes
+  $91,$93,$93,$93,$93,$93,$93,$93,$93,$91,$93,$93,$93,$93,$93,$93,$93,$93,$91,$93,$93,$93,$93,$93,$93,$93,$93,$91
+end data
+data MapR38 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$91,$80,$80,$80,$80,$80,$80,$80,$80,$92,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR39 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$92,$80,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR40 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR41 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR42 bytes
+  $91,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR43 bytes
+  $91,$94,$94,$94,$94,$94,$94,$94,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR44 bytes
+  $91,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$91,$91,$92,$92,$92,$92,$92,$92,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR45 bytes
+  $91,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$92,$91,$93,$93,$93,$93,$93,$93,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR46 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$93,$92,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR47 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR48 bytes
+  $91,$80,$80,$80,$80,$80,$80,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8D,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$91
+end data
+data MapR49 bytes
+  $91,$80,$80,$80,$80,$80,$80,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$8E,$94,$94,$94,$94,$94,$94,$94,$91
+end data
+data MapR50 bytes
+  $91,$80,$80,$80,$80,$80,$80,$92,$92,$91,$92,$92,$92,$92,$91,$92,$92,$92,$92,$91,$92,$92,$92,$92,$92,$92,$92,$91
+end data
+data MapR51 bytes
+  $91,$80,$80,$80,$80,$80,$80,$93,$93,$91,$93,$93,$93,$93,$92,$93,$93,$93,$93,$91,$93,$93,$93,$93,$93,$93,$93,$91
+end data
+data MapR52 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$92,$80,$80,$80,$80,$93,$80,$80,$80,$80,$92,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR53 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR54 bytes
+  $91,$92,$92,$92,$92,$92,$92,$92,$91,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$91,$92,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR55 bytes
+  $91,$93,$93,$93,$93,$93,$93,$93,$91,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$92,$93,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR56 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$92,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR57 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR58 bytes
+  $91,$80,$80,$80,$80,$80,$80,$8D,$8D,$8D,$8D,$8D,$8D,$8C,$8C,$8C,$8D,$8D,$8D,$8D,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$91
+end data
+data MapR59 bytes
+  $91,$80,$80,$80,$80,$80,$80,$8E,$8E,$8E,$8E,$8E,$8E,$94,$94,$94,$8E,$8E,$8E,$8E,$94,$94,$94,$94,$94,$94,$94,$91
+end data
+data MapR60 bytes
+  $91,$80,$80,$80,$80,$80,$80,$92,$92,$91,$92,$92,$92,$92,$92,$92,$92,$92,$91,$92,$92,$92,$92,$92,$92,$92,$92,$91
+end data
+data MapR61 bytes
+  $91,$80,$80,$80,$80,$80,$80,$93,$93,$91,$93,$93,$93,$93,$93,$93,$93,$93,$91,$93,$93,$93,$93,$93,$93,$93,$93,$91
+end data
+data MapR62 bytes
+  $91,$92,$92,$92,$92,$92,$92,$92,$91,$92,$92,$92,$92,$91,$92,$92,$92,$92,$91,$92,$92,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR63 bytes
+  $91,$93,$93,$93,$93,$93,$93,$93,$91,$93,$93,$93,$93,$92,$93,$93,$93,$93,$91,$93,$93,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR64 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$92,$80,$80,$80,$80,$93,$80,$80,$80,$80,$92,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR65 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$80,$80,$93,$80,$80,$80,$80,$80,$80,$80,$80,$91
+end data
+data MapR66 bytes
+  $91,$80,$80,$80,$80,$80,$80,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$92,$91
+end data
+data MapR67 bytes
+  $91,$80,$80,$80,$80,$80,$80,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$93,$91
+end data
+data MapR68 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$91
+end data
+data MapR69 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$94,$94,$95,$95,$95,$95,$95,$95,$91
+end data
+data MapR70 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$96,$96,$8F,$8F,$8F,$8F,$8F,$8F,$91
+end data
+data MapR71 bytes
+  $91,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$8F,$91
+end data
+data MapR72 bytes
+  $91,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$8C,$90,$90,$90,$90,$90,$90,$90,$90,$91
+end data
+data MapR73 bytes
+  $91,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$94,$91,$91,$91,$91,$91,$91,$91,$91,$91
+end data
+data MapR74 bytes
+  $9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C
+end data
+data MapR75 bytes
+  $9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C,$9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C
+end data
+data MapR76 bytes
+  $9C,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9C,$9D,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9C
+end data
+data MapR77 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9D,$9E,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR78 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR79 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR80 bytes
+  $9C,$97,$97,$97,$97,$97,$97,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$80,$80,$80,$80,$80,$9C
+end data
+data MapR81 bytes
+  $9C,$9F,$9F,$9F,$9F,$9F,$9F,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$80,$80,$80,$80,$80,$9C
+end data
+data MapR82 bytes
+  $9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C,$9D,$9D,$80,$80,$80,$80,$80,$9C
+end data
+data MapR83 bytes
+  $9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9C,$9E,$9E,$80,$80,$80,$80,$80,$9C
+end data
+data MapR84 bytes
+  $9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$80,$80,$80,$80,$80,$80,$80,$9D,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR85 bytes
+  $9C,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR86 bytes
+  $9C,$80,$80,$80,$80,$80,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$98,$97,$97,$97,$97,$97,$97,$9C
+end data
+data MapR87 bytes
+  $9C,$80,$80,$80,$80,$80,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$99,$9F,$9F,$9F,$9F,$9F,$9F,$9C
+end data
+data MapR88 bytes
+  $9C,$80,$80,$80,$80,$80,$9D,$9D,$9D,$9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C
+end data
+data MapR89 bytes
+  $9C,$80,$80,$80,$80,$80,$9E,$9E,$9E,$9C,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9D,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9C
+end data
+data MapR90 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$9D,$80,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR91 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR92 bytes
+  $9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C,$9D,$9D,$9D,$9D,$9C,$9D,$9D,$9D,$9D,$9C,$9D,$9D,$9D,$80,$80,$80,$80,$80,$9C
+end data
+data MapR93 bytes
+  $9C,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9C,$9E,$9E,$9E,$9E,$9D,$9E,$9E,$9E,$9E,$9C,$9E,$9E,$9E,$80,$80,$80,$80,$80,$9C
+end data
+data MapR94 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$9D,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$9D,$80,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR95 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR96 bytes
+  $9C,$80,$80,$80,$80,$80,$9D,$9D,$9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C
+end data
+data MapR97 bytes
+  $9C,$80,$80,$80,$80,$80,$9E,$9E,$9D,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9C,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9C
+end data
+data MapR98 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9D,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR99 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9E,$80,$80,$80,$80,$80,$80,$80,$9C
+end data
+data MapR100 bytes
+  $9C,$97,$97,$97,$97,$97,$97,$98,$98,$98,$98,$98,$97,$97,$97,$98,$98,$98,$98,$98,$98,$98,$80,$80,$80,$80,$80,$9C
+end data
+data MapR101 bytes
+  $9C,$9F,$9F,$9F,$9F,$9F,$9F,$99,$99,$99,$99,$99,$9F,$9F,$9F,$99,$99,$99,$99,$99,$99,$99,$80,$80,$80,$80,$80,$9C
+end data
+data MapR102 bytes
+  $9C,$80,$80,$80,$80,$80,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9D,$9C
+end data
+data MapR103 bytes
+  $9C,$80,$80,$80,$80,$80,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9E,$9C
+end data
+data MapR104 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$97,$97,$97,$97,$97,$97,$97,$97,$9C
+end data
+data MapR105 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9F,$9F,$A0,$A0,$A0,$A0,$A0,$A0,$9C
+end data
+data MapR106 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$A1,$A1,$9A,$9A,$9A,$9A,$9A,$9A,$9C
+end data
+data MapR107 bytes
+  $9C,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$9A,$9A,$9A,$9A,$9A,$9A,$9A,$9A,$9C
+end data
+data MapR108 bytes
+  $9C,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$97,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9B,$9C
+end data
+data MapR109 bytes
+  $9C,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9F,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C,$9C
+end data
+data MapT0 words
+  @MapR0, @MapR1, @MapR2, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR4
+  @MapR5, @MapR6, @MapR7, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR8
+  @MapR9, @MapR10, @MapR11, @MapR12, @MapR13, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR4
+  @MapR5, @MapR14, @MapR15, @MapR16, @MapR17, @MapR18, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR19
+  @MapR20, @MapR21, @MapR22, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR23
+  @MapR24, @MapR25, @MapR26, @MapR27, @MapR28, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR3, @MapR19
+  @MapR20, @MapR21, @MapR22, @MapR3, @MapR3, @MapR3, @MapR29, @MapR30, @MapR31, @MapR32, @MapR33, @MapR34
+  @MapR0
+end data
+data MapT1 words
+  @MapR35, @MapR36, @MapR37, @MapR38, @MapR39, @MapR40, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR42
+  @MapR43, @MapR44, @MapR45, @MapR46, @MapR47, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR48
+  @MapR49, @MapR50, @MapR51, @MapR52, @MapR53, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR42
+  @MapR43, @MapR54, @MapR55, @MapR56, @MapR57, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR58
+  @MapR59, @MapR60, @MapR61, @MapR38, @MapR39, @MapR40, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR42
+  @MapR43, @MapR62, @MapR63, @MapR64, @MapR65, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR41, @MapR48
+  @MapR49, @MapR66, @MapR67, @MapR41, @MapR41, @MapR41, @MapR68, @MapR69, @MapR70, @MapR71, @MapR72, @MapR73
+  @MapR35
+end data
+data MapT2 words
+  @MapR74, @MapR75, @MapR76, @MapR77, @MapR78, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR80
+  @MapR81, @MapR82, @MapR83, @MapR84, @MapR85, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR86
+  @MapR87, @MapR88, @MapR89, @MapR90, @MapR91, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR80
+  @MapR81, @MapR92, @MapR93, @MapR94, @MapR95, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR86
+  @MapR87, @MapR96, @MapR97, @MapR98, @MapR99, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR100
+  @MapR101, @MapR92, @MapR93, @MapR94, @MapR95, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR79, @MapR86
+  @MapR87, @MapR102, @MapR103, @MapR79, @MapR79, @MapR79, @MapR104, @MapR105, @MapR106, @MapR107, @MapR108, @MapR109
+  @MapR74
+end data
+data MapPtr words
+  @MapT0, @MapT1, @MapT2
+end data
+data CmRuns0 bytes
+  $01,$0B,$00,$00
+end data
+data CmRuns1 bytes
+  $0C,$0B,$00,$00
+end data
+data CmRuns2 bytes
+  $17,$0B,$00,$00
+end data
+data CmRunPtr words
+  @CmRuns0, @CmRuns1, @CmRuns2
+end data
+data WaveRec bytes
+  $84,$01,$00,$10,$00,$00,$80,$00,$04
+  $85,$01,$00,$10,$00,$00,$80,$00,$04
+  $8A,$FF,$DD,$BF,$FD,$F7,$EF,$FE,$77
+  $8B,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77
+  $84,$40,$00,$04,$00,$00,$20,$00,$01
+  $85,$40,$00,$04,$00,$00,$20,$00,$01
+  $8A,$FF,$DD,$BF,$FD,$F7,$EF,$FE,$77
+  $8B,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77
+  $84,$10,$00,$01,$00,$00,$08,$00,$40
+  $85,$10,$00,$01,$00,$00,$08,$00,$40
+  $8A,$FF,$DD,$BF,$FD,$F7,$EF,$FE,$77
+  $8B,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77
+  $84,$04,$00,$40,$00,$00,$02,$00,$10
+  $85,$04,$00,$40,$00,$00,$02,$00,$10
+  $8A,$FF,$DD,$BF,$FD,$F7,$EF,$FE,$77
+  $8B,$F7,$DF,$BF,$FD,$F7,$EF,$FE,$77
+  $8F,$01,$00,$10,$00,$00,$80,$00,$04
+  $90,$01,$00,$10,$00,$00,$80,$00,$04
+  $95,$FF,$DD,$00,$FE,$FE,$00,$EF,$EF
+  $96,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF
+  $8F,$40,$00,$04,$00,$00,$20,$00,$01
+  $90,$40,$00,$04,$00,$00,$20,$00,$01
+  $95,$FF,$DD,$00,$FE,$FE,$00,$EF,$EF
+  $96,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF
+  $8F,$10,$00,$01,$00,$00,$08,$00,$40
+  $90,$10,$00,$01,$00,$00,$08,$00,$40
+  $95,$FF,$DD,$00,$FE,$FE,$00,$EF,$EF
+  $96,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF
+  $8F,$04,$00,$40,$00,$00,$02,$00,$10
+  $90,$04,$00,$40,$00,$00,$02,$00,$10
+  $95,$FF,$DD,$00,$FE,$FE,$00,$EF,$EF
+  $96,$EF,$EF,$00,$FE,$FE,$00,$EF,$EF
+  $9A,$01,$00,$10,$00,$00,$80,$00,$04
+  $9B,$01,$00,$10,$00,$00,$80,$00,$04
+  $A0,$FF,$DD,$DD,$00,$BB,$55,$BB,$00
+  $A1,$DD,$AB,$DD,$00,$BB,$55,$BB,$00
+  $9A,$40,$00,$04,$00,$00,$20,$00,$01
+  $9B,$40,$00,$04,$00,$00,$20,$00,$01
+  $A0,$FF,$DD,$DD,$00,$BB,$55,$BB,$00
+  $A1,$DD,$AB,$DD,$00,$BB,$55,$BB,$00
+  $9A,$10,$00,$01,$00,$00,$08,$00,$40
+  $9B,$10,$00,$01,$00,$00,$08,$00,$40
+  $A0,$FF,$DD,$DD,$00,$BB,$55,$BB,$00
+  $A1,$DD,$AB,$DD,$00,$BB,$55,$BB,$00
+  $9A,$04,$00,$40,$00,$00,$02,$00,$10
+  $9B,$04,$00,$40,$00,$00,$02,$00,$10
+  $A0,$FF,$DD,$DD,$00,$BB,$55,$BB,$00
+  $A1,$DD,$AB,$DD,$00,$BB,$55,$BB,$00
+end data
+data MsgOver bytes
+  $47,$41,$4D,$45,$20,$4F,$56,$45,$52,$00
+end data
+data Pow10 words
+  10000, 1000, 100, 10, 1
+end data
+data MsgClear bytes
+  $43,$41,$56,$45,$20,$43,$4C,$45,$41,$52,$00
+end data
+data MsgScore bytes
+  $53,$43,$4F,$52,$45,$00
+end data
+data MsgCave bytes
+  $43,$41,$56,$45,$00
+end data
+data OffT bytes
+  $00,$00,$01,$00,$03,$00,$04,$00,$06,$00,$07,$00,$09,$00,$0B,$00
+  $0C,$00,$0E,$00,$0F,$00,$11,$00,$12,$00,$14,$00,$16,$00,$17,$00
+  $19,$00,$1A,$00,$1C,$00,$1D,$00,$1F,$00,$20,$00,$22,$00,$23,$00
+  $25,$00,$26,$00,$28,$00,$29,$00,$2B,$00,$2C,$00,$2E,$00,$2F,$00
+  $31,$00,$32,$00,$33,$00,$35,$00,$36,$00,$38,$00,$39,$00,$3B,$00
+  $3C,$00,$3D,$00,$3F,$00,$40,$00,$41,$00,$43,$00,$44,$00,$45,$00
+  $47,$00,$48,$00,$49,$00,$4B,$00,$4C,$00,$4D,$00,$4E,$00,$50,$00
+  $51,$00,$52,$00,$53,$00,$54,$00,$56,$00,$57,$00,$58,$00,$59,$00
+  $5A,$00,$5B,$00,$5C,$00,$5D,$00,$5E,$00,$60,$00,$61,$00,$62,$00
+  $63,$00,$64,$00,$65,$00,$65,$00,$66,$00,$67,$00,$68,$00,$69,$00
+  $6A,$00,$6B,$00,$6C,$00,$6D,$00,$6D,$00,$6E,$00,$6F,$00,$70,$00
+  $71,$00,$71,$00,$72,$00,$73,$00,$73,$00,$74,$00,$75,$00,$75,$00
+  $76,$00,$76,$00,$77,$00,$78,$00,$78,$00,$79,$00,$79,$00,$7A,$00
+  $7A,$00,$7B,$00,$7B,$00,$7B,$00,$7C,$00,$7C,$00,$7D,$00,$7D,$00
+  $7D,$00,$7D,$00,$7E,$00,$7E,$00,$7E,$00,$7E,$00,$7F,$00,$7F,$00
+  $7F,$00,$7F,$00,$7F,$00,$7F,$00,$7F,$00,$80,$00,$80,$00,$80,$00
+  $80,$00,$00,$00,$02,$00,$04,$00,$07,$00,$09,$00,$0B,$00,$0E,$00
+  $10,$00,$12,$00,$15,$00,$17,$00,$19,$00,$1C,$00,$1E,$00,$21,$00
+  $23,$00,$25,$00,$27,$00,$2A,$00,$2C,$00,$2E,$00,$30,$00,$33,$00
+  $35,$00,$37,$00,$3A,$00,$3C,$00,$3E,$00,$40,$00,$42,$00,$45,$00
+  $47,$00,$49,$00,$4B,$00,$4D,$00,$4F,$00,$52,$00,$54,$00,$56,$00
+  $58,$00,$5A,$00,$5C,$00,$5E,$00,$60,$00,$62,$00,$64,$00,$66,$00
+  $68,$00,$6A,$00,$6C,$00,$6E,$00,$70,$00,$72,$00,$74,$00,$76,$00
+  $78,$00,$79,$00,$7B,$00,$7D,$00,$7F,$00,$81,$00,$82,$00,$84,$00
+  $86,$00,$87,$00,$89,$00,$8B,$00,$8C,$00,$8E,$00,$90,$00,$91,$00
+  $93,$00,$94,$00,$96,$00,$97,$00,$98,$00,$9A,$00,$9B,$00,$9D,$00
+  $9E,$00,$9F,$00,$A0,$00,$A2,$00,$A3,$00,$A4,$00,$A5,$00,$A6,$00
+  $A8,$00,$A9,$00,$AA,$00,$AB,$00,$AC,$00,$AD,$00,$AE,$00,$AF,$00
+  $B0,$00,$B1,$00,$B2,$00,$B3,$00,$B4,$00,$B4,$00,$B5,$00,$B6,$00
+  $B7,$00,$B7,$00,$B8,$00,$B8,$00,$B9,$00,$BA,$00,$BA,$00,$BB,$00
+  $BB,$00,$BC,$00,$BC,$00,$BD,$00,$BD,$00,$BD,$00,$BE,$00,$BE,$00
+  $BE,$00,$BF,$00,$BF,$00,$BF,$00,$BF,$00,$BF,$00,$C0,$00,$C0,$00
+  $C0,$00,$C0,$00,$00,$00,$03,$00,$06,$00,$09,$00,$0C,$00,$0F,$00
+  $13,$00,$16,$00,$19,$00,$1C,$00,$1F,$00,$22,$00,$25,$00,$28,$00
+  $2C,$00,$2F,$00,$32,$00,$35,$00,$38,$00,$3B,$00,$3E,$00,$41,$00
+  $44,$00,$47,$00,$4A,$00,$4D,$00,$50,$00,$53,$00,$56,$00,$59,$00
+  $5C,$00,$5F,$00,$62,$00,$65,$00,$67,$00,$6A,$00,$6D,$00,$70,$00
+  $73,$00,$76,$00,$78,$00,$7B,$00,$7E,$00,$81,$00,$83,$00,$86,$00
+  $89,$00,$8B,$00,$8E,$00,$91,$00,$93,$00,$96,$00,$98,$00,$9B,$00
+  $9D,$00,$A0,$00,$A2,$00,$A5,$00,$A7,$00,$A9,$00,$AC,$00,$AE,$00
+  $B0,$00,$B3,$00,$B5,$00,$B7,$00,$B9,$00,$BB,$00,$BD,$00,$C0,$00
+  $C2,$00,$C4,$00,$C6,$00,$C8,$00,$CA,$00,$CB,$00,$CD,$00,$CF,$00
+  $D1,$00,$D3,$00,$D5,$00,$D6,$00,$D8,$00,$DA,$00,$DB,$00,$DD,$00
+  $DE,$00,$E0,$00,$E2,$00,$E3,$00,$E4,$00,$E6,$00,$E7,$00,$E8,$00
+  $EA,$00,$EB,$00,$EC,$00,$ED,$00,$EF,$00,$F0,$00,$F1,$00,$F2,$00
+  $F3,$00,$F4,$00,$F5,$00,$F6,$00,$F6,$00,$F7,$00,$F8,$00,$F9,$00
+  $FA,$00,$FA,$00,$FB,$00,$FB,$00,$FC,$00,$FC,$00,$FD,$00,$FD,$00
+  $FE,$00,$FE,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$FF,$00,$00,$01
+  $00,$01,$00,$01,$00,$01,$00,$00,$03,$00,$08,$00,$0B,$00,$0F,$00
+  $13,$00,$17,$00,$1B,$00,$1F,$00,$23,$00,$27,$00,$2B,$00,$2E,$00
+  $32,$00,$37,$00,$3A,$00,$3E,$00,$42,$00,$46,$00,$49,$00,$4D,$00
+  $51,$00,$55,$00,$59,$00,$5D,$00,$60,$00,$64,$00,$68,$00,$6B,$00
+  $6F,$00,$73,$00,$76,$00,$7A,$00,$7E,$00,$81,$00,$85,$00,$88,$00
+  $8C,$00,$8F,$00,$93,$00,$96,$00,$9A,$00,$9D,$00,$A1,$00,$A4,$00
+  $A8,$00,$AB,$00,$AE,$00,$B1,$00,$B5,$00,$B8,$00,$BB,$00,$BE,$00
+  $C1,$00,$C4,$00,$C8,$00,$CB,$00,$CE,$00,$D0,$00,$D3,$00,$D7,$00
+  $D9,$00,$DC,$00,$DF,$00,$E2,$00,$E4,$00,$E7,$00,$EA,$00,$EC,$00
+  $F0,$00,$F2,$00,$F5,$00,$F7,$00,$FA,$00,$FC,$00,$FE,$00,$00,$01
+  $03,$01,$05,$01,$07,$01,$0A,$01,$0C,$01,$0E,$01,$10,$01,$12,$01
+  $14,$01,$16,$01,$18,$01,$1A,$01,$1B,$01,$1D,$01,$1F,$01,$21,$01
+  $22,$01,$24,$01,$26,$01,$27,$01,$28,$01,$2A,$01,$2C,$01,$2D,$01
+  $2E,$01,$2F,$01,$31,$01,$32,$01,$33,$01,$34,$01,$35,$01,$36,$01
+  $37,$01,$38,$01,$39,$01,$39,$01,$3A,$01,$3B,$01,$3B,$01,$3C,$01
+  $3C,$01,$3D,$01,$3E,$01,$3E,$01,$3E,$01,$3F,$01,$3F,$01,$3F,$01
+  $40,$01,$40,$01,$40,$01,$40,$01,$00,$00,$04,$00,$09,$00,$0E,$00
+  $12,$00,$17,$00,$1C,$00,$21,$00,$25,$00,$2A,$00,$2F,$00,$33,$00
+  $38,$00,$3C,$00,$42,$00,$46,$00,$4B,$00,$4F,$00,$54,$00,$58,$00
+  $5D,$00,$61,$00,$66,$00,$6B,$00,$6F,$00,$74,$00,$78,$00,$7D,$00
+  $81,$00,$85,$00,$8A,$00,$8E,$00,$93,$00,$97,$00,$9B,$00,$9F,$00
+  $A4,$00,$A8,$00,$AC,$00,$B1,$00,$B4,$00,$B9,$00,$BD,$00,$C1,$00
+  $C5,$00,$C9,$00,$CD,$00,$D1,$00,$D5,$00,$D9,$00,$DD,$00,$E1,$00
+  $E4,$00,$E8,$00,$EC,$00,$F0,$00,$F3,$00,$F7,$00,$FA,$00,$FE,$00
+  $02,$01,$05,$01,$08,$01,$0C,$01,$0F,$01,$12,$01,$16,$01,$19,$01
+  $1C,$01,$20,$01,$23,$01,$26,$01,$29,$01,$2C,$01,$2F,$01,$31,$01
+  $34,$01,$37,$01,$3A,$01,$3C,$01,$3F,$01,$41,$01,$44,$01,$47,$01
+  $49,$01,$4B,$01,$4D,$01,$50,$01,$53,$01,$54,$01,$56,$01,$59,$01
+  $5B,$01,$5C,$01,$5F,$01,$61,$01,$62,$01,$64,$01,$66,$01,$68,$01
+  $69,$01,$6B,$01,$6C,$01,$6E,$01,$6F,$01,$71,$01,$71,$01,$73,$01
+  $74,$01,$75,$01,$77,$01,$77,$01,$78,$01,$79,$01,$7A,$01,$7A,$01
+  $7B,$01,$7C,$01,$7D,$01,$7D,$01,$7E,$01,$7E,$01,$7F,$01,$7F,$01
+  $7F,$01,$80,$01,$80,$01,$80,$01,$80,$01,$00,$00,$05,$00,$0B,$00
+  $10,$00,$15,$00,$1B,$00,$21,$00,$26,$00,$2B,$00,$31,$00,$37,$00
+  $3C,$00,$41,$00,$46,$00,$4D,$00,$52,$00,$57,$00,$5C,$00,$62,$00
+  $67,$00,$6C,$00,$71,$00,$77,$00,$7D,$00,$82,$00,$87,$00,$8C,$00
+  $92,$00,$96,$00,$9B,$00,$A1,$00,$A6,$00,$AB,$00,$B0,$00,$B5,$00
+  $BA,$00,$BF,$00,$C4,$00,$C9,$00,$CE,$00,$D2,$00,$D8,$00,$DC,$00
+  $E1,$00,$E6,$00,$EB,$00,$EF,$00,$F4,$00,$F8,$00,$FD,$00,$02,$01
+  $06,$01,$0A,$01,$0F,$01,$13,$01,$18,$01,$1C,$01,$20,$01,$24,$01
+  $28,$01,$2D,$01,$30,$01,$34,$01,$39,$01,$3C,$01,$40,$01,$44,$01
+  $48,$01,$4B,$01,$50,$01,$53,$01,$57,$01,$5A,$01,$5E,$01,$61,$01
+  $64,$01,$67,$01,$6B,$01,$6E,$01,$71,$01,$74,$01,$77,$01,$7A,$01
+  $7D,$01,$80,$01,$82,$01,$85,$01,$88,$01,$8B,$01,$8D,$01,$8F,$01
+  $92,$01,$95,$01,$96,$01,$99,$01,$9C,$01,$9D,$01,$9F,$01,$A2,$01
+  $A4,$01,$A5,$01,$A7,$01,$A9,$01,$AB,$01,$AC,$01,$AE,$01,$AF,$01
+  $B1,$01,$B2,$01,$B3,$01,$B5,$01,$B6,$01,$B7,$01,$B8,$01,$B9,$01
+  $B9,$01,$BA,$01,$BB,$01,$BC,$01,$BD,$01,$BE,$01,$BE,$01,$BF,$01
+  $BF,$01,$BF,$01,$C0,$01,$C0,$01,$C0,$01,$C0,$01,$00,$00,$06,$00
+  $0D,$00,$13,$00,$19,$00,$1F,$00,$26,$00,$2C,$00,$32,$00,$38,$00
+  $3F,$00,$45,$00,$4B,$00,$51,$00,$58,$00,$5E,$00,$64,$00,$6A,$00
+  $70,$00,$76,$00,$7C,$00,$82,$00,$89,$00,$8F,$00,$95,$00,$9B,$00
+  $A1,$00,$A7,$00,$AC,$00,$B2,$00,$B8,$00,$BE,$00,$C4,$00,$CA,$00
+  $CF,$00,$D5,$00,$DB,$00,$E1,$00,$E6,$00,$EC,$00,$F1,$00,$F7,$00
+  $FC,$00,$02,$01,$07,$01,$0D,$01,$12,$01,$17,$01,$1C,$01,$22,$01
+  $27,$01,$2C,$01,$31,$01,$36,$01,$3B,$01,$40,$01,$45,$01,$4A,$01
+  $4E,$01,$53,$01,$58,$01,$5C,$01,$61,$01,$66,$01,$6A,$01,$6E,$01
+  $73,$01,$77,$01,$7B,$01,$80,$01,$84,$01,$88,$01,$8C,$01,$90,$01
+  $94,$01,$97,$01,$9B,$01,$9F,$01,$A3,$01,$A6,$01,$AA,$01,$AD,$01
+  $B1,$01,$B4,$01,$B7,$01,$BA,$01,$BD,$01,$C1,$01,$C4,$01,$C6,$01
+  $C9,$01,$CC,$01,$CF,$01,$D1,$01,$D4,$01,$D7,$01,$D9,$01,$DB,$01
+  $DE,$01,$E0,$01,$E2,$01,$E4,$01,$E6,$01,$E8,$01,$EA,$01,$EC,$01
+  $ED,$01,$EF,$01,$F1,$01,$F2,$01,$F4,$01,$F5,$01,$F6,$01,$F7,$01
+  $F8,$01,$F9,$01,$FA,$01,$FB,$01,$FC,$01,$FD,$01,$FE,$01,$FE,$01
+  $FF,$01,$FF,$01,$FF,$01,$00,$02,$00,$02,$00,$02,$00,$02
+end data
+data OffPtr words
+  @OffT + 0, @OffT + 258, @OffT + 516, @OffT + 774, @OffT + 1032, @OffT + 1290, @OffT + 1548
+end data
+data AccT bytes
+  $00,$01,$02,$04,$05,$06,$07,$08,$0A,$0B,$0C,$0D,$0E,$10,$11,$12
+  $13,$14,$15,$17,$18,$19,$1A,$1B,$1C,$1E,$1F,$20,$21,$22,$23,$24
+  $25,$27,$28,$29,$2A,$2B,$2C,$2D,$2E,$2F,$30,$31,$32,$33,$34,$35
+  $36,$37,$38,$39,$3A,$3B,$3C,$3D,$3E,$3F,$40,$41,$42,$43,$43,$44
+  $45,$46,$47,$48,$48,$49,$4A,$4B,$4C,$4C,$4D,$4E,$4F,$4F,$50,$51
+  $51,$52,$53,$53,$54,$54,$55,$56,$56,$57,$57,$58,$58,$59,$59,$5A
+  $5A,$5B,$5B,$5C,$5C,$5C,$5D,$5D,$5E,$5E,$5E,$5F,$5F,$5F,$5F,$60
+  $60,$60,$60,$61,$61,$61,$61,$61,$61,$61,$62,$62,$62,$62,$62,$62
+  $62,$00,$01,$02,$02,$03,$04,$05,$06,$06,$07,$08,$09,$0A,$0A,$0B
+  $0C,$0D,$0E,$0E,$0F,$10,$11,$11,$12,$13,$14,$14,$15,$16,$17,$17
+  $18,$19,$1A,$1A,$1B,$1C,$1D,$1D,$1E,$1F,$1F,$20,$21,$22,$22,$23
+  $24,$24,$25,$26,$26,$27,$27,$28,$29,$29,$2A,$2B,$2B,$2C,$2C,$2D
+  $2E,$2E,$2F,$2F,$30,$30,$31,$31,$32,$32,$33,$33,$34,$34,$35,$35
+  $36,$36,$37,$37,$37,$38,$38,$39,$39,$39,$3A,$3A,$3B,$3B,$3B,$3C
+  $3C,$3C,$3D,$3D,$3D,$3D,$3E,$3E,$3E,$3E,$3F,$3F,$3F,$3F,$3F,$40
+  $40,$40,$40,$40,$40,$40,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+  $41,$41,$00,$01,$01,$02,$02,$03,$04,$04,$05,$05,$06,$07,$07,$08
+  $08,$09,$0A,$0A,$0B,$0B,$0C,$0C,$0D,$0E,$0E,$0F,$0F,$10,$10,$11
+  $12,$12,$13,$13,$14,$14,$15,$15,$16,$17,$17,$18,$18,$19,$19,$1A
+  $1A,$1B,$1B,$1C,$1C,$1D,$1D,$1E,$1E,$1F,$1F,$1F,$20,$20,$21,$21
+  $22,$22,$23,$23,$23,$24,$24,$25,$25,$25,$26,$26,$27,$27,$27,$28
+  $28,$28,$29,$29,$29,$2A,$2A,$2A,$2B,$2B,$2B,$2B,$2C,$2C,$2C,$2C
+  $2D,$2D,$2D,$2D,$2E,$2E,$2E,$2E,$2E,$2F,$2F,$2F,$2F,$2F,$2F,$30
+  $30,$30,$30,$30,$30,$30,$30,$30,$31,$31,$31,$31,$31,$31,$31,$31
+  $31,$31,$31,$00,$00,$01,$01,$02,$02,$03,$03,$04,$04,$05,$05,$06
+  $06,$07,$07,$08,$08,$09,$09,$0A,$0A,$0A,$0B,$0B,$0C,$0C,$0D,$0D
+  $0E,$0E,$0F,$0F,$0F,$10,$10,$11,$11,$12,$12,$12,$13,$13,$14,$14
+  $15,$15,$15,$16,$16,$17,$17,$17,$18,$18,$18,$19,$19,$1A,$1A,$1A
+  $1B,$1B,$1B,$1C,$1C,$1C,$1D,$1D,$1D,$1E,$1E,$1E,$1F,$1F,$1F,$1F
+  $20,$20,$20,$21,$21,$21,$21,$22,$22,$22,$22,$22,$23,$23,$23,$23
+  $24,$24,$24,$24,$24,$24,$25,$25,$25,$25,$25,$25,$26,$26,$26,$26
+  $26,$26,$26,$26,$26,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27,$27
+  $27,$27,$27,$27,$00,$00,$01,$01,$02,$02,$02,$03,$03,$04,$04,$04
+  $05,$05,$06,$06,$06,$07,$07,$08,$08,$08,$09,$09,$09,$0A,$0A,$0B
+  $0B,$0B,$0C,$0C,$0C,$0D,$0D,$0E,$0E,$0E,$0F,$0F,$0F,$10,$10,$10
+  $11,$11,$11,$12,$12,$12,$13,$13,$13,$14,$14,$14,$15,$15,$15,$16
+  $16,$16,$16,$17,$17,$17,$18,$18,$18,$18,$19,$19,$19,$19,$1A,$1A
+  $1A,$1A,$1B,$1B,$1B,$1B,$1C,$1C,$1C,$1C,$1C,$1D,$1D,$1D,$1D,$1D
+  $1D,$1E,$1E,$1E,$1E,$1E,$1E,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$1F,$20
+  $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$21,$21
+  $21,$21,$21,$21,$21,$00,$00,$01,$01,$01,$02,$02,$02,$03,$03,$03
+  $04,$04,$04,$05,$05,$05,$06,$06,$06,$07,$07,$07,$08,$08,$08,$09
+  $09,$09,$0A,$0A,$0A,$0B,$0B,$0B,$0C,$0C,$0C,$0D,$0D,$0D,$0D,$0E
+  $0E,$0E,$0F,$0F,$0F,$10,$10,$10,$10,$11,$11,$11,$11,$12,$12,$12
+  $13,$13,$13,$13,$14,$14,$14,$14,$14,$15,$15,$15,$15,$16,$16,$16
+  $16,$16,$17,$17,$17,$17,$17,$18,$18,$18,$18,$18,$18,$19,$19,$19
+  $19,$19,$19,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A,$1B,$1B,$1B,$1B,$1B
+  $1B,$1B,$1B,$1B,$1B,$1B,$1B,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$00,$00,$01,$01,$01,$01,$02,$02,$02,$03
+  $03,$03,$04,$04,$04,$04,$05,$05,$05,$06,$06,$06,$07,$07,$07,$07
+  $08,$08,$08,$09,$09,$09,$09,$0A,$0A,$0A,$0A,$0B,$0B,$0B,$0C,$0C
+  $0C,$0C,$0D,$0D,$0D,$0D,$0E,$0E,$0E,$0E,$0F,$0F,$0F,$0F,$10,$10
+  $10,$10,$10,$11,$11,$11,$11,$11,$12,$12,$12,$12,$13,$13,$13,$13
+  $13,$13,$14,$14,$14,$14,$14,$14,$15,$15,$15,$15,$15,$15,$16,$16
+  $16,$16,$16,$16,$16,$16,$17,$17,$17,$17,$17,$17,$17,$17,$17,$17
+  $18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18
+  $18,$18,$18,$18,$18,$18,$18
+end data
+data TRopeP bytes
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01
+  $01,$02,$02,$04,$04,$08,$08,$10,$10,$20,$20,$40,$40,$80,$80,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$02,$02,$04,$04,$04,$08,$08,$10,$10,$10,$20,$20,$40,$40
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$02,$02,$02,$02,$04,$04,$04,$04,$08,$08,$08,$08,$10,$10
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $01,$01,$01,$01,$02,$02,$02,$02,$02,$02,$02,$02,$04,$04,$04,$04
+  $80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80,$80
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$80,$80,$40,$40,$40,$40,$40,$40,$40,$40,$20,$20,$20,$20
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$40,$40,$40,$40,$20,$20,$20,$20,$10,$10,$10,$10,$08,$08
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$80,$40,$40,$20,$20,$20,$10,$10,$08,$08,$08,$04,$04,$02,$02
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$40,$40,$20,$20,$10,$10,$08,$08,$04,$04,$02,$02,$01,$01,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$80
+end data
+data TsDX bytes
+  $00,$01,$02,$04,$05,$06,$07,$08,$0A,$0A,$0C,$0C,$0D,$0E,$0E,$0F
+  $0F,$0F,$10,$10,$10,$10,$10,$0F,$0F,$0F,$0E,$0E,$0D,$0C,$0C,$0A
+  $0A,$09,$07,$06,$05,$04,$02,$01,$00,$FE,$FD,$FC,$FB,$F9,$F8,$F7
+  $F6,$F5,$F4,$F3,$F3,$F2,$F2,$F1,$F1,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+  $F1,$F1,$F1,$F2,$F3,$F3,$F4,$F5,$F6,$F7,$F8,$F9,$FA,$FC,$FD,$FE
+end data
+data TsDY bytes
+  $20,$20,$20,$20,$20,$1F,$1F,$1F,$1E,$1E,$1E,$1E,$1D,$1D,$1D,$1C
+  $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1D,$1D,$1D,$1E,$1E,$1E
+  $1E,$1F,$1F,$1F,$20,$20,$20,$20,$20,$20,$20,$20,$20,$1F,$1F,$1F
+  $1E,$1E,$1E,$1D,$1D,$1D,$1D,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+  $1C,$1C,$1C,$1D,$1D,$1D,$1E,$1E,$1E,$1F,$1F,$1F,$20,$20,$20,$20
+end data
+data TsK bytes
+  $04,$04,$05,$05,$05,$16,$16,$16,$16,$17,$17,$17,$17,$17,$18,$18
+  $18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$18,$17,$17,$17,$17,$17
+  $16,$16,$16,$16,$05,$05,$05,$04,$04,$04,$03,$03,$03,$22,$22,$22
+  $22,$21,$21,$21,$21,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
+  $20,$20,$20,$20,$21,$21,$21,$21,$21,$22,$22,$22,$23,$03,$03,$04
+end data
+data AccPtr words
+  @AccT + 0, @AccT + 129, @AccT + 258, @AccT + 387, @AccT + 516, @AccT + 645, @AccT + 774
+end data
+data InvL8 bytes
+  $A3,$6D,$51,$41,$36,$2F,$29
+end data
+data HkDX bytes
+  $00,$06,$FA,$08,$F8
+end data
+data HkDY bytes
+  $F8,$FA,$FA,$00,$00
+end data
+data HkUX bytes
+  $00,$03,$FD,$04,$FC,$00,$02,$FE,$02,$FE,$00,$01,$FF,$01,$FF
+end data
+data HkUY bytes
+  $FC,$FD,$FD,$00,$00,$FE,$FE,$FE,$00,$00,$FF,$FF,$FF,$00,$00
+end data
+data ThAim words
+  0, 57344, 8192, 49152, 16384
+end data
+data BitT bytes
+  $80,$40,$20,$10,$08,$04,$02,$01
+end data
+data SprPat bytes
+  $00,$02,$02,$03,$07,$00,$04,$0F,$0F,$07,$06,$06,$06,$0E,$00,$00
+  $00,$40,$40,$C0,$E0,$00,$20,$F0,$F0,$E0,$60,$60,$60,$70,$00,$00
+  $01,$00,$00,$00,$00,$05,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $80,$00,$00,$00,$00,$A0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$04,$02,$03,$07,$00,$00,$07,$07,$03,$01,$01,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$00,$20,$F0,$F8,$F0,$B0,$98,$CC,$EE,$00,$00
+  $0C,$00,$00,$00,$00,$05,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$A0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$00,$04,$0F,$1F,$0F,$0D,$19,$33,$77,$00,$00
+  $00,$20,$40,$C0,$E0,$00,$00,$E0,$E0,$C0,$80,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$05,$03,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $30,$00,$00,$00,$00,$A0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$03,$07,$00,$04,$0F,$0F,$07,$06,$06,$0C,$18,$00,$00
+  $00,$00,$00,$C0,$E0,$00,$20,$F0,$F0,$E0,$60,$60,$30,$18,$00,$00
+  $01,$00,$00,$00,$00,$05,$03,$00,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$A0,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$07,$0F,$0B,$03,$03,$03,$03,$03,$00,$00
+  $C0,$F0,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$C0,$40,$40,$60,$00,$00
+  $00,$00,$03,$03,$03,$01,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$40,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$00,$00,$0F,$3F,$07,$0E,$18,$18,$38,$00,$00
+  $00,$00,$00,$C0,$E0,$00,$00,$F0,$FC,$E0,$70,$18,$18,$1C,$00,$00
+  $00,$00,$00,$00,$00,$05,$07,$20,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$A0,$E0,$04,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$07,$00,$00,$0F,$7F,$0F,$0F,$1C,$1E,$0E,$00,$00,$00,$00
+  $00,$C0,$E0,$00,$00,$F0,$FE,$F0,$F0,$38,$78,$70,$00,$00,$00,$00
+  $00,$00,$00,$05,$07,$40,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$A0,$E0,$02,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$03,$07,$00,$00,$0F,$3F,$0F,$07,$06,$0C,$18,$10,$30,$00,$00
+  $00,$C0,$E0,$00,$00,$F0,$FC,$F0,$E0,$60,$30,$18,$08,$0C,$00,$00
+  $00,$00,$00,$05,$07,$20,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$A0,$E0,$04,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$0C,$06,$07,$0F,$0F,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$18,$30,$60,$E0,$F0,$F0,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$10,$00,$00,$00,$00,$00,$00,$07,$05,$07,$06,$03,$00,$00,$00
+  $00,$08,$00,$00,$00,$00,$00,$00,$E0,$A0,$E0,$60,$C0,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$01,$03,$03,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$FB,$FF,$F8,$FB,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$78,$FC,$AC,$DC,$FC,$78,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$07,$0F,$1B,$03,$03,$06,$0C,$18,$00,$00
+  $C0,$F0,$00,$00,$00,$00,$E0,$F0,$D0,$C0,$C0,$60,$30,$1C,$00,$00
+  $00,$00,$03,$03,$03,$01,$00,$00,$00,$20,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$40,$C0,$80,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$07,$07,$07,$02,$03,$03,$06,$04,$00,$00
+  $C0,$F0,$00,$00,$00,$00,$E0,$E0,$E0,$C0,$C0,$80,$80,$E0,$00,$00
+  $00,$00,$03,$03,$03,$01,$00,$00,$00,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$40,$C0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$07,$0F,$07,$00,$03,$07,$1C,$20,$00,$00
+  $C0,$F0,$00,$00,$00,$00,$E0,$F0,$E8,$00,$C0,$60,$30,$1C,$00,$00
+  $00,$00,$03,$03,$03,$01,$00,$10,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$40,$C0,$80,$00,$00,$00,$08,$00,$00,$00,$00,$00,$00
+  $03,$07,$00,$00,$00,$00,$07,$07,$07,$03,$03,$01,$01,$03,$00,$00
+  $C0,$F0,$00,$00,$00,$00,$E0,$E0,$E0,$40,$C0,$C0,$60,$20,$00,$00
+  $00,$00,$03,$03,$03,$01,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$C0,$40,$C0,$80,$00,$00,$00,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$03,$05,$09,$09,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$40,$20,$20,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$04,$02,$04,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$80,$40,$80,$40,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$10,$05,$20,$00,$20,$05,$10,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$40,$00,$20,$00,$20,$00,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$03,$07,$0D,$0B,$07,$03,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$F0,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$01,$01,$03,$07,$1E,$0B,$07,$03,$01,$01,$00,$00,$00,$00,$00
+  $00,$00,$00,$C0,$E0,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$80,$C2,$73,$3F,$13,$02,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$01,$43,$CE,$FC,$C8,$40,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$03,$0F,$3B,$61,$80,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$40,$C0,$F0,$DC,$86,$01,$00,$00,$00,$00,$00
+  $0F,$0F,$07,$07,$07,$03,$03,$03,$01,$01,$01,$01,$00,$00,$00,$00
+  $F0,$F0,$E0,$E0,$C0,$C0,$C0,$80,$80,$80,$00,$00,$00,$00,$00,$00
+  $00,$00,$03,$03,$03,$03,$3F,$1F,$0F,$07,$03,$01,$00,$00,$00,$00
+  $00,$00,$C0,$C0,$C0,$C0,$FC,$F8,$F0,$E0,$C0,$80,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$03,$03,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$00,$80,$80,$00,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$01,$13,$39,$11,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$38,$28,$28,$28,$B8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$10,$3B,$12,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B8,$A8,$A8,$28,$B8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$10,$39,$10,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B8,$A8,$A8,$A8,$B8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$02,$12,$3B,$10,$00,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B8,$A8,$A8,$A8,$B8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$12,$3B,$10,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B8,$28,$A8,$A8,$B8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$12,$3B,$12,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B8,$28,$A8,$A8,$B8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$10,$38,$11,$01,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B8,$A8,$A8,$28,$38,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$12,$3B,$12,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B8,$A8,$A8,$A8,$B8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$03,$12,$3B,$10,$03,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$B8,$A8,$A8,$A8,$B8,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$04,$4C,$E4,$44,$0E,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$EE,$AA,$AA,$AA,$EE,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$0E,$42,$EE,$48,$0E,$00,$00,$00,$00,$00,$00
+  $00,$00,$00,$00,$00,$EE,$AA,$AA,$AA,$EE,$00,$00,$00,$00,$00,$00
+end data
+data IconPat bytes
+  $38,$7C,$54,$7C,$38,$7C,$BA,$28,$38,$44,$92,$9A,$82,$44,$38,$00
+  $00,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$FF,$81,$81,$81,$FF,$00,$00
+  $00,$66,$99,$99,$66,$00,$00,$00,$10,$38,$7C,$FE,$7C,$38,$10,$00
+  $FF,$BF,$FD,$EF,$FF,$7D,$F7,$FF,$10,$10,$10,$10,$10,$10,$10,$10
+  $10,$38,$54,$92,$10,$10,$10,$10,$00,$18,$3C,$66,$42,$C3,$81,$81
+  $00,$81,$DB,$FF,$BD,$18,$00,$00,$FF,$7E,$7E,$3C,$3C,$18,$18,$00
+  $FF,$DD,$BF,$FD,$F7,$EF,$FF,$7F,$01,$00,$10,$00,$00,$80,$00,$04
+  $00,$00,$00,$22,$22,$77,$77,$FF
+end data
+data IconCol bytes
+  $71,$71,$71,$71,$71,$71,$71,$71,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+  $BA,$BA,$A6,$A6,$A6,$6A,$A6,$61,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+  $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+  $91,$91,$91,$91,$91,$91,$91,$91,$E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+  $BA,$A6,$A6,$A6,$6A,$A6,$A6,$A6,$E1,$11,$41,$11,$11,$E1,$11,$41
+  $11,$11,$11,$81,$81,$E1,$E1,$E1
+end data
+data GemX bytes
+  $AC,$AC,$1C,$1C,$9C,$9C,$1C,$1C,$AC,$AC,$1C,$1C,$E4,$E4,$5C,$5C
+  $9C,$9C,$1C,$1C,$E4,$E4,$6C,$6C,$C4,$C4,$C4,$C4,$A4,$A4,$6C,$6C
+  $E4,$E4,$6C,$6C
+end data
+data GemY words
+  44, 44, 148, 148, 236, 236, 356, 356, 428, 428, 548, 548
+  68, 68, 148, 148, 236, 236, 356, 356, 452, 452, 524, 524
+  44, 44, 132, 132, 236, 236, 332, 332, 468, 468, 524, 524
+end data
+data GalRX bytes
+  $38,$C8,$38,$C8,$38,$C8,$34,$CC,$34,$CC,$34,$CC,$30,$D0,$30,$D0
+  $30,$D0
+end data
+data GalRY words
+  82, 178, 274, 370, 466, 562, 82, 178, 274, 370, 466, 562
+  82, 178, 274, 370, 466, 562
+end data
+data GalHX bytes
+  $CC,$34,$CC,$34,$CC,$34,$D0,$30,$D0,$30,$D0,$30,$D4,$2C,$D4,$2C
+  $D4,$2C
+end data
+data GalTop words
+  24, 120, 216, 312, 408, 504
+end data
+data BatX0 bytes
+  $00,$00,$00,$00,$44,$00,$00,$00,$44,$00,$00,$00,$6C,$00,$00,$00
+  $44,$00,$00,$00,$3C,$00,$3C,$00,$44,$00,$00,$00,$74,$00,$7C,$2C
+  $3C,$00,$34,$00
+end data
+data BatX1 bytes
+  $00,$00,$00,$00,$C4,$00,$00,$00,$C4,$00,$00,$00,$CC,$00,$00,$00
+  $C4,$00,$00,$00,$7C,$00,$CC,$00,$C4,$00,$00,$00,$9C,$00,$CC,$74
+  $C4,$00,$CC,$00
+end data
+data BatY words
+  0, 0, 0, 0, 228, 0, 0, 0, 468, 0, 0, 0
+  84, 0, 0, 0, 228, 0, 0, 0, 460, 0, 564, 0
+  44, 0, 0, 0, 236, 0, 324, 380, 468, 0, 516, 0
+end data
+data BatSp bytes
+  $00,$00,$00,$00,$01,$00,$00,$00,$01,$00,$00,$00,$02,$00,$00,$00
+  $02,$00,$00,$00,$02,$00,$02,$00,$02,$00,$00,$00,$03,$00,$02,$02
+  $03,$00,$03,$00
+end data
+data StX bytes
+  $00,$00,$00,$00,$00,$00,$7C,$00,$00,$00,$9C,$00,$00,$00,$A4,$54
+  $00,$00,$9C,$64,$6C,$00,$6C,$00,$64,$00,$A4,$4C,$7C,$00,$8C,$00
+  $64,$9C,$94,$64
+end data
+data StY words
+  0, 0, 0, 0, 0, 0, 312, 0, 0, 0, 504, 0
+  0, 0, 120, 120, 0, 0, 312, 312, 408, 0, 504, 0
+  24, 0, 120, 120, 216, 0, 312, 0, 408, 408, 504, 504
+end data
+data FallT bytes
+  $00,$00,$00,$01,$02,$03,$05,$07,$09,$0B,$0D,$10,$13,$16,$1A,$1E
+  $22,$26,$2A,$2E,$32,$36,$3A,$3C,$3C,$3C
+end data
+data BobT bytes
+  $00,$01,$01,$02,$02,$02,$03,$03,$03,$03,$03,$02,$02,$02,$01,$01
+  $00,$FF,$FF,$FE,$FE,$FE,$FD,$FD,$FD,$FD,$FD,$FE,$FE,$FE,$FF,$FF
+end data
+data DeadDY bytes
+  $00,$FE,$FC,$FA,$F8,$F6,$F5,$F3,$F2,$F1,$EF,$EE,$EE,$ED,$EC,$EC
+  $EB,$EB,$EB,$EB,$EB,$EB,$EB,$EC,$EC,$ED,$EE,$EF,$F0,$F1,$F2,$F4
+  $F5,$F7,$F9,$FA,$FC,$FF,$01,$03,$06,$08,$0B,$0E,$11,$14,$17,$1A
+  $1D,$20,$23,$26,$29,$2C,$2F,$32,$35,$38,$3B,$3E,$41,$44,$47,$4A
+  $4D,$50,$53,$56,$59,$5C,$5F,$62,$65,$68,$6B,$6E,$71,$74,$77,$7A
+  $7D,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F,$7F
+end data
+data DripX bytes
+  $84,$84,$5C,$A4,$84,$84,$5C,$84,$5C,$54,$5C,$54,$7C,$1C,$5C,$54
+  $AC,$54
+end data
+data DripY words
+  24, 120, 232, 336, 408, 520, 48, 136, 232, 328, 432, 520
+  40, 136, 232, 328, 424, 520
+end data
+data Logo bytes
+  $01,$01,$01,$00,$01,$01,$00,$00,$00,$01,$00,$00,$01,$01,$00,$00,$01,$01,$00,$00,$01,$00,$00,$00,$01,$01,$01
+  $01,$00,$00,$00,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$00,$00,$01,$00,$00
+  $01,$00,$01,$00,$01,$01,$00,$00,$01,$01,$01,$00,$01,$01,$00,$00,$01,$01,$00,$00,$01,$00,$00,$00,$01,$01,$00
+  $01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$00,$00,$01,$00,$00,$00,$01,$00,$00,$00,$01,$00,$00
+  $01,$01,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$01,$00,$00,$00,$01,$00,$00,$00,$01,$01,$01,$00,$01,$01,$01
+end data
+
+asm {
+GpHit:
+    db $00,$00,$04,$03,$00,$00,$25,$05,$00,$00,$36,$08,$00,$00,$56,$0A,$00,$00,$76,$08,$10
+GpCatch:
+    db $00,$00,$15,$01,$00,$00,$36,$02,$00,$00,$66,$02,$10
+GpRelease:
+    db $00,$00,$57,$02,$00,$00,$47,$03,$00,$00,$67,$03,$10
+GpFire:
+    db $40,$FE,$30,$01,$40,$B4,$30,$01,$40,$7F,$30,$01,$40,$5A,$30,$01,$40,$40,$40,$01,$40,$2D,$60,$01
+    db $50
+GpClick:
+    db $40,$40,$30,$01,$50
+GpClear:
+    db $40,$D6,$10,$06,$40,$AA,$10,$06,$40,$8F,$10,$06,$40,$6B,$10,$04,$40,$6B,$30,$0E,$40,$6B,$50,$08
+    db $50
+GpGem:
+    db $80,$47,$20,$03,$80,$35,$20,$03,$80,$2A,$20,$06,$80,$2A,$50,$06,$90
+GpPop:
+    db $80,$FC,$21,$02,$80,$6D,$32,$02,$80,$1F,$53,$03,$90
+
+GpSoundTable:
+    dw GpTuneAMel,$702B
+    dw GpTuneAHarm,$7035
+    dw GpTuneABassVol,$703F
+    dw GpTuneABassPitch,$7049
+    dw GpTuneBMel,$702B
+    dw GpTuneBHarm,$7035
+    dw GpTuneBBassVol,$703F
+    dw GpTuneBBassPitch,$7049
+    dw GpHit,$702B
+    dw GpCatch,$702B
+    dw GpRelease,$702B
+    dw GpFire,$7035
+    dw GpClick,$7035
+    dw GpClear,$7035
+    dw GpGem,$703F
+    dw GpPop,$703F
+; Rope and Echo, section A (GRAPPLE, original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+GpTuneAMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$1A,$21,$21,$01,$24,$01,$28,$01,$26,$24,$23,$01,$1F,$01
+    db $21,$01,$01,$01,$1C,$01,$1F,$01,$21,$01,$23,$01,$24,$01,$23,$01
+    db $21,$01,$1F,$01,$21,$01,$24,$01,$28,$01,$2B,$01,$2A,$01,$28,$01
+    db $26,$01,$23,$01,$24,$01,$23,$01,$21,$01,$1F,$01,$21,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+GpTuneAHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$1C,$01,$01,$01,$18,$01,$01,$01,$1A,$01,$01,$01
+    db $1C,$01,$01,$01,$18,$01,$01,$01,$1A,$01,$01,$01,$1C,$01,$01,$01
+    db $17,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01
+    db $1F,$01,$01,$01,$1C,$01,$01,$01,$1A,$01,$01,$01,$18,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+GpTuneABassVol:
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$3E
+    db $10
+GpTuneABassPitch:
+    db $C0,$66,$F0,$3C,$C0,$72,$F0,$1D,$C0,$66,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$72,$F0,$1B,$C0,$88,$F0,$1D
+    db $C0,$72,$F0,$1B,$C0,$66,$F0,$1D,$C0,$55,$F0,$1B,$C0,$98,$F0,$1D,$C0,$72,$F0,$1B,$C0,$88,$F0,$1D
+    db $C0,$98,$F0,$1B,$C0,$66,$F0,$16,$FE
+    db $D0
+; Rope and Echo, section B (GRAPPLE, original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+GpTuneBMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$60,$1A,$21,$24,$01,$28,$01,$2B,$01,$28,$01,$26,$01,$24,$01
+    db $26,$01,$28,$01,$2A,$01,$28,$01,$26,$01,$24,$01,$23,$01,$01,$01
+    db $1F,$01,$23,$01,$24,$01,$28,$01,$2B,$01,$2D,$01,$2B,$01,$28,$01
+    db $26,$01,$24,$01,$23,$01,$26,$01,$24,$01,$23,$01,$21,$01,$01,$01
+    db $01,$01,$00,$01
+    db $FF
+GpTuneBHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$1C,$01,$01,$01,$18,$01,$01,$01,$1F,$01,$01,$01
+    db $17,$01,$01,$01,$21,$01,$01,$01,$1F,$01,$01,$01,$1A,$01,$01,$01
+    db $1A,$01,$01,$01,$1C,$01,$01,$01,$18,$01,$01,$01,$1C,$01,$01,$01
+    db $1F,$01,$01,$01,$1F,$01,$01,$01,$1C,$01,$01,$01,$18,$01,$01,$01
+    db $00,$01,$01,$01
+    db $FF
+GpTuneBBassVol:
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$22,$02,$45,$05,$13,$11,$02,$43,$15,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$43,$16,$14,$66,$3E
+    db $10
+GpTuneBBassPitch:
+    db $C0,$AB,$F0,$3C,$C0,$72,$F0,$1D,$C0,$AB,$F0,$1B,$C0,$98,$F0,$38,$C0,$72,$F0,$38,$C0,$AB,$F0,$1D
+    db $C0,$66,$F0,$1B,$C0,$AB,$F0,$1D,$C0,$88,$F0,$1B,$C0,$72,$F0,$1D,$C0,$88,$F0,$1B,$C0,$66,$F0,$16
+    db $FE
+    db $D0
+}
+
+

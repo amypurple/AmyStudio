@@ -16425,6 +16425,30 @@ export const exampleManifest = [
     "originLabel": "Original"
   },
   {
+    "id": "snakebite",
+    "label": "Snake Bite (ReRUN March/April 1990)",
+    "detail": "ColecoVision adaptation of Ken Huebner's Commodore 128 game Jump'n Snakes, Catch'n Mice from ReRUN March/April 1990. Bounce through ten classrooms on a pogo stick, catch the loose mice and avoid landing on the snakes before the teacher returns.",
+    "projectName": "SNAKE BITE",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision-cartridge",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "run-magazine",
+      "rerun",
+      "faithful-adaptation",
+      "game",
+      "commodore-128",
+      "action",
+      "pogo-stick",
+      "snakes",
+      "joystick"
+    ],
+    "originKind": "faithful-adaptation",
+    "originLabel": "Faithful adaptation"
+  },
+  {
     "id": "polybius-tunnel",
     "label": "Polybius: The Tunnel",
     "detail": "Original pseudo-3D tunnel action game by Amy and Claude, framed as a lost 1982 ColecoVision cartridge inspired by the 1981 Portland Polybius urban legend. Features three tunnel geometries, perspective gates, subliminal messages, four-channel title music and blinking-eye credits.",

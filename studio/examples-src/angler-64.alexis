@@ -1,0 +1,1797 @@
+cartridge "ANGLER 64/TONY BRANTNER/1992"
+' ANGLER 64 - Tony Brantner, RUN magazine's ReRUN disk, July/August 1992
+' (Commodore 64, machine language). ColecoVision port in Amy.
+'
+' The game: steer the tip of your fishing line in front of a fish. Once it
+' bites it swims back and forth, slowly rising; hold the button to reel it
+' in quickly. A hungry lunker swims near the top: a hooked fish that
+' touches him is eaten. Fish weigh 4 to 7 pounds and are worth 10 points x
+' the level. Catch 99 pounds before the timer runs out (100 at level 1,
+' 3 less each level, one unit every 90 frames); each unit left is worth 100
+' points. Missing the limit ends the game.
+'
+' Rules and numbers come from the original's machine code (orig/ANGLER_ML,
+' disassembly c64/ml.s), one routine at a time; the names in brackets below
+' are the C64 addresses. All positions are kept in C64 sprite coordinates
+' (the logic is the original's, pixel for pixel); only the drawing maps
+' them to the ColecoVision screen (FxOf, GyOf).
+'
+' Pace: the original's main loop ($0940) runs as fast as the C64 can; real
+' VICE (x64sc, NTSC) measured 23.5 passes a frame with a free line and 22.4
+' with a fish on the line (c64/vcap.py, vcap2.py). The port runs the same
+' pass, 47 per two frames free and 45 per two frames hooked.
+'
+' Controls: either controller. Stick: move the line. Button: reel in.
+
+const TSky = 128
+const TWat = 129
+const TSc2 = 130
+const TSc3 = 131
+const TSc4 = 132
+const TSc5 = 133
+const TSc6 = 134
+const TSc7 = 135
+const TSc8 = 136
+const TSc9 = 137
+const TSc10 = 138
+const TSc11 = 139
+const TSc12 = 140
+const TSc13 = 141
+const TSc14 = 142
+const TSc15 = 143
+const TSc16 = 144
+const TSc17 = 145
+const TSc18 = 146
+const TSc19 = 147
+const TSc20 = 148
+const TSc21 = 149
+const TSc22 = 150
+const TSc23 = 151
+const TSc24 = 152
+const TSc25 = 153
+const TSc26 = 154
+const TSc27 = 155
+const TSc28 = 156
+const TSc29 = 157
+const TSc30 = 158
+const TSc31 = 159
+const TSc32 = 160
+const TSc33 = 161
+const TSc34 = 162
+const TSc35 = 163
+const TRod = 164
+const TRodEnd0 = 165
+const TRodEnd1 = 166
+const TRodEnd2 = 167
+const TRodEnd3 = 168
+const TLnS0 = 169
+const TLnS1 = 170
+const TLnS2 = 171
+const TLnS3 = 172
+const TLnW0 = 173
+const TLnW1 = 174
+const TLnW2 = 175
+const TLnW3 = 176
+const TLnE01 = 177
+const TLnE02 = 178
+const TLnE03 = 179
+const TLnE04 = 180
+const TLnE05 = 181
+const TLnE06 = 182
+const TLnE07 = 183
+const TLnE11 = 184
+const TLnE12 = 185
+const TLnE13 = 186
+const TLnE14 = 187
+const TLnE15 = 188
+const TLnE16 = 189
+const TLnE17 = 190
+const TLnE21 = 191
+const TLnE22 = 192
+const TLnE23 = 193
+const TLnE24 = 194
+const TLnE25 = 195
+const TLnE26 = 196
+const TLnE27 = 197
+const TLnE31 = 198
+const TLnE32 = 199
+const TLnE33 = 200
+const TLnE34 = 201
+const TLnE35 = 202
+const TLnE36 = 203
+const TLnE37 = 204
+const TIcoFish = 205
+const TIcoClock = 206
+const TWb0 = 207
+const TWb1 = 208
+const TWb2 = 209
+const TWb3 = 210
+const TWb4 = 211
+const TWb5 = 212
+const TWb6 = 213
+const TWb7 = 214
+const TWb8 = 215
+const TWbe0 = 216
+const TWbe1 = 217
+const TWbe2 = 218
+const TWbe3 = 219
+const TTb0 = 220
+const TTb1 = 221
+const TTb2 = 222
+const TTb3 = 223
+const TTb4 = 224
+const TTb5 = 225
+const TTb6 = 226
+const TTb7 = 227
+const TTb8 = 228
+const TTbe0 = 229
+const TTbe1 = 230
+const TTbe2 = 231
+const TTbe3 = 232
+const TTbe4 = 233
+const TBigAT = 234
+const TBigAB = 235
+const TBigNT = 236
+const TBigNB = 237
+const TBigGT = 238
+const TBigGB = 239
+const TBigLT = 240
+const TBigLB = 241
+const TBigET = 242
+const TBigEB = 243
+const TBigRT = 244
+const TBigRB = 245
+const TBig6T = 246
+const TBig6B = 247
+const TBig4T = 248
+const TBig4B = 249
+const SFishL0 = 0
+const SFishL1 = 4
+const SFishL2 = 8
+const SFishR0 = 12
+const SFishR1 = 16
+const SFishR2 = 20
+const SLunL0a = 24
+const SLunL0b = 28
+const SLunL1a = 32
+const SLunL1b = 36
+const SLunL2a = 40
+const SLunL2b = 44
+const SLunR0a = 48
+const SLunR0b = 52
+const SLunR1a = 56
+const SLunR1b = 60
+const SLunR2a = 64
+const SLunR2b = 68
+const NTiles8 = 976
+const SprBytes = 576
+const NScene = 36
+const TbColAddr = 1760
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndCatch = 6
+const SndEat = 7
+const SndTickA = 8
+const SndTickB = 9
+const SndOver = 10
+const TuneFrames = 336
+const TxtCredits = 0
+const NSpr = 6
+const HideY = 192
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StLevelEnd = 5
+const StIntro = 6
+const StAdvance = 7
+const StEnding = 8
+const StOver = 9
+' the original's limits (C64 sprite coordinates)
+const LxHome = 60
+const LyTop = $70
+const LyBot = $E6
+const LunkY = $76
+const EatBand = $81
+' screen layout: tile row of the HUD, the message row
+const MsgRow = 9
+
+' fish 1..4 and the lunker (index 0): [$1234 Y, $123C/$1244 X, $1262 dir,
+' $1249/$124E vertical count/limit, $1253 vertical dir, $1258/$125D
+' horizontal count/limit, $1267 animation, colour]
+u8 FY[5]
+u16 FX[5]
+u8 FD[5]
+u8 FVc[5]
+u8 FVl[5]
+u8 FVd[5]
+u8 FHc[5]
+u8 FHl[5]
+u8 FAn[5]
+u8 FCo[5]
+' the line tip [$123A X, $1233 Y], the hooked fish [$126F], move flags [$1272]
+u16 LX = LxHome
+u8 LY = LyTop
+u8 Hk = 0
+u8 Flags = 0
+' pass counters [$126C input, $126D fish, $126E lunker], catch [$1273]
+u8 PassIn = 0
+u8 FishCnt = 0
+u8 LunkCnt = 0
+u8 CatchT = 0
+u8 PassAcc = 0
+u8 NP = 0
+u8 Left = 0
+u8 Pk = 0
+' [$1270 pounds, $1271 time, $122F level]
+u8 Weight = 0
+u8 Timer = 0
+u8 Level = 1
+u8 Jiffy = 0
+bcd digits 6 Score = 0
+bcd digits 6 Hi = 0
+u8 EndKind = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 Px = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+u8 ScrKind = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Jm = 0
+' loop counters (never used by helper subs)
+u8 Pi = 0
+u8 Fi = 0
+u8 Li = 0
+u8 Ix = 0
+' drawing
+u8 Dx = 0
+u8 Gy = 0
+u8 LineX = 0
+u8 LineC = 0
+u8 LineP = 0
+u8 LineN = 0
+u8 OldC = 255
+u8 OldP = 255
+u8 OldR = 0
+u8 LineE = 0
+u8 LineR = 0
+u8 RowLo = 0
+u8 RowHi = 0
+u8 TimeRed = 0
+u8 LineWork = 0
+u8 ScorePend = 0
+u8 OldN = 0
+u16 Va = 0
+u16 DrawnLX = 0
+u8 DrawnLY = 0
+u8 ShownW = 255
+u8 ShownT = 255
+u8 Blink = 0
+u8 EatCol = 0
+u8 IntroAcc = 0
+u8 Row4[22]
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 T = 0
+u8 V = 0
+u8 Rv8 = 0
+u16 W = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+' fish colours: C64 red, cyan, purple, green (2-5) -> TMS
+data FishTms bytes
+  8,7,13,3
+end data
+
+  tile screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 1 then
+    HowTo
+    goto title
+  end if
+  if Menu = 2 then
+    CreditsPage
+    goto title
+  end if
+  NewGame
+
+level_start:
+  Intro
+  State = StPlay
+  Jiffy = 0
+  EndKind = 0
+
+play_loop:
+  Frame1
+  ReadPad
+  PlayFrame
+  if EndKind = 0 then goto play_loop
+
+  if EndKind = 1 then
+    LevelEnd
+    goto level_start
+  end if
+
+  GameOver
+  State = StOver
+  Rearm
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the rules (C64 addresses in brackets)
+
+' 16-bit xorshift, stepped every title frame: stands for the SID noise
+' register ($D41B) the original reads for its random bytes
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function Rnd as u8
+  Rand
+  Rv8 = Rs
+  return Rv8
+
+sub NewGame:
+  Score = 0
+  Level = 1
+  NewLevel
+  DrawPlay
+  ' the opening message (the C64's PRESS FIRE TO BEGIN!): the lunker eats it
+  print at 10,MsgRow, "CATCH 99 POUNDS!"
+  return
+end sub
+
+' [$08AC] a level: everything cleared, the line home, the lunker under the
+' pier, time 103 - 3 x level
+sub NewLevel:
+  fill array FY with 0
+  fill array FX with 0
+  fill array FD with 0
+  fill array FVc with 0
+  fill array FVl with 0
+  fill array FVd with 0
+  fill array FHc with 0
+  fill array FHl with 0
+  fill array FAn with 0
+  fill array FCo with 0
+  FY[0] = LunkY
+  LX = LxHome
+  LY = LyTop
+  Hk = 0
+  Flags = 0
+  PassIn = 0
+  FishCnt = 0
+  LunkCnt = 0
+  CatchT = 0
+  PassAcc = 0
+  Weight = 0
+  T = Level * 3
+  Timer = 103 - T
+  return
+end sub
+
+' one frame of play: the time, then the original's main-loop passes
+sub PlayFrame:
+  ' [$0D6C] one time unit every 90 jiffies
+  inc Jiffy
+  if Timer > 0 then
+    if Jiffy >= 90 then
+      Jiffy = 0
+      dec Timer
+    end if
+  end if
+  if Hk = 0 then
+    PassAcc += 47
+  else
+    PassAcc += 45
+  end if
+  NP = PassAcc >> 1
+  PassAcc = PassAcc & 1
+  ' passes in chunks: the passes before the next event (lunker, fish,
+  ' stick, catch window end) only count, the event pass runs Pass1. The
+  ' end checks cannot change between events, so one check covers them.
+  Left = NP
+  while Left > 0
+    Pk = Left
+    T = 9 - LunkCnt
+    if T < Pk then Pk = T
+    T = 35 - FishCnt
+    if T < Pk then Pk = T
+    T = 25 - PassIn
+    if T < Pk then Pk = T
+    if CatchT > 0 then
+      T = 0 - CatchT
+      if T < Pk then Pk = T
+    else
+      if Pk > 1 then
+        if Weight >= 99 then EndKind = 1
+        if EndKind = 0 then
+          if Timer = 0 then EndKind = 2
+        end if
+        if EndKind > 0 then exit while
+      end if
+    end if
+    T = Pk - 1
+    LunkCnt += T
+    FishCnt += T
+    PassIn += T
+    if CatchT > 0 then CatchT += T
+    Pass1
+    if EndKind > 0 then exit while
+    Left -= Pk
+  end while
+  DrawAll
+  return
+end sub
+
+' one pass of the main loop [$0940]
+sub Pass1:
+  ' [$0C07] the lunker moves every 9 - level/2 passes
+  inc LunkCnt
+  if LunkCnt >= 9 then
+    LunkCnt = Level >> 1
+    Ix = 0
+    HMove
+  end if
+  ' [$0950] the fish every 35 - 2 x level passes
+  inc FishCnt
+  if FishCnt >= 35 then
+    FishCnt = Level << 1
+    FishUpd
+  end if
+  ' [$09FF] the stick every 25 passes (20 with a fish on the line)
+  inc PassIn
+  if PassIn >= 25 then InputPass
+  ' [$096D] after a catch the end checks wait 255 passes
+  if CatchT > 0 then
+    inc CatchT
+  else
+    if Weight >= 99 then
+      EndKind = 1
+    else
+      if Timer = 0 then EndKind = 2
+    end if
+  end if
+  return
+end sub
+
+' [$0CCE] new random speeds and directions for thing Ix
+sub Reroll:
+  T = Rnd()
+  T = T | 4
+  FVl[Ix] = T & 7
+  T = Rnd()
+  FVd[Ix] = T & 1
+  T = Rnd()
+  FHl[Ix] = T & 3
+  T = Rnd()
+  FD[Ix] = T & 1
+  return
+end sub
+
+' [$0C6B] sideways: one pixel every FHl calls; at the edges ($30, $128) or
+' once in 64 moves: new random speeds and direction instead
+sub HMove:
+  T = FHc[Ix] + 1
+  FHc[Ix] = T
+  if T < FHl[Ix] then return
+  FHc[Ix] = 0
+  W = FX[Ix]
+  if FD[Ix] = 0 then
+    W += 1
+  else
+    W -= 1
+  end if
+  if W < 48 then
+    Reroll
+    return
+  end if
+  if W >= 296 then
+    Reroll
+    return
+  end if
+  T = Rnd()
+  T = T & 63
+  if T = 0 then
+    Reroll
+    return
+  end if
+  FX[Ix] = W
+  return
+end sub
+
+' [$0C3C] up or down one pixel every FVl calls between $9B and $E6 (a new
+' fish rises from below the screen first), then sideways
+sub VMove:
+  T = FVc[Ix] + 1
+  FVc[Ix] = T
+  if T < FVl[Ix] then
+    HMove
+    return
+  end if
+  FVc[Ix] = 0
+  V = FY[Ix]
+  if V >= $E7 then
+    dec V
+    FY[Ix] = V
+    HMove
+    return
+  end if
+  if FVd[Ix] = 0 then
+    inc V
+  else
+    dec V
+  end if
+  if V < $9B then
+    Reroll
+    return
+  end if
+  if V >= $E7 then
+    Reroll
+    return
+  end if
+  FY[Ix] = V
+  HMove
+  return
+end sub
+
+' [$0CF1] the swimming animation: 3 frames, 4 steps each
+sub Anim:
+  T = FAn[Ix] + 1
+  V = T >> 2
+  if V >= 3 then T = 0
+  FAn[Ix] = T
+  return
+end sub
+
+' [$0CB1] a new fish below the marsh: colour, X, then speeds
+sub Spawn:
+  T = Rnd()
+  FCo[Ix] = T & 3
+  FY[Ix] = $FF
+  T = Rnd()
+  T = T | $40
+  FX[Ix] = T
+  Reroll
+  return
+end sub
+
+' [$0C1E] fish 4 down to 1 (not the hooked one), then the lunker's animation
+sub FishUpd:
+  for Fi = 4 downto 1
+    if Fi <> Hk then
+      Ix = Fi
+      if FY[Fi] = 0 then
+        Spawn
+      else
+        VMove
+        Anim
+      end if
+    end if
+  next
+  Ix = 0
+  Anim
+  return
+end sub
+
+' [$0AD5] move the line by the stick bits Jm (1 up, 2 down, 4 left, 8 right):
+' 2 pixels sideways between X 60 and 305, 1 pixel up/down between Y $70
+' and $E5. Flags: 1 = the top was reached, 2 = the left end, 4 = the right
+sub MoveLine:
+  W = LX
+  T = Jm & 12
+  if T = 4 then W -= 2
+  if T = 8 then W += 2
+  if W < 60 then
+    Flags = 2
+  else
+    if W >= 306 then
+      Flags = 4
+    else
+      LX = W
+      Flags = 0
+    end if
+  end if
+  T = Jm & 3
+  V = LY
+  if T = 1 then dec V
+  if T = 2 then inc V
+  if V < LyTop then
+    Flags = Flags | 1
+  else
+    if V < LyBot then LY = V
+  end if
+  return
+end sub
+
+' [$0A0A] the stick: a free line moves, then a fish whose mouth is at the
+' tip bites; a hooked fish pulls the line its way and rises (always with the
+' button, else one time in 8), reaches the top (caught) or the lunker
+sub InputPass:
+  if Hk = 0 then
+    PassIn = 0
+    Jm = Jk
+    MoveLine
+    ' [$0BCF] the bite: same Y, mouth 0-4 pixels right of the tip
+    for Fi = 4 downto 1
+      if FY[Fi] = LY then
+        W = FX[Fi]
+        if FD[Fi] = 0 then
+          W += 10
+        else
+          W -= 14
+        end if
+        W -= LX
+        if W < 5 then
+          Hk = Fi
+          exit for
+        end if
+      end if
+    next
+    return
+  end if
+  Ix = Hk
+  ' pulled right (dir 0) or left (dir 1)
+  Jm = 8
+  if FD[Ix] = 1 then Jm = 4
+  T = Rnd()
+  T = T & 7
+  if T = 0 then Jm = Jm | 1
+  if Btn > 0 then Jm = Jm | 1
+  PassIn = 5
+  MoveLine
+  T = Flags & 1
+  if T > 0 then
+    Caught
+    return
+  end if
+  T = Flags & 6
+  if T > 0 then
+    T = FD[Ix] ^ 1
+    FD[Ix] = T
+  else
+    T = Rnd()
+    T = T & $7F
+    if T = 0 then
+      T = FD[Ix] ^ 1
+      FD[Ix] = T
+    end if
+  end if
+  ' [$0A58] near the top: the lunker eats a fish within 71 pixels
+  if FY[Ix] < EatBand then
+    W = FX[0] + 47
+    if W >= FX[Ix] then
+      W -= FX[Ix]
+      if W < 71 then
+        FD[0] = 0
+        if W >= 24 then FD[0] = 1
+        FY[Ix] = 0
+        Hk = 0
+        play sound SndEat
+        return
+      end if
+    end if
+  end if
+  ' [$0A9A] the fish hangs on the tip
+  FY[Ix] = LY
+  W = LX
+  if FD[Ix] = 0 then
+    W -= 5
+  else
+    W += 15
+  end if
+  FX[Ix] = W
+  Anim
+  return
+end sub
+
+' [$0AB9] caught: 4-7 pounds (up to 99), 10 points x level
+sub Caught:
+  FY[Ix] = 0
+  Hk = 0
+  CatchT = 1
+  T = Rnd()
+  T = T | 4
+  T = T & 7
+  T += Weight
+  if T > 99 then T = 99
+  Weight = T
+  T = Level * 10
+  Score += T
+  if Score > Hi then Hi = Score
+  play sound SndCatch
+  ScorePend = 1
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' screens of the level: intro, level end, game over
+
+' [$090A] the lunker swims out from under the pier (X 0 to $E8, 1.2 pixels
+' a frame as measured in VICE) and eats the message on row 9
+sub Intro:
+  State = StIntro
+  FX[0] = 0
+  FD[0] = 0
+  EatCol = 8
+  IntroAcc = 0
+in_loop:
+  Frame1
+  IntroAcc += 6
+  while IntroAcc >= 5
+    IntroAcc -= 5
+    Ix = 0
+    Anim
+    W = FX[0] + 1
+    FX[0] = W
+  end while
+  DrawAll
+  ' the head (sprite right edge + 7) eats every letter it reaches
+  if FX[0] >= 24 then
+    T = Dx + 39
+    T = T >> 3
+    while EatCol <= T
+      if EatCol <= 29 then
+        C = get char at EatCol,MsgRow
+        if C <> 32 then
+          if C < 128 then
+          put char 32 at EatCol,MsgRow
+          play sound SndEat
+          end if
+        end if
+      end if
+      inc EatCol
+    end while
+  end if
+  if FX[0] < $E8 then goto in_loop
+  fill 32 count 22 at 8,MsgRow
+  return
+end sub
+
+' [$0987] the limit: the remaining time counts down at 100 points a unit
+' (1.58 frames a unit in VICE), the next level (up to 10), the line
+' winds home, then PRESS FIRE TO ADVANCE
+sub LevelEnd:
+  State = StLevelEnd
+  mute all
+  Frame1
+  for Li = 1 to 25
+    Frame1
+  next
+  IntroAcc = 0
+le_count:
+  if Timer > 0 then
+    Frame1
+    IntroAcc += 100
+    if IntroAcc >= 158 then
+      IntroAcc -= 158
+      T = Timer & 1
+      dec Timer
+      Score += 100
+      if Score > Hi then Hi = Score
+      if T = 0 then
+        play sound SndTickA
+      else
+        play sound SndTickB
+      end if
+      DrawScore
+      DrawTime
+    end if
+    goto le_count
+  end if
+  if Level < 10 then inc Level
+  WindHome
+  print at 9,MsgRow, "PRESS FIRE TO ADVANCE"
+  State = StAdvance
+  FlashWait
+  NewLevel
+  DrawHud
+  return
+end sub
+
+' [$0DC5] the line winds up and left, a step a frame, until it is home;
+' the fish and the lunker are hidden meanwhile (the C64 turns them off)
+sub WindHome:
+  fill array FY with 0
+  Hk = 0
+wh_loop:
+  Frame1
+  Jm = 5
+  MoveLine
+  DrawAll
+  if Flags <> 3 then goto wh_loop
+  return
+end sub
+
+' the message on row 9 flashes (1.5 Hz: 20 frames white, 20 black, as the
+' C64's black/white flash but slower) until a new press of the button
+sub FlashWait:
+  WasBtn = 16
+  Blink = 0
+fw_loop:
+  Frame1
+  ReadPad
+  inc Blink
+  if Blink = 20 then fill $14 count 512 to vram.color + 2304
+  if Blink >= 40 then
+    fill $F4 count 512 to vram.color + 2304
+    Blink = 0
+  end if
+  if Press = 0 then goto fw_loop
+  fill $F4 count 512 to vram.color + 2304
+  return
+end sub
+
+' [$09C1] four falling notes, the line home, GAME OVER
+sub GameOver:
+  State = StEnding
+  mute all
+  play sound SndOver
+  WindHome
+  for Li = 1 to 100
+    Frame1
+  next
+  print at 11,MsgRow, "GAME OVER"
+  print at 11,11, "PRESS FIRE"
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing. C64 screen X (sprite X - 24) -> TMS X: the pier and the angler
+' (C64 X 0-47) keep their size at X 16-63; the open water (C64 X 48-319)
+' is narrowed to X 64-239 (x 0.645). C64 screen Y (sprite Y - 50): the
+' sky (Y 0-63) is one for one; the water (Y 64-199) is narrowed to 64-183
+' (x 0.875). Things keep their size.
+
+' Px = C64 screen X -> Dx
+sub FxOf:
+  if Px < 48 then
+    Dx = Px + 16
+    return
+  end if
+  W16 = Px - 48
+  Dx = FxTab[W16]
+  return
+end sub
+
+' V = C64 screen Y -> Gy
+sub GyOf:
+  Gy = GyTab[V]
+  return
+end sub
+
+' everything incremental: only changed cells are written (frame budget)
+sub DrawAll:
+  DrawSprites
+  update sprites
+  LineWork = 0
+  DrawLine
+  if Weight <> ShownW then DrawWeight
+  if Timer <> ShownT then DrawTime
+  ' the score (12 digits) waits for a frame without line work
+  if ScorePend = 1 then
+    if LineWork = 0 then
+      ScorePend = 0
+      DrawScore
+    end if
+  end if
+  return
+end sub
+
+sub DrawSprites:
+  ' the line's X (its 2 pixels start on an even column)
+  W = LX - 8
+  Px = W
+  FxOf
+  LineX = Dx & $FE
+  ' the lunker: two sprites, 32 pixels
+  if FX[0] < 24 then
+    set sprite 0 to HideY,0,0,0
+    set sprite 1 to HideY,0,0,0
+  else
+    if FY[0] = 0 then
+      set sprite 0 to HideY,0,0,0
+      set sprite 1 to HideY,0,0,0
+    else
+      W = FX[0] - 24
+      Px = W
+      FxOf
+      V = FY[0] - 48
+      GyOf
+      K = Gy - 1
+      T = FAn[0] >> 2
+      T = T << 3
+      if FD[0] = 0 then
+        T += SLunR0a
+      else
+        T += SLunL0a
+      end if
+      set sprite 0 to K,Dx,T,14
+      T += 4
+      C = Dx + 16
+      set sprite 1 to K,C,T,14
+    end if
+  end if
+  for Li = 1 to 4
+    C = Li + 1
+    if FY[Li] = 0 then
+      set sprite C to HideY,0,0,0
+    else
+      V = FY[Li] - 48
+      GyOf
+      if Gy > 174 then
+        set sprite C to HideY,0,0,0
+      else
+        W = FX[Li] - 24
+        Px = W
+        FxOf
+        K = Gy - 1
+        T = FAn[Li] >> 2
+        T = T << 2
+        if FD[Li] = 0 then
+          T += SFishR0
+        else
+          T += SFishL0
+        end if
+        V = FCo[Li]
+        V = FishTms[V]
+        set sprite C to K,Dx,T,V
+      end if
+    end if
+  next
+  return
+end sub
+
+' the line in tiles: row 4 the rod line to the turn, rows 5-7 grey on the
+' sky, rows 8-20 white in the water down to the hook. Only the cells that
+' change are written (a column move, a new sub-position, a new depth).
+sub DrawLine:
+  if LX = DrawnLX then
+    if LY = DrawnLY then return
+  end if
+  DrawnLX = LX
+  DrawnLY = LY
+  LineWork = 1
+  LineC = LineX >> 3
+  T = LineX & 7
+  LineP = T >> 1
+  ' in the water the line goes down to the C64 hook's tip (hook top + 7):
+  ' LineN full rows from row 8, then a tip tile with LineE rows (0 = none)
+  V = LY - 50
+  GyOf
+  T = Gy - 56
+  LineN = T >> 3
+  LineE = T & 7
+  LineR = LineN
+  if LineE > 0 then inc LineR
+  if LineC <> OldC then
+    if OldC < 32 then
+      ' the old column back to sky and water
+      Va = OldC + 160
+      vpoke vram.name + Va, TSky
+      Va += 32
+      vpoke vram.name + Va, TSky
+      Va += 32
+      vpoke vram.name + Va, TSky
+      Va += 32
+      C = 0
+      while C < OldR
+        vpoke vram.name + Va, TWat
+        Va += 32
+        inc C
+      end while
+      ' row 4 between the two columns
+      C = OldC
+      K = LineC
+      if C > K then
+        C = LineC
+        K = OldC
+      end if
+    else
+      C = 8
+      K = 29
+    end if
+    Va = C + 128
+    while C <= K
+      T = TSky
+      if C < LineC then T = TRod
+      vpoke vram.name + Va, T
+      inc Va
+      inc C
+    end while
+    OldP = 255
+    OldN = 0
+    OldR = 0
+  end if
+  if LineP <> OldP then
+    Va = LineC + 128
+    V = TRodEnd0 + LineP
+    vpoke vram.name + Va, V
+    V = TLnS0 + LineP
+    Va += 32
+    vpoke vram.name + Va, V
+    Va += 32
+    vpoke vram.name + Va, V
+    Va += 32
+    vpoke vram.name + Va, V
+    RowLo = 0
+  else
+    RowLo = OldN
+    if LineN < RowLo then RowLo = LineN
+  end if
+  RowHi = OldR
+  if LineR > RowHi then RowHi = LineR
+  LineRows
+  OldC = LineC
+  OldP = LineP
+  OldN = LineN
+  OldR = LineR
+  return
+end sub
+
+' water rows RowLo .. RowHi - 1 of the line's column (0 = row 8): line,
+' tip or water
+sub LineRows:
+  W16 = RowLo << 5
+  Va = W16 + 256
+  Va += LineC
+  C = RowLo
+  while C < RowHi
+    T = TWat
+    if C < LineN then
+      T = TLnW0 + LineP
+    else
+      if C = LineN then
+        if LineE > 0 then
+          T = LineP * 7
+          T += TLnE01
+          T += LineE
+          dec T
+        end if
+      end if
+    end if
+    vpoke vram.name + Va, T
+    Va += 32
+    inc C
+  end while
+  return
+end sub
+
+' HUD row 1: the pounds bar, 99 pixels (1 a pound) after the fish icon.
+' A catch adds 4-7 pounds: only the tiles from the old to the new end
+sub DrawWeight:
+  C = ShownW >> 3
+  K = 12
+  if ShownW < 255 then
+    if ShownW < Weight then
+      K = Weight >> 3
+    else
+      C = 0
+    end if
+  else
+    C = 0
+  end if
+  ShownW = Weight
+  if K > 12 then K = 12
+  for Li = C to K
+    WeightTile
+  next
+  return
+end sub
+
+sub WeightTile:
+  C = Li << 3
+  T = TWb0
+  if Li = 12 then T = TWbe0
+  if Weight > C then
+    V = Weight - C
+    if Li = 12 then
+      if V > 3 then V = 3
+    else
+      if V > 8 then V = 8
+    end if
+    T += V
+  end if
+  C = Li + 9
+  put char T at C,1
+  return
+end sub
+
+' HUD row 2: the time bar, 100 pixels (1 a unit) after the clock icon; time
+' short (15 units, 22 seconds or less): the bar turns red. One unit less
+' changes one tile (Timer >> 3), so only that one is written then.
+sub DrawTime:
+  C = ShownT - 1
+  ShownT = Timer
+  if Timer <= 15 then
+    if TimeRed = 0 then
+      TimeRed = 1
+      copy TimeRedCol count 112 to vram.color + TbColAddr
+    end if
+  else
+    if TimeRed = 1 then
+      TimeRed = 0
+      copy TimeWhiteCol count 112 to vram.color + TbColAddr
+    end if
+  end if
+  if C = Timer then
+    if Timer < 255 then
+      Li = Timer >> 3
+      TimeTile
+      return
+    end if
+  end if
+  for Li = 0 to 12
+    TimeTile
+  next
+  return
+end sub
+
+sub TimeTile:
+  C = Li << 3
+  T = TTb0
+  if Li = 12 then T = TTbe0
+  if Timer > C then
+    V = Timer - C
+    if Li = 12 then
+      if V > 4 then V = 4
+    else
+      if V > 8 then V = 8
+    end if
+    T += V
+  end if
+  C = Li + 9
+  put char T at C,2
+  return
+end sub
+
+sub DrawScore:
+  print Score at 14,3
+  print Hi at 24,3
+  return
+end sub
+
+sub DrawLevel:
+  print at 24,1, "LV"
+  if Level < 10 then
+    C = Level + 48
+    put char C at 27,1
+    put char 32 at 28,1
+  else
+    print at 27,1, "10"
+  end if
+  return
+end sub
+
+sub DrawHud:
+  put char TIcoFish at 8,1
+  put char TIcoClock at 8,2
+  ShownW = 255
+  ShownT = 255
+  DrawWeight
+  DrawTime
+  DrawLevel
+  print at 8,3, "SCORE"
+  print at 21,3, "HI"
+  DrawScore
+  return
+end sub
+
+sub DrawPlay:
+  ScrKind = 1
+  NewScreen
+  DrawHud
+  OldC = 255
+  DrawnLX = 0
+  DrawSprites
+  DrawLine
+  ShowScreen
+  update sprites
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' before every wait: the tune's countdown, then the NMI armed
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 tells the bots
+' the pass is over)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  return
+end sub
+
+' both controllers; Jk = directions held (1 up, 2 down, 4 left, 8 right),
+' Edge = directions newly pressed, Btn = button held, Press = newly pressed
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+' clear sprites zeroes every entry (Y=0 is ON screen): set the count again
+' and park every sprite at HideY with colour 0. Hook and lunker (0-2) keep
+' their order. At most 4 on a line: the lunker (2) never shares a line with
+' a free fish (the lunker swims at Y $76, free fish at $9B-$E6)
+sub HideSprites:
+  clear sprites
+  set sprite count NSpr
+  sprites flicker off
+  for J = 0 to 5
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen starts here: wait for the frame, NMI off, display off, Mode 2
+' with the tiles in the three thirds. ScrKind 1: the play scene (pier,
+' angler, water, weeds) and the HUD colours in the first third (letters
+' dark blue on the sky, digits white); 0: plain water, white text
+sub NewScreen:
+  Rearm
+  wait
+  nmi off
+  display off
+  HideSprites
+  mode 2 screen
+  load default ascii
+  duplicate mode 2 patterns
+  fill full mode 2 text color with $F4
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TileColZ to vram.color + 3072
+  decompress zx0 TileColZ to vram.color + 5120
+  decompress zx0 SpritePatZ to vram.spr_pat
+  backdrop 4
+  cls
+  TimeRed = 0
+  if ScrKind = 1 then
+    decompress zx0 SceneZ to vram.name
+    ' the HUD / title panel: rows 1-3, columns 8-29, dark blue (white text)
+    fill 32 count 22 at 8,1
+    fill 32 count 22 at 8,2
+    fill 32 count 22 at 8,3
+  end if
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the title: the original's scene (pier, angler, line), the name in big
+' letters, the menu in the water (cursor back on START), the tune once
+sub TitlePage:
+  State = StTitle
+  ScrKind = 1
+  NewScreen
+  put char TBigAT at 10,1
+  put char TBigAB at 10,2
+  put char TBigNT at 11,1
+  put char TBigNB at 11,2
+  put char TBigGT at 12,1
+  put char TBigGB at 12,2
+  put char TBigLT at 13,1
+  put char TBigLB at 13,2
+  put char TBigET at 14,1
+  put char TBigEB at 14,2
+  put char TBigRT at 15,1
+  put char TBigRB at 15,2
+  put char TBig6T at 17,1
+  put char TBig6B at 17,2
+  put char TBig4T at 18,1
+  put char TBig4B at 18,2
+  print at 10,3, "BY TONY BRANTNER"
+  print at 13,10, "START"
+  print at 13,12, "HOW TO PLAY"
+  print at 13,14, "CREDITS"
+  print at 10,18, "HI SCORE"
+  print Hi at 19,18
+  LX = LxHome
+  LY = LyTop
+  fill array FY with 0
+  OldC = 255
+  DrawnLX = 0
+  DrawSprites
+  DrawLine
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  update sprites
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 2
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 2 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 11,10
+  put char 32 at 11,12
+  put char 32 at 11,14
+  C = Menu << 1
+  C += 10
+  put char 62 at 11,C
+  return
+end sub
+
+' a page: shown, then the button (a new press) or 30 s alone ends it
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  ScrKind = 0
+  NewScreen
+  print at 11,2, "ANGLER 64"
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 4
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' HOW TO PLAY: three pages, pictures made of the game's own tiles and sprites
+sub HowTo:
+  State = StHow
+  Page = 1
+  ScrKind = 0
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  ' the picture: the line comes down to a fish that bites
+  for Li = 3 to 6
+    put char TLnW1 at 12,Li
+  next
+  put char TLnE14 at 12,7
+  set sprite 2 to 53,97,SFishL0,8
+  set sprite 3 to 46,140,SFishR1,7
+  update sprites
+  print at 2,9, "STEER THE TIP OF YOUR LINE"
+  print at 2,11, "IN FRONT OF A FISH."
+  print at 2,13, "ONCE IT BITES, IT SWIMS"
+  print at 2,15, "TO AND FRO, SLOWLY RISING."
+  print at 2,17, "HOLD THE BUTTON TO REEL"
+  print at 2,19, "IT IN QUICKLY."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 0 then
+    Page = 2
+    NewScreen
+    print at 8,1, "HOW TO PLAY  2/3"
+    set sprite 0 to 30,80,SLunR0a,14
+    set sprite 1 to 30,96,SLunR0b,14
+    set sprite 2 to 45,153,SFishL1,13
+    for Li = 3 to 5
+      put char TLnW1 at 19,Li
+    next
+    put char TLnE14 at 19,6
+    update sprites
+    print at 2,9, "A HUGE, HUNGRY LUNKER"
+    print at 2,11, "SWIMS NEAR THE TOP. IF"
+    print at 2,13, "YOUR FISH TOUCHES HIM,"
+    print at 2,15, "HE EATS IT. WAIT FOR AN"
+    print at 2,17, "OPENING, THEN REEL IT IN."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  if TimedOut = 0 then
+    Page = 3
+    NewScreen
+    print at 8,1, "HOW TO PLAY  3/3"
+    fill TSky count 28 at 2,3
+    fill TSky count 28 at 2,4
+    put char TIcoFish at 3,3
+    fill TWb8 count 5 at 4,3
+    put char TWb3 at 9,3
+    fill TWb0 count 6 at 10,3
+    put char TWbe0 at 16,3
+    put char TIcoClock at 3,4
+    fill TTb8 count 9 at 4,4
+    put char TTb2 at 13,4
+    fill TTb0 count 2 at 14,4
+    put char TTbe0 at 16,4
+    print at 2,6, "POUNDS (TO 99) AND TIME."
+    print at 2,8, "A FISH WEIGHS 4 TO 7 LBS"
+    print at 2,10, "AND IS WORTH 10 X LEVEL."
+    print at 2,12, "CATCH 99 POUNDS BEFORE"
+    print at 2,14, "THE TIME RUNS OUT: EACH"
+    print at 2,16, "UNIT LEFT GIVES 100. OUT"
+    print at 2,18, "OF TIME: GAME OVER."
+    print at 8,21, "PRESS THE BUTTON"
+    PageWait
+  end if
+  HideSprites
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $84,$00,$6B,$F0,$DF,$F0,$F8,$F1,$D4,$F7,$D8,$83,$F4,$CE,$FE,$70,$17,$91,$C0,$FF,$E4,$30,$1F,$C8
+  $57,$E5,$E9,$08,$E1,$E4,$DD,$C0,$3C,$FE,$28,$00,$02,$08,$E0,$F0,$38,$18,$1A,$0C,$5E,$D0,$AA,$07
+  $1C,$2F,$03,$FE,$29,$30,$69,$C0,$78,$82,$7D,$E0,$FF,$4D,$C0,$FC,$F1,$A9,$80,$FB,$ED,$FE,$DF,$A0
+  $80,$7D,$40,$FE,$C8,$C0,$10,$E0,$34,$E0,$24,$E0,$14,$E0,$04,$D9,$F4,$37,$C2,$69,$30,$7F,$5D,$F0
+  $3C,$EE,$A5,$30,$A5,$30,$A5,$30,$A5,$30,$BC,$0C,$90,$DF,$FD,$F0,$68,$0C,$0A,$0C,$02,$80,$0C,$A4
+  $0C,$FA,$B8,$03,$76,$18,$7C,$F0,$F2,$EE,$96,$03,$96,$03,$96,$03,$97,$03,$81,$FF,$A1,$8D,$01,$41
+  $01,$8D,$00,$38,$44,$92,$80,$9A,$82,$44,$38,$00,$A0,$80,$D9,$3E,$2F,$E0,$FE,$D7,$66,$75,$FF,$C4
+  $FE,$92,$4E,$FF,$01,$FE,$86,$7A,$F5,$10,$4F,$FD,$8E,$70,$F0,$E3,$70,$B8,$F0,$70,$F8,$F1,$30,$14
+  $E4,$70,$09,$FB,$C3,$99,$C3,$FF,$F2,$CE,$FE,$E1,$48,$1C,$0C,$2C,$24,$30,$38,$18,$D2,$81,$C3,$F6
+  $3C,$E2,$BF,$81,$73,$FE,$0F,$50,$34,$83,$A2,$6B,$E2,$C6,$97,$B5,$C6,$03,$D8,$CC,$CC,$C6,$C6,$86
+  $80,$20,$01,$C3,$7F,$D3,$FE,$AA,$00,$06,$4B,$00,$55,$55,$80
+end data
+data TileColZ bytes
+  $96,$05,$96,$04,$86,$05,$A8,$51,$05,$6B,$15,$DB,$E8,$01,$AA,$FE,$1B,$AA,$0B,$01,$AA,$B5,$0B,$A9
+  $B5,$05,$AA,$58,$08,$FE,$E8,$B5,$08,$81,$81,$B1,$B1,$E7,$B0,$9F,$F0,$CD,$DA,$FE,$18,$AA,$81,$85
+  $AA,$15,$0B,$6A,$05,$9A,$0B,$51,$79,$AC,$FD,$D5,$9C,$FF,$AC,$38,$FF,$AC,$F0,$FF,$10,$F5,$DF,$FE
+  $D9,$FA,$08,$FF,$5B,$AA,$01,$51,$A6,$16,$9A,$01,$61,$7E,$C8,$EA,$06,$FE,$05,$69,$16,$A7,$5B,$F7
+  $D0,$B4,$FF,$D0,$7C,$6E,$04,$FF,$84,$34,$3E,$D0,$BC,$43,$FE,$1D,$87,$5C,$BB,$31,$E5,$FE,$87,$F0
+  $7F,$F1,$F0,$EE,$C0,$E5,$FE,$04,$A0,$F4,$02,$93,$04,$DF,$EE,$DC,$7D,$CA,$F7,$B8,$DF,$A6,$94,$79
+  $90,$05,$7A,$FF,$4B,$0F,$E1,$DD,$DE,$76,$D4,$FF,$B1,$FE,$F0,$12,$FE,$1B,$FE,$F0,$12,$FE,$0B,$FE
+  $40,$E3,$70,$6E,$D0,$A0,$38,$F0,$1E,$30,$0B,$F1,$FC,$FE,$F0,$4B,$1F,$F8,$FE,$F0,$4B,$0F,$EE,$FE
+  $04,$70,$40,$8C,$4F,$4F,$A6,$A0,$0F,$0F,$F4,$07,$FE,$DF,$FE,$E0,$0E,$EC,$38,$E0,$2B,$4F,$4C,$F6
+  $7E,$2F,$8C,$38,$A0,$29,$0F,$3F,$F7,$80,$4A,$F4,$57,$F7,$1F,$C0,$55,$55,$80
+end data
+data SpritePatZ bytes
+  $1A,$07,$0B,$37,$4F,$FC,$09,$7F,$3F,$0F,$00,$24,$A7,$80,$40,$B4,$CC,$F4,$7C,$F4,$84,$04,$9E,$E0
+  $C0,$82,$CF,$7C,$7C,$FF,$12,$06,$43,$B7,$CB,$77,$7F,$FF,$F7,$83,$00,$5F,$80,$E4,$C0,$87,$84,$44
+  $B4,$4C,$74,$8F,$5F,$F4,$80,$60,$21,$89,$03,$04,$4B,$77,$4F,$92,$4F,$43,$40,$06,$C0,$B0,$C8,$F4
+  $7F,$7F,$FC,$F8,$F0,$59,$2A,$03,$84,$CB,$B7,$CC,$FC,$CF,$7D,$C0,$BB,$F7,$20,$F2,$C1,$80,$28,$43
+  $44,$28,$74,$4C,$7F,$7F,$85,$03,$00,$E4,$C0,$E1,$F7,$BD,$03,$1C,$FF,$FF,$1F,$E4,$9A,$1F,$E3,$1F
+  $FF,$FC,$61,$FF,$DE,$22,$E0,$1C,$EE,$E5,$1F,$D9,$F6,$E0,$A2,$AF,$00,$FC,$FD,$FD,$FB,$FF,$E0,$AE
+  $03,$C2,$F1,$80,$7F,$C0,$DE,$80,$BD,$9F,$03,$1E,$E5,$00,$F4,$80,$6A,$1C,$84,$FF,$F9,$11,$00,$EF
+  $EA,$DC,$6B,$1F,$EF,$3F,$D2,$64,$79,$7E,$F6,$5E,$D9,$FC,$82,$FE,$60,$5C,$0E,$63,$B8,$FC,$E2,$7F
+  $BC,$F8,$DE,$80,$7B,$82,$C5,$80,$FE,$C0,$80,$0F,$11,$9D,$00,$87,$64,$7B,$A1,$82,$D1,$00,$E4,$80
+  $D5,$55,$60
+end data
+data SceneZ bytes
+  $80,$80,$48,$BC,$82,$83,$BC,$59,$BC,$84,$85,$86,$80,$58,$25,$87,$88,$89,$8A,$09,$24,$8B,$8C,$8D
+  $8E,$8F,$90,$48,$64,$91,$92,$93,$94,$95,$59,$24,$96,$97,$98,$99,$9A,$9B,$48,$FE,$9C,$8A,$FC,$C4
+  $56,$2E,$81,$81,$FC,$39,$FE,$5F,$C0,$00,$12,$82,$9D,$A3,$9E,$9D,$9F,$F8,$F6,$FA,$88,$9E,$A0,$3F
+  $E0,$EA,$C0,$9F,$A5,$9E,$EF,$A1,$A2,$9F,$9F,$9E,$A3,$9F,$FD,$A2,$B3,$AA,$F5,$A2,$A0,$E8,$F9,$A2
+  $FD,$C5,$FE,$5D,$55,$56
+end data
+
+data TxD_0 bytes
+  $02,$42,$59,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$06,$28,$43,$36,$34,$29,$2E,$0B
+  $28,$4F,$52,$49,$47,$49,$4E,$41,$4C,$29,$2E,$04,$31,$39,$39,$32,$05,$32,$30,$32,$36,$2E,$09,$42
+  $52,$41,$4E,$54,$4E,$45,$52,$2C,$06,$43,$4C,$41,$55,$44,$45,$0C,$43,$4F,$4C,$45,$43,$4F,$56,$49
+  $53,$49,$4F,$4E,$05,$44,$49,$53,$4B,$2C,$04,$44,$4F,$57,$4E,$04,$47,$41,$4D,$45,$0B,$4A,$55,$4C
+  $59,$2F,$41,$55,$47,$55,$53,$54,$0A,$4D,$41,$47,$41,$5A,$49,$4E,$45,$27,$53,$08,$4F,$52,$49,$47
+  $49,$4E,$41,$4C,$04,$50,$49,$45,$52
+end data
+data TxD_1 bytes
+  $04,$50,$4F,$52,$54,$05,$52,$45,$52,$55,$4E,$03,$52,$55,$4E,$03,$54,$48,$45,$05,$54,$49,$54,$4C
+  $45,$04,$54,$4F,$4E,$59,$05,$54,$55,$4E,$45,$3A
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $0E,$0B,$00,$FE,$15,$06,$FE,$12,$0D,$11,$09,$FE,$0C,$04,$02,$FE,$08,$10,$FE,$00,$07,$01,$FE,$05
+  $14,$16,$0A,$00,$FE,$13,$0F,$03,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+data FxTab bytes
+  64,64,65,65,66,67,67,68,69,69,70,71,71,72,73,73
+  74,74,75,76,76,77,78,78,79,80,80,81,82,82,83,83
+  84,85,85,86,87,87,88,89,89,90,91,91,92,93,93,94
+  94,95,96,96,97,98,98,99,100,100,101,102,102,103,103,104
+  105,105,106,107,107,108,109,109,110,111,111,112,112,113,114,114
+  115,116,116,117,118,118,119,120,120,121,122,122,123,123,124,125
+  125,126,127,127,128,129,129,130,131,131,132,132,133,134,134,135
+  136,136,137,138,138,139,140,140,141,141,142,143,143,144,145,145
+  146,147,147,148,149,149,150,151,151,152,152,153,154,154,155,156
+  156,157,158,158,159,160,160,161,161,162,163,163,164,165,165,166
+  167,167,168,169,169,170,170,171,172,172,173,174,174,175,176,176
+  177,178,178,179,180,180,181,181,182,183,183,184,185,185,186,187
+  187,188,189,189,190,190,191,192,192,193,194,194,195,196,196,197
+  198,198,199,199,200,201,201,202,203,203,204,205,205,206,207,207
+  208,209,209,210,210,211,212,212,213,214,214,215,216,216,217,218
+  218,219,219,220,221,221,222,223,223,224,225,225,226,227,227,228
+  229,229,230,230,231,232,232,233,234,234,235,236,236,237,238,238
+end data
+data GyTab bytes
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+  16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
+  32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47
+  48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63
+  64,64,65,66,67,68,69,70,71,71,72,73,74,75,76,77
+  78,78,79,80,81,82,83,84,85,85,86,87,88,89,90,91
+  92,92,93,94,95,96,97,98,99,99,100,101,102,103,104,105
+  106,106,107,108,109,110,111,112,113,113,114,115,116,117,118,119
+  120,120,121,122,123,124,125,126,127,127,128,129,130,131,132,133
+  134,134,135,136,137,138,139,140,141,141,142,143,144,145,146,147
+  148,148,149,150,151,152,153,154,155,155,156,157,158,159,160,161
+  162,162,163,164,165,166,167,168,169,169,170,171,172,173,174,175
+  176,176,177,178,179,180,181,182,183,183,184,185,186,187,188,189
+  190,190,191,192,193,194,195,196,197,197,198,199,200,201,202,203
+  204,204,205,206,207,208,209,210,211,211,212,213,214,215,216,217
+  218,218,219,220,221,222,223,224,225,225,226,227,228,229,230,231
+end data
+data TimeWhiteCol bytes
+  4,1,1,1,1,1,4,4,4,241,241,241,241,241,4,4
+  4,241,241,241,241,241,4,4,4,241,241,241,241,241,4,4
+  4,241,241,241,241,241,4,4,4,31,31,31,31,31,4,4
+  4,31,31,31,31,31,4,4,4,31,31,31,31,31,4,4
+  4,15,15,15,15,15,4,4,4,1,1,1,1,1,4,4
+  4,241,241,241,241,241,4,4,4,241,241,241,241,241,4,4
+  4,241,241,241,241,241,4,4,4,241,241,241,241,241,4,4
+end data
+data TimeRedCol bytes
+  4,1,1,1,1,1,4,4,4,129,129,129,129,129,4,4
+  4,129,129,129,129,129,4,4,4,129,129,129,129,129,4,4
+  4,129,129,129,129,129,4,4,4,24,24,24,24,24,4,4
+  4,24,24,24,24,24,4,4,4,24,24,24,24,24,4,4
+  4,8,8,8,8,8,4,4,4,1,1,1,1,1,4,4
+  4,129,129,129,129,129,4,4,4,129,129,129,129,129,4,4
+  4,129,129,129,129,129,4,4,4,129,129,129,129,129,4,4
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScCatch:
+    db $40,$56,$12,$01,$40,$56,$42,$01,$40,$A3,$10,$01,$40,$A3,$40,$01,$40,$56,$12,$01,$40,$56,$42,$01
+    db $40,$A3,$10,$01,$40,$A3,$40,$01,$40,$56,$12,$01,$40,$56,$42,$01,$40,$A3,$10,$01,$40,$A3,$40,$01
+    db $50
+ScEat:
+    db $00,$00,$15,$01,$00,$00,$35,$02,$00,$00,$55,$03,$10
+ScTickA:
+    db $40,$56,$22,$01,$40,$56,$52,$01,$50
+ScTickB:
+    db $40,$A3,$20,$01,$40,$A3,$50,$01,$50
+ScOver:
+    db $40,$1F,$33,$0F,$40,$1F,$53,$23,$40,$F9,$33,$0F,$40,$F9,$53,$27,$40,$CD,$32,$0F,$40,$CD,$52,$2B
+    db $40,$F9,$33,$0F,$40,$F9,$53,$2F,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScCatch,$705D
+    dw ScEat,$7053
+    dw ScTickA,$705D
+    dw ScTickB,$705D
+    dw ScOver,$705D
+; Down by the Pier (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 7
+    db $02,$40,$1A,$21,$26,$00,$2A,$2D,$00,$2A,$2B,$00,$2F,$2D,$00,$2A
+    db $28,$00,$2B,$2A,$00,$26,$28,$00,$00,$21,$00,$00,$26,$00,$2A,$2D
+    db $00,$32,$2F,$00,$2B,$2D,$00,$2A,$28,$00,$2A,$2B,$00,$28,$26,$00
+    db $00,$00,$00,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 7
+    db $02,$60,$1A,$21,$1E,$00,$00,$21,$00,$00,$1F,$00,$00,$26,$00,$00
+    db $25,$00,$00,$21,$00,$00,$25,$00,$00,$1C,$00,$00,$1E,$00,$00,$21
+    db $00,$00,$1F,$00,$00,$26,$00,$00,$23,$00,$00,$25,$00,$00,$1E,$00
+    db $00,$00,$00,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$0F,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$0E,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0F,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$0E,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0F,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$0E,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0F,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$0E,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0F,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$0E,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0F,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$0E,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0F,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$0E,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$0F,$14,$66,$37
+    db $10
+ScTuneBassPitch:
+    db $C0,$4C,$F0,$1A,$C0,$66,$F0,$14,$C0,$72,$F0,$16,$C0,$4C,$F0,$14,$C0,$66,$F0,$16,$C0,$4C,$F0,$14
+    db $C0,$66,$F0,$2A,$C0,$4C,$F0,$16,$C0,$66,$F0,$14,$C0,$72,$F0,$16,$C0,$4C,$F0,$14,$C0,$66,$F0,$2A
+    db $C0,$4C,$F0,$0F,$F7
+    db $D0
+}

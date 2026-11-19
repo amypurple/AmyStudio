@@ -1,0 +1,1693 @@
+cartridge "64 SHUFFLE/BUCK CHILDRESS/1985"
+' 64 SHUFFLE - shuffleboard, after "64 Shuffle" by Buck Childress (C64 BASIC,
+' RUN magazine's ReRUN Game Pak, 1984-85; orig/SHUFFLE.bas). Port in Amy.
+'
+' The rules are the listing's lines 100-495, transcribed line by line: the
+' board is kept as the C64 kept it, a copy of screen RAM rows 6-16 (Board[],
+' index = C64 address - 1264), because the original finds pucks with PEEK
+' and keeps stale entries in J(), E(), P() from round to round. Variable
+' names follow the listing (PL, B, J, J1, M, F, D, T, X, A, U, E, VS, HS).
+'
+' A turn: the thrower stands in column 0 of lane rows 7-15, holds the button
+' (power = jiffies held / 6), lets go, moves up/down if wanted, and pushes the
+' stick RIGHT (the C64 stick was held sideways: forward). Three throws each,
+' then every puck still on the board scores by its P: 18-21 = 5, 22-25 = 10,
+' 26-28 = 25; past 28 it is out. Knocking an opponent's puck the second time
+' in one turn is a foul: that turn's pucks vanish. First to 150 (no tie).
+'
+' Screen: the C64's 40 columns are drawn 5.5 pixels apart (column c at
+' x = 24 + (c - 1) * 5.5, the player in tile column 2, the wall in 29); the
+' lane rows are 26 tiles each with their own patterns, redrawn from Board[]
+' (RenderRow), so pucks are tiles, never sprites (no flicker).
+
+const TLogo600 = 128
+const TLogo601 = 129
+const TLogo610 = 130
+const TLogo611 = 131
+const TLogo400 = 132
+const TLogo401 = 133
+const TLogo410 = 134
+const TLogo411 = 135
+const TLogoS00 = 136
+const TLogoS01 = 137
+const TLogoS10 = 138
+const TLogoS11 = 139
+const TLogoH00 = 140
+const TLogoH01 = 141
+const TLogoH10 = 142
+const TLogoH11 = 143
+const TLogoU00 = 144
+const TLogoU01 = 145
+const TLogoU10 = 146
+const TLogoU11 = 147
+const TLogoF00 = 148
+const TLogoF01 = 149
+const TLogoF10 = 150
+const TLogoF11 = 151
+const TLogoL00 = 152
+const TLogoL01 = 153
+const TLogoL10 = 154
+const TLogoL11 = 155
+const TLogoE00 = 156
+const TLogoE01 = 157
+const TLogoE10 = 158
+const TLogoE11 = 159
+const TLab00 = 160
+const TLab01 = 161
+const TLab02 = 162
+const TLab03 = 163
+const TLab04 = 164
+const TLab05 = 165
+const TLab06 = 166
+const TLab07 = 167
+const TLab08 = 168
+const TLab09 = 169
+const TLab10 = 170
+const TLab11 = 171
+const TLab12 = 172
+const TLab13 = 173
+const TLab14 = 174
+const TLab15 = 175
+const TLab16 = 176
+const TLab17 = 177
+const TLab18 = 178
+const TLab19 = 179
+const TLab20 = 180
+const TLab21 = 181
+const TLab22 = 182
+const TLab23 = 183
+const TLab24 = 184
+const TLab25 = 185
+const TLab26 = 186
+const TLab27 = 187
+const TBar00 = 188
+const TBar01 = 189
+const TBar02 = 190
+const TBar03 = 191
+const TBar04 = 192
+const TBar05 = 193
+const TBar06 = 194
+const TBar07 = 195
+const TBar08 = 196
+const TBar09 = 197
+const TBar10 = 198
+const TBar11 = 199
+const TBar12 = 200
+const TBar13 = 201
+const TBar14 = 202
+const TBar15 = 203
+const TBar16 = 204
+const TBar17 = 205
+const TBar18 = 206
+const TBar19 = 207
+const TBar20 = 208
+const TBar21 = 209
+const TBar22 = 210
+const TBar23 = 211
+const TBar24 = 212
+const TBar25 = 213
+const TBar26 = 214
+const TBar27 = 215
+const THblue = 216
+const THred = 217
+const THdot = 218
+const TPantop = 219
+const TPanbot = 220
+const TCyan = 221
+const TWall = 222
+const TStandb = 223
+const TStandr = 224
+const TPushb = 225
+const TPushr = 226
+const TArrow = 227
+const SPuck = 0
+const NTiles8 = 800
+const SprBytes = 32
+const SndTuneA = 1
+const SndTuneB = 2
+const SndTuneC = 3
+const SndTuneD = 4
+const SndClick = 5
+const SndHit = 6
+const SndBell = 7
+const SndOut = 8
+const SndGone = 9
+const SndPush = 10
+const SndWin = 11
+const SndWin2 = 12
+const SndLose = 13
+const TuneFrames = 512
+const TxtCredits = 0
+const NSpr = 4
+const HideY = 192
+' measured on the C64 in VICE (c64/timing.json, trace.py with shutime.bas): frames per lane cell
+const CellF = 5
+const StruckF = 8
+const MoveF = 5
+const RoundWait = 160
+const FoulWait = 130
+const BellF = 42
+' game states, read by the bots
+const StBoot = 0
+const StTitle = 1
+const StHow = 2
+const StCredits = 3
+const StPlay = 4
+const StOver = 9
+
+' the C64 screen rows 7-15 (360 cells, index = address - 1304): bits 0-2
+' the character (0 space, 1 = 83 red puck, 2 = 84 blue puck, 3 = 85 player,
+' 4 = 86 player pushing), bits 4-5 its colour (1 blue 6, 2 red 2, 3 white 1)
+u8 Board[360]
+' one lane tile being drawn and the next (spill of a puck)
+u8 TlP[8]
+u8 TlC[8]
+u8 NxP[8]
+u8 NxC[8]
+u8 RowDirty[9]
+' pucks of the other colour inside a tile that already has one (two
+' colours in one 8-pixel row): drawn as sprites instead (rare; 4 at most)
+u8 SpRow[4]
+u8 SpX[4]
+u8 SpC[4]
+' the listing's arrays (index 1-6; 0 unused)
+u16 Ja[7]
+u8 Pa[7]
+u8 Ea[7]
+u8 Ua[7]
+u16 PL = 0
+u16 Bv = 0
+u16 Jv = 0
+u16 J1v = 0
+u16 VS = 0
+u16 HS = 0
+u16 Ad = 0
+u16 TS = 0
+u16 TF = 0
+u16 Tk16 = 0
+u16 Hold = 0
+u8 M = 0
+u8 F = 0
+u8 D = 0
+u8 T = 0
+u8 X = 0
+u8 I = 0
+u8 G = 0
+u8 Aneg = 0
+u8 U = 6
+u8 E0 = 84
+u8 SC = 0
+u8 Over = 0
+u8 H = 0
+u8 H1 = 0
+u8 Pw = 0
+u8 LastP = 0
+u8 LastRow = 0
+u8 Throws = 0
+u8 Phase = 0
+u8 Players = 1
+u8 Cpu = 0
+u8 MoveCnt = 0
+u8 PkV = 0
+u8 PkC = 0
+u8 Ch = 0
+u8 Nx = 0
+u8 Rr = 0
+u8 Rc = 0
+u8 Sx = 0
+u8 Tn = 0
+u8 Xp = 0
+u8 Sh = 0
+u8 Sb = 0
+u8 Cc = 0
+u8 Wn = 0
+u8 MsgId = 0
+' the computer player (1-player games: red)
+u8 CpRow = 0
+u8 CpStep = 0
+u8 CpWait = 0
+u16 CpHold = 0
+u16 Rs = 1
+u16 W16 = 0
+u16 NumU = 0
+u16 TzLeft = 0
+u16 Waited = 0
+u16 Bi = 0
+u16 Bk = 0
+u16 Va = 0
+u8 TzOn = 0
+u8 State = 0
+u8 Menu = 0
+u8 Page = 0
+u8 TimedOut = 0
+' input
+u8 J1 = 0
+u8 J2 = 0
+u8 Jk = 0
+u8 Jt = 0
+u8 WasJ = 0
+u8 Edge = 0
+u8 Btn = 0
+u8 WasBtn = 0
+u8 Press = 0
+u8 Tick = 0
+u8 Idle = 0
+u8 Oi = 0
+u8 Li = 0
+' scratch (never kept across a sub call)
+u8 C = 0
+u8 J = 0
+u8 K = 0
+u8 V = 0
+u8 Y = 0
+' packed text decoder (kit/textpack.mjs)
+u16 TxP = 0
+u16 TxQ = 0
+u16 TxW = 0
+u8 TxC = 0
+u8 TxL = 0
+u8 TxX = 0
+u8 TxY = 0
+u8 TxX0 = 0
+u8 TxF = 0
+u8 TxT = 0
+u8 TxGap = 2
+
+' x of C64 column c (1-38) inside the lane's 208 pixels: (c - 1) * 5.5
+data XOff bytes = 0,0,5,11,16,22,27,33,38,44,49,55,60,66,71,77,82,88,93,99,104,110,115,121,126,132,137,143,148,154,159,165,170,176,181,187,192,198,203
+' the 5 x 5 puck, rows 2-6 of the cell
+data DotRow bytes = $70,$F8,$F8,$F8,$70
+data KindCh bytes = 32,83,84,85,86,32,32,32
+data ColOf bytes = 3,6,2,1
+' "64 SHUFFLE": logo glyph numbers (255 = space)
+data LogoG bytes = 0,1,255,2,3,4,5,5,6,7
+
+  mode 2 screen
+  set sound table ScSoundTable areas 8
+  sprites 16x16
+  nmi off
+  HideSprites
+  screen on
+
+title:
+  TitlePage
+  if Menu = 2 then
+    HowTo
+    goto title
+  end if
+  if Menu = 3 then
+    CreditsPage
+    goto title
+  end if
+  Players = Menu + 1
+  NewGame
+
+play_loop:
+  Aim
+  Shoot
+  if Over = 0 then goto play_loop
+
+  GameOver
+  State = StOver
+  Rearm
+  wait 30 frames
+  nmi on
+  pause until press and release sleep after 30 seconds
+  nmi off
+  goto title
+
+' ---------------------------------------------------------------------------
+' the board: PEEK and POKE on the C64 addresses 1264-1703
+
+function Pk(u16 A0) as u8
+  u8 Rv = 1
+  if A0 >= 1264 then
+    if A0 < 1304 then Rv = 160
+    if A0 >= 1304 then
+      if A0 <= 1663 then
+        Va = A0 - 1304
+        Rv = Board[Va]
+        Rv = Rv & 7
+        Rv = KindCh[Rv]
+        Bk = Va % 40
+        if Bk = 39 then Rv = 160
+      else
+        if A0 <= 1703 then Rv = 160
+      end if
+    end if
+  end if
+  return Rv
+
+' POKE Ad,PkV (and its colour PkC: 6, 2 or 1; 255 keeps the colour) on the
+' lane rows; marks the row to redraw
+sub Pok:
+  if Ad < 1304 then return
+  if Ad > 1663 then return
+  Va = Ad - 1304
+  C = Board[Va]
+  C = C & $30
+  K = 0
+  if PkV = 83 then K = 1
+  if PkV = 84 then K = 2
+  if PkV = 85 then K = 3
+  if PkV = 86 then K = 4
+  if PkC = 6 then C = $10
+  if PkC = 2 then C = $20
+  if PkC = 1 then C = $30
+  Board[Va] = C | K
+  Bk = Va / 40
+  K = Bk
+  RowDirty[K] = 1
+  return
+end sub
+
+' POKE Ad+C,PkC only (the colour RAM)
+sub SetCol:
+  if Ad < 1304 then return
+  if Ad > 1663 then return
+  Va = Ad - 1304
+  K = Board[Va]
+  K = K & 7
+  C = $10
+  if PkC = 2 then C = $20
+  if PkC = 1 then C = $30
+  Board[Va] = C | K
+  Bk = Va / 40
+  K = Bk
+  RowDirty[K] = 1
+  return
+end sub
+
+' the listing's FOR I=1 TO 6: IF J(I)=Ad THEN ... (first match)
+sub FindI:
+  I = 0
+  for Oi = 1 to 6
+    if I = 0 then
+      if Ja[Oi] = Ad then I = Oi
+    end if
+  next
+  ' the C64 would stop with ?BAD SUBSCRIPT here; never seen in play
+  if I = 0 then I = 6
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' the rules: lines 100-495
+
+sub NewGame:
+  fill array Board with 0
+  for J = 0 to 6
+    Ja[J] = 0
+    Pa[J] = 0
+    Ea[J] = 0
+    Ua[J] = 0
+  next
+  D = 0
+  T = 0
+  X = 0
+  Aneg = 0
+  U = 6
+  E0 = 84
+  VS = 0
+  HS = 0
+  J1v = 0
+  Jv = 0
+  Bv = 0
+  I = 0
+  M = 0
+  F = 0
+  Over = 0
+  Throws = 0
+  PL = 1464
+  Ad = PL
+  PkV = 85
+  PkC = U
+  Pok
+  DrawPlay
+  MsgId = 1
+  ShowMsg
+  State = StPlay
+  Wait1(60)
+  return
+end sub
+
+' lines 110-150: the thrower aims; returns with Pw (power) when the stick
+' is pushed forward after the button was let go
+sub Aim:
+  M = 0
+  F = 0
+  Ad = PL
+  PkV = 85
+  PkC = U
+  Pok
+  FlushRows
+  ShowHud
+  Cpu = 0
+  if Players = 1 then
+    if U = 2 then Cpu = 1
+  end if
+  MsgId = 2
+  if U = 2 then MsgId = 3
+  if Cpu = 1 then MsgId = 4
+  if Players = 1 then
+    if U = 6 then MsgId = 5
+  end if
+  ShowMsg
+  H = 0
+  H1 = 0
+  MoveCnt = 0
+  Phase = 1
+  ShowHud
+  CpuPlan
+  ' a button already held when the turn starts counts from now
+  WasBtn = 16
+am_loop:
+  Frame1
+  ReadPad
+  Jt = Jk | Btn
+  if Cpu = 1 then CpuPad
+  ' 115: the button pressed starts the clock
+  V = Jt & 16
+  if V > 0 then
+    if H = 0 then
+      H = 1
+      TS = Tk16
+    end if
+  end if
+  ' 125: let go: the clock stops (once)
+  if H1 = 0 then
+    if V = 0 then
+      if H = 1 then
+        TF = Tk16
+        H1 = 1
+      end if
+    end if
+  end if
+  ' 130/135 (stick held sideways on the C64): down and up move the player
+  if MoveCnt > 0 then dec MoveCnt
+  if MoveCnt = 0 then
+    K = Jt & 2
+    if K > 0 then
+      if PL < 1585 then
+        MovePl(40)
+      end if
+    end if
+    K = Jt & 1
+    if K > 0 then
+      if PL > 1305 then
+        MovePl(0)
+      end if
+    end if
+  end if
+  ' 145: forward (right) after the button was let go throws
+  K = Jt & 8
+  if K > 0 then
+    if H = 1 then
+      if V = 0 then goto am_go
+    end if
+  end if
+  goto am_loop
+am_go:
+  Hold = TF - TS
+  W16 = Hold / 6
+  if W16 > 250 then W16 = 250
+  Pw = W16
+  LastP = Pw
+  W16 = PL - 1304
+  W16 = W16 / 40
+  LastRow = W16
+  Phase = 2
+  MsgId = 0
+  ShowMsg
+  return
+end sub
+
+' the player one row down (Dl = 40) or up (Dl = 0)
+sub MovePl(u8 Dl):
+  Ad = PL
+  PkV = 32
+  PkC = 255
+  Pok
+  if Dl = 40 then
+    PL += 40
+  else
+    PL -= 40
+  end if
+  Ad = PL
+  PkV = 85
+  PkC = U
+  Pok
+  FlushRows
+  MoveCnt = MoveF
+  return
+end sub
+
+' lines 160-190: the throw
+sub Shoot:
+  inc D
+  ShowHud
+  Pa[D] = Pw
+  inc X
+  inc Throws
+  Ad = PL
+  PkV = 86
+  PkC = U
+  Pok
+  play sound SndPush
+  if Pa[D] > 28 then
+    K = 38 - D
+    Pa[D] = K
+  end if
+  Bv = PL + Pa[D]
+  Jv = PL + 1
+sh_loop:
+  inc M
+  inc F
+  Ad = Jv
+  PkV = E0
+  PkC = U
+  Pok
+  FlushRows
+  Ad = Jv + 1
+  Nx = Pk(Ad)
+  if Nx = 83 then goto sh_hit
+  if Nx = 84 then goto sh_hit
+  ' 5.5 jiffies a cell on the C64: 5 and 6 frames in turn
+  Wait1(CellF)
+  K = M & 1
+  if K = 1 then Frame1
+  Ad = Jv
+  PkV = 32
+  PkC = 255
+  Pok
+  Jv += 1
+  if Jv <= Bv then goto sh_loop
+  Ad = Jv
+  PkV = E0
+  PkC = U
+  Pok
+  FlushRows
+  K = M - 1
+  Pa[D] = K
+  if K > 28 then play sound SndOut
+  Sides
+  goto sh_done
+sh_hit:
+  play sound SndHit
+  Collide
+sh_done:
+  M = 0
+  F = 0
+  Ad = PL
+  PkV = 85
+  PkC = U
+  Pok
+  FlushRows
+  return
+end sub
+
+' lines 300-365: the puck at J+1 is knocked on toward B (chains through
+' pucks it meets); the second opponent's puck knocked in a turn is a foul
+sub Collide:
+  Ad = Jv
+  C = Pk(Ad)
+  Ad = Jv + 1
+  K = Pk(Ad)
+  if C <> K then
+    inc T
+    if T > 1 then
+      Foul
+      return
+    end if
+  end if
+  Ad = Jv + 1
+  FindI
+  J1v = Jv + 1
+co_loop:
+  Ad = J1v
+  PkV = Ea[I]
+  PkC = Ua[I]
+  Pok
+  FlushRows
+  Ad = J1v + 1
+  Nx = Pk(Ad)
+  if Nx = 83 then goto co_meet
+  if Nx = 84 then goto co_meet
+  Wait1(StruckF)
+  Ad = J1v
+  PkV = 32
+  PkC = 255
+  Pok
+  inc F
+  J1v += 1
+  if J1v <= Bv then goto co_loop
+  Ad = J1v
+  PkV = Ea[I]
+  PkC = Ua[I]
+  Pok
+  FlushRows
+  K = F - 1
+  Pa[I] = K
+  C = M - 2
+  Pa[D] = C
+  Ja[I] = J1v
+  if K > 28 then play sound SndOut
+  Sides
+  J1v = Bv
+  I = 6
+  return
+co_meet:
+  ' 345
+  Ad = J1v
+  C = Pk(Ad)
+  if C <> Nx then
+    inc T
+    if T > 1 then
+      play sound SndHit
+      PkC = 1
+      SetCol
+      Foul
+      return
+    end if
+  end if
+  play sound SndHit
+  K = F - 1
+  Pa[I] = K
+  Ja[I] = J1v
+  Ad = J1v + 1
+  FindI
+  inc F
+  J1v += 1
+  goto co_loop
+end sub
+
+' lines 375-395: the thrower's pucks of this turn turn white and vanish
+sub Foul:
+  if D < 4 then
+    D = 3
+    G = 1
+  else
+    D = 6
+    G = 4
+  end if
+  MsgId = 6
+  ShowMsg
+  Ad = Jv
+  PkC = 1
+  SetCol
+  Ad = Ja[G]
+  SetCol
+  K = G + 1
+  Ad = Ja[K]
+  SetCol
+  FlushRows
+  ' 670: one beep for each throw of the turn
+  for Li = 1 to X
+    play sound SndGone
+    Wait1(14)
+  next
+  Wait1(FoulWait)
+  PkV = 32
+  PkC = 255
+  Ad = J1v
+  Pok
+  Ad = Jv
+  Pok
+  Ad = Ja[G]
+  Pok
+  K = G + 1
+  Ad = Ja[K]
+  Pok
+  FlushRows
+  After415
+  J1v = Bv
+  return
+end sub
+
+' lines 400-410
+sub Sides:
+  Ja[D] = Jv
+  Ea[D] = E0
+  Ua[D] = U
+  if D = 3 then After415
+  if D = 6 then After415
+  return
+end sub
+
+' lines 415-430: the next thrower (and the round's score after 6 throws)
+sub After415:
+  T = 0
+  X = 0
+  if D = 6 then
+    ScoreRound
+    if Over = 1 then return
+    Aneg = Aneg ^ 1
+    if Aneg = 1 then U = 6
+  end if
+  if D <> 3 then
+    if Aneg = 0 then
+      U = 6
+      E0 = 84
+      return
+    end if
+  end if
+  if U = 6 then
+    U = 2
+    E0 = 83
+  else
+    U = 6
+    E0 = 84
+  end if
+  return
+end sub
+
+' lines 435-480: every puck still where it stopped scores by its P
+sub ScoreRound:
+  MsgId = 7
+  ShowMsg
+  ShowHud
+  Wait1(RoundWait)
+  for Li = 1 to 6
+    SC = 0
+    Ad = Ja[Li]
+    C = Pk(Ad)
+    if C = Ea[Li] then
+      K = Pa[Li]
+      if K > 25 then
+        if K <= 28 then SC = 25
+      end if
+      if K > 21 then
+        if K <= 25 then SC = 10
+      end if
+      if K > 17 then
+        if K <= 21 then SC = 5
+      end if
+    end if
+    if Ea[Li] = 84 then VS += SC
+    if Ea[Li] = 83 then HS += SC
+    if SC > 0 then
+      ShowHud
+      play sound SndBell
+      Wait1(BellF)
+    end if
+    PkV = 32
+    PkC = 255
+    Pok
+    FlushRows
+  next
+  D = 0
+  ShowHud
+  if VS >= 150 then Over = 1
+  if HS >= 150 then Over = 1
+  if VS = HS then Over = 0
+  return
+end sub
+
+' the computer's throw (1-player games, red): a plan like a person's - a
+' row, then a hold of about the right length (it can miss by a little)
+sub CpuPlan:
+  if Cpu = 0 then return
+  CpStep = 0
+  CpWait = RandBelow(30)
+  CpWait += 30
+  ' knock out the first blue puck that is scoring, half the time, if no
+  ' opponent's puck was knocked yet this turn (a second knock is a foul)
+  CpRow = 255
+  if T = 0 then
+    K = RandBelow(2)
+    if K = 0 then
+      for Li = 0 to 8
+        if CpRow = 255 then
+          Bi = Li * 40
+          Bi += 1
+          J = 0
+          for Oi = 1 to 30
+            if J = 0 then
+              C = Board[Bi]
+              C = C & 7
+              if C = 2 then
+                if Oi >= 19 then CpRow = Li
+                J = 1
+              end if
+              if C = 1 then J = 1
+            end if
+            Bi += 1
+          next
+        end if
+      next
+    end if
+  end if
+  if CpRow <> 255 then
+    K = RandBelow(12)
+    CpHold = K + 180
+    return
+  end if
+  ' else a row with nothing in the way, near where it stands
+  W16 = PL - 1304
+  W16 = W16 / 40
+  CpRow = W16
+  for J = 0 to 8
+    K = RandBelow(9)
+    Bi = K * 40
+    Bi += 1
+    C = 0
+    for Oi = 1 to 30
+      if Board[Bi] <> 0 then C = 1
+      Bi += 1
+    next
+    if C = 0 then CpRow = K
+  next
+  ' aims at 25 (power 27); misses by -3..+2
+  K = RandBelow(6)
+  K += 24
+  CpHold = K * 6
+  K = RandBelow(6)
+  CpHold += K
+  return
+end sub
+
+' the computer's stick and button this frame -> Jt
+sub CpuPad:
+  Jt = 0
+  if CpWait > 0 then
+    dec CpWait
+    return
+  end if
+  W16 = PL - 1304
+  W16 = W16 / 40
+  K = W16
+  if CpStep = 0 then
+    if K < CpRow then Jt = 2
+    if K > CpRow then Jt = 1
+    if K = CpRow then
+      CpStep = 1
+      CpWait = 10
+    end if
+    return
+  end if
+  if CpStep = 1 then
+    Jt = 16
+    if CpHold > 0 then dec CpHold
+    if CpHold = 0 then
+      CpStep = 2
+      CpWait = RandBelow(15)
+      CpWait += 15
+    end if
+    return
+  end if
+  Jt = 8
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' drawing
+
+' the board's changed lane rows to the screen
+sub FlushRows:
+  for Rr = 0 to 8
+    if RowDirty[Rr] = 1 then
+      RenderRow
+      RowDirty[Rr] = 0
+    end if
+  next
+  return
+end sub
+
+' lane row Rr (screen row 7 + Rr): the player tile, then 26 tiles of pucks,
+' built one tile at a time (TlP/TlC; a puck crossing into the next tile
+' spills into NxP/NxC) and sent to that tile's own pattern and colour
+sub RenderRow:
+  Bi = Rr * 40
+  Ch = Board[Bi]
+  C = Ch >> 4
+  Ch = Ch & 7
+  K = TCyan
+  if Ch = 3 then
+    K = TStandb
+    if C = 2 then K = TStandr
+  end if
+  if Ch = 4 then
+    K = TPushb
+    if C = 2 then K = TPushr
+  end if
+  Y = Rr + 7
+  put char K at 2,Y
+  ' the tile's VRAM offset: row 7 in third 0 (codes 0-25), the rest in
+  ' third 1 (codes (Rr - 1) * 26 + ...)
+  W16 = 0
+  if Rr > 0 then
+    W16 = Rr - 1
+    W16 = W16 * 208
+    W16 += 2048
+  end if
+  ' this row's clash sprites are rebuilt
+  for Sx = 0 to 3
+    if SpRow[Sx] = Rr then SpRow[Sx] = 255
+  next
+  fill array TlP with 0
+  fill array TlC with $17
+  fill array NxP with 0
+  fill array NxC with $17
+  Tn = 0
+  for Rc = 1 to 38
+    Bi += 1
+    Ch = Board[Bi]
+    Xp = XOff[Rc]
+    Sh = Xp >> 3
+    while Tn < Sh
+      FlushTile
+    end while
+    V = Ch & 7
+    if V = 1 then DrawDot
+    if V = 2 then DrawDot
+  next
+  while Tn < 26
+    FlushTile
+  end while
+  ShowClash
+  return
+end sub
+
+' the clash sprites to the sprite table (slot 0-3)
+sub ShowClash:
+  for Sx = 0 to 3
+    if SpRow[Sx] = 255 then
+      set sprite Sx to HideY,0,SPuck,0
+    else
+      K = SpRow[Sx]
+      K += 7
+      K = K << 3
+      K += 1
+      set sprite Sx to K,SpX[Sx],SPuck,SpC[Sx]
+    end if
+  next
+  update sprites
+  return
+end sub
+
+' the current tile to VRAM, the spill tile becomes the current one
+sub FlushTile:
+  copy TlP count 8 to vram.pattern + W16
+  copy TlC count 8 to vram.color + W16
+  W16 += 8
+  inc Tn
+  for Y = 0 to 7
+    TlP[Y] = NxP[Y]
+    TlC[Y] = NxC[Y]
+    NxP[Y] = 0
+    NxC[Y] = $17
+  next
+  return
+end sub
+
+' one puck at column Rc (Ch = its cell), drawn into the current tile
+sub DrawDot:
+  C = Ch >> 4
+  Cc = $47
+  if C = 2 then Cc = $67
+  if C = 3 then Cc = $F7
+  Sh = Xp & 7
+  ' a tile row that already shows another puck colour: a sprite instead
+  if TlC[3] <> $17 then
+    if TlC[3] <> Cc then
+      for Sx = 0 to 3
+        if Cc <> 0 then
+          if SpRow[Sx] = 255 then
+            SpRow[Sx] = Rr
+            SpX[Sx] = Xp + 24
+            V = Cc >> 4
+            SpC[Sx] = V
+            Cc = 0
+          end if
+        end if
+      next
+      if Cc = 0 then return
+    end if
+  end if
+  for Y = 0 to 4
+    Sb = DotRow[Y]
+    V = Sb >> Sh
+    Va = Y + 2
+    TlP[Va] = TlP[Va] | V
+    TlC[Va] = Cc
+    if Sh > 3 then
+      J = 8 - Sh
+      V = Sb << J
+      NxP[Va] = NxP[Va] | V
+      NxC[Va] = Cc
+    end if
+  next
+  return
+end sub
+
+' the board: cyan field, labels, zone bars, lane tiles, wall, panels
+sub DrawPlay:
+  NewScreen
+  backdrop gray
+  for Y = 0 to 23
+    fill TCyan count 32 at 0,Y
+  next
+  for Y = 1 to 3
+    fill 32 count 28 at 2,Y
+  next
+  fill TPanbot count 28 at 2,4
+  fill TPantop count 28 at 2,18
+  for Y = 19 to 22
+    fill 32 count 28 at 2,Y
+  next
+  for J = 0 to 27
+    C = J + 2
+    K = TLab00 + J
+    put char K at C,5
+    put char K at C,17
+    K = TBar00 + J
+    put char K at C,6
+    put char K at C,16
+  next
+  ' lane name table: row 7 codes 0-25 (third 0), rows 8-15 codes 0-207
+  K = 0
+  for J = 0 to 25
+    C = J + 3
+    put char K at C,7
+    inc K
+  next
+  K = 0
+  for Y = 8 to 15
+    for J = 0 to 25
+      C = J + 3
+      put char K at C,Y
+      inc K
+    next
+    put char TWall at 29,Y
+  next
+  put char TWall at 29,7
+  for Rr = 0 to 8
+    RenderRow
+    RowDirty[Rr] = 0
+  next
+  ShowHud
+  ShowScreen
+  return
+end sub
+
+' scores (digits), whose turn and the throws left (puck icons)
+sub ShowHud:
+  put char THblue at 3,2
+  if Players = 1 then
+    print at 5,2, "YOU "
+    print at 23,2, "CPU"
+  else
+    print at 5,2, "BLUE"
+    print at 23,2, "RED"
+  end if
+  NumU = VS
+  print at 10,2, digits$(NumU, 3)
+  NumU = HS
+  print at 18,2, digits$(NumU, 3)
+  put char THred at 28,2
+  ' throws left in this turn, under the thrower's name
+  fill 32 count 5 at 4,3
+  fill 32 count 5 at 22,3
+  if Phase = 0 then return
+  ' throws used in this turn (Phase 2: the one sliding counts)
+  K = D
+  if Phase = 2 then dec K
+  if K >= 3 then K -= 3
+  if Phase = 2 then inc K
+  C = 5
+  if U = 2 then C = 23
+  for J = 0 to 2
+    V = THdot
+    if J >= K then
+      V = THblue
+      if U = 2 then V = THred
+    end if
+    put char V at C,3
+    inc C
+  next
+  return
+end sub
+
+' the game's end: the winner's line on row 21
+sub ShowWinner:
+  if MsgId = 8 then print at 10,21, "BLUE WINS!"
+  if MsgId = 9 then print at 10,21, "RED WINS!"
+  if MsgId = 10 then print at 11,21, "YOU WIN!"
+  if MsgId = 11 then print at 7,21, "THE COMPUTER WINS"
+  return
+end sub
+
+' the message line (row 20), MsgId: 0 blank
+sub ShowMsg:
+  fill 32 count 26 at 3,20
+  if MsgId = 1 then print at 7,20, "FIRST TO 150 WINS"
+  if MsgId = 2 then print at 9,20, "BLUE THROWS"
+  if MsgId = 3 then print at 10,20, "RED THROWS"
+  if MsgId = 4 then print at 8,20, "COMPUTER THROWS"
+  if MsgId = 5 then print at 10,20, "YOUR THROW"
+  if MsgId = 6 then print at 5,20, "FOUL! THE TURN IS LOST"
+  if MsgId = 7 then print at 6,20, "SCORING THE ROUND"
+  if MsgId = 8 then print at 10,20, "BLUE WINS!"
+  if MsgId = 9 then print at 10,20, "RED WINS!"
+  if MsgId = 10 then print at 10,20, "YOU WIN!"
+  if MsgId = 11 then print at 7,20, "THE COMPUTER WINS"
+  return
+end sub
+
+sub GameOver:
+  Phase = 0
+  ShowHud
+  MsgId = 8
+  if HS > VS then MsgId = 9
+  if Players = 1 then
+    MsgId = 10
+    if HS > VS then MsgId = 11
+  end if
+  ' the winner on row 21, GAME OVER above it
+  fill 32 count 26 at 3,20
+  print at 11,19, "GAME OVER"
+  ShowWinner
+  if MsgId = 11 then
+    play sound SndLose
+  else
+    play sound SndWin
+    play sound SndWin2
+  end if
+  return
+end sub
+
+' ---------------------------------------------------------------------------
+' frame, input, screens
+
+' N frames, each through Frame1 (the tune's countdown, the frame counter)
+sub Wait1(u8 N):
+  for Wn = 1 to N
+    Frame1
+  next
+  return
+end sub
+
+sub Rand:
+  W16 = Rs << 7
+  Rs = Rs ^ W16
+  W16 = Rs >> 9
+  Rs = Rs ^ W16
+  W16 = Rs << 8
+  Rs = Rs ^ W16
+  return
+end sub
+
+function RandBelow(u8 Mx) as u8
+  u8 Rv = 0
+  Rand
+  W16 = Rs % Mx
+  Rv = W16
+  return Rv
+
+sub Rearm:
+  if TzOn = 1 then
+    dec TzLeft
+    if TzLeft = 0 then
+      stop sound SndTuneA
+      stop sound SndTuneB
+      stop sound SndTuneC
+      stop sound SndTuneD
+      TzOn = 0
+    end if
+  end if
+  nmi off
+  nmi on
+  return
+end sub
+
+' one frame: the NMI runs only during the wait (Idle = 1 for the bots);
+' Tk16 is the jiffy clock (60 a second, like the C64's TI)
+sub Frame1:
+  Rearm
+  Idle = 1
+  wait
+  Idle = 0
+  nmi off
+  inc Tick
+  Tk16 += 1
+  return
+end sub
+
+sub ReadPad:
+  J1 = 0
+  J2 = 0
+  if joypad(1).up then J1 = J1 | 1
+  if joypad(1).down then J1 = J1 | 2
+  if joypad(1).left then J1 = J1 | 4
+  if joypad(1).right then J1 = J1 | 8
+  if joypad(1).fire then J1 = J1 | 16
+  if joypad(2).up then J2 = J2 | 1
+  if joypad(2).down then J2 = J2 | 2
+  if joypad(2).left then J2 = J2 | 4
+  if joypad(2).right then J2 = J2 | 8
+  if joypad(2).fire then J2 = J2 | 16
+  V = J1 | J2
+  Jk = V & 15
+  K = WasJ ^ 15
+  Edge = Jk & K
+  WasJ = Jk
+  Btn = V & 16
+  Press = 0
+  if Btn > 0 then
+    if WasBtn = 0 then Press = 1
+  end if
+  WasBtn = Btn
+  return
+end sub
+
+sub HideSprites:
+  fill array SpRow with 255
+  clear sprites
+  set sprite count NSpr
+  for J = 0 to 3
+    set sprite J to HideY,0,0,0
+  next
+  update sprites
+  return
+end sub
+
+' every screen: frame, NMI off, display off, mode 2 tables: the font in all
+' three thirds (white on black), the game's tiles at 128+ in each third
+sub NewScreen:
+  Rearm
+  wait
+  mode 2 screen
+  nmi off
+  display off
+  sprites 16x16
+  load default ascii
+  duplicate mode 2 patterns
+  fill full mode 2 text color with $F1
+  decompress zx0 TilePatZ to vram.pattern + 1024
+  decompress zx0 TilePatZ to vram.pattern + 3072
+  decompress zx0 TilePatZ to vram.pattern + 5120
+  decompress zx0 TileColZ to vram.color + 1024
+  decompress zx0 TileColZ to vram.color + 3072
+  decompress zx0 TileColZ to vram.color + 5120
+  decompress zx0 SpritePatZ to vram.spr_pat
+  HideSprites
+  backdrop black
+  cls
+  return
+end sub
+
+sub ShowScreen:
+  Rearm
+  wait
+  nmi off
+  screen on
+  nmi off
+  return
+end sub
+
+' the logo "64 SHUFFLE" (2 x 2 tiles a letter) at column 6, rows Y, Y+1
+sub DrawLogo:
+  C = 6
+  for J = 0 to 9
+    K = LogoG[J]
+    if K <> 255 then
+      K = K << 2
+      K += TLogo600
+      put char K at C,Y
+      inc K
+      V = C + 1
+      put char K at V,Y
+      inc K
+      V = Y + 1
+      put char K at C,V
+      inc K
+      Oi = C + 1
+      put char K at Oi,V
+    end if
+    C += 2
+  next
+  return
+end sub
+
+' a strip of the board for pictures: labels on row Y, bar on Y+1, the lane
+' row 7 (third 0) from Board[] row 1, bar on row 8
+sub DrawStrip:
+  for J = 0 to 27
+    C = J + 2
+    K = TLab00 + J
+    put char K at C,5
+    K = TBar00 + J
+    put char K at C,6
+    put char K at C,8
+  next
+  for J = 0 to 25
+    C = J + 3
+    put char J at C,7
+  next
+  put char TWall at 29,7
+  Rr = 0
+  RenderRow
+  return
+end sub
+
+' the title: logo, a board strip with pucks, the menu, the tune once
+sub TitlePage:
+  State = StBoot
+  Phase = 0
+  NewScreen
+  Y = 1
+  DrawLogo
+  fill array Board with 0
+  Board[0] = $13
+  Board[27] = $12
+  Board[22] = $21
+  Board[31] = $21
+  DrawStrip
+  print at 7,10, "BY BUCK CHILDRESS"
+  print at 10,12, "1 PLAYER"
+  print at 10,14, "2 PLAYERS"
+  print at 10,16, "HOW TO PLAY"
+  print at 10,18, "CREDITS"
+  print at 6,21, "RERUN GAME PAK 1985"
+  Menu = 0
+  ShowMenu
+  ShowScreen
+  play sound SndTuneA
+  play sound SndTuneB
+  play sound SndTuneC
+  play sound SndTuneD
+  TzLeft = TuneFrames
+  TzOn = 1
+  WasBtn = 16
+  State = StTitle
+tp_loop:
+  Frame1
+  Rand
+  ReadPad
+  K = Edge & 3
+  if K > 0 then
+    if K = 1 then
+      if Menu = 0 then
+        Menu = 3
+      else
+        dec Menu
+      end if
+    else
+      inc Menu
+      if Menu > 3 then Menu = 0
+    end if
+    play sound SndClick
+    ShowMenu
+  end if
+  if Press = 0 then goto tp_loop
+  stop sound SndTuneA
+  stop sound SndTuneB
+  stop sound SndTuneC
+  stop sound SndTuneD
+  mute all
+  TzOn = 0
+  W16 = Tick
+  Rs = Rs ^ W16
+  if Rs = 0 then Rs = 1
+  return
+end sub
+
+sub ShowMenu:
+  put char 32 at 8,12
+  put char 32 at 8,14
+  put char 32 at 8,16
+  put char 32 at 8,18
+  C = Menu << 1
+  C += 12
+  put char 62 at 8,C
+  return
+end sub
+
+sub PageWait:
+  ShowScreen
+  WasBtn = 16
+  Waited = 0
+  TimedOut = 0
+pw_loop:
+  Frame1
+  ReadPad
+  inc Waited
+  if Waited >= 1800 then
+    TimedOut = 1
+    Press = 1
+  end if
+  if Press = 0 then goto pw_loop
+  return
+end sub
+
+sub CreditsPage:
+  State = StCredits
+  NewScreen
+  Y = 1
+  DrawLogo
+  TxT = TxtCredits
+  TxX0 = 2
+  TxY = 5
+  TxGap = 2
+  TextShow
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' a demo board row for the HOW TO PLAY pictures: Board row 1
+sub DemoRow:
+  fill array Board with 0
+  return
+end sub
+
+' HOW TO PLAY: three pages, each with a picture of the board (row 7)
+sub HowTo:
+  State = StHow
+  Page = 1
+  NewScreen
+  print at 8,1, "HOW TO PLAY  1/3"
+  DemoRow
+  Board[0] = $13
+  Board[13] = $12
+  DrawStrip
+  print at 2,10, "SLIDE YOUR PUCKS DOWN THE"
+  print at 2,12, "BOARD. HOLD THE BUTTON:"
+  print at 2,14, "THE LONGER YOU HOLD IT,"
+  print at 2,16, "THE FARTHER THE PUCK GOES."
+  print at 2,18, "LET GO, THEN PUSH RIGHT."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then return
+  Page = 2
+  NewScreen
+  print at 8,1, "HOW TO PLAY  2/3"
+  DemoRow
+  Board[0] = $23
+  Board[21] = $12
+  Board[26] = $21
+  Board[30] = $12
+  DrawStrip
+  print at 2,10, "UP AND DOWN PICK A ROW."
+  print at 2,12, "A PUCK THAT STOPS IN A"
+  print at 2,14, "ZONE SCORES 5, 10 OR 25"
+  print at 2,16, "WHEN BOTH PLAYERS HAVE"
+  print at 2,18, "THROWN THREE. OUT: NOTHING."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  if TimedOut = 1 then return
+  Page = 3
+  NewScreen
+  print at 8,1, "HOW TO PLAY  3/3"
+  DemoRow
+  Board[0] = $13
+  Board[25] = $12
+  Board[26] = $21
+  DrawStrip
+  print at 2,10, "A PUCK YOU HIT IS KNOCKED"
+  print at 2,12, "ON. HIT THE OTHER COLOUR"
+  print at 2,14, "TWICE IN A TURN: FOUL, AND"
+  print at 2,16, "YOUR PUCKS OF IT VANISH."
+  print at 2,18, "FIRST TO 150 POINTS WINS."
+  print at 8,21, "PRESS THE BUTTON"
+  PageWait
+  return
+end sub
+
+' --- packed text: TxT = message, TxX0/TxY = first cell, TxGap = row step
+sub TextShow:
+  TxP = TxMsg[TxT]
+  TxX = TxX0
+  TxF = 1
+ts_word:
+  TxC = peek(TxP)
+  TxP += 1
+  if TxC = 255 then goto ts_end
+  if TxC = 254 then
+    TxY += TxGap
+    TxX = TxX0
+    TxF = 1
+    goto ts_word
+  end if
+  TxW = TxC
+  if TxC >= 240 then
+    TxW = TxC - 240
+    TxW = TxW << 8
+    TxC = peek(TxP)
+    TxW += TxC
+    TxP += 1
+  end if
+  if TxF = 0 then
+    put char 32 at TxX,TxY
+    inc TxX
+  end if
+  TxF = 0
+  TxL = TxW & 15
+  TxW = TxW >> 4
+  TxQ = TxDictGrp[TxW]
+ts_skip:
+  if TxL > 0 then
+    TxC = peek(TxQ)
+    TxQ += TxC
+    TxQ += 1
+    dec TxL
+    goto ts_skip
+  end if
+  TxL = peek(TxQ)
+  TxQ += 1
+ts_ch:
+  if TxL = 0 then goto ts_word
+  TxC = peek(TxQ)
+  put char TxC at TxX,TxY
+  inc TxX
+  TxQ += 1
+  dec TxL
+  goto ts_ch
+ts_end:
+  return
+end sub
+
+data TilePatZ bytes
+  $A9,$C0,$F0,$AF,$00,$F8,$FF,$F4,$FE,$AA,$C0,$00,$A7,$C3,$E2,$D8,$03,$03,$3F,$EC,$DA,$FE,$00,$5F
+  $D1,$9E,$E4,$80,$7F,$F5,$80,$7D,$C0,$F7,$80,$DF,$94,$E5,$FF,$FE,$95,$E0,$1F,$C0,$7A,$FF,$C3,$5F
+  $00,$5E,$BC,$7F,$20,$F7,$E8,$F4,$1E,$DC,$17,$71,$B8,$E0,$80,$7D,$C0,$3D,$FE,$40,$82,$87,$40,$70
+  $08,$98,$48,$30,$00,$09,$98,$02,$06,$02,$20,$07,$00,$18,$24,$B8,$18,$B0,$25,$AB,$98,$94,$E8,$20
+  $40,$84,$0C,$80,$E8,$FB,$FF,$00,$18,$83,$0C,$12,$8F,$D1,$68,$92,$FE,$88,$62,$00,$14,$0A,$03,$5E
+  $E4,$75,$C1,$90,$BC,$07,$FE,$A4,$00,$02,$26,$C3,$81,$E1,$C3,$F0,$EA,$FF,$18,$80,$00,$4A,$10,$8A
+  $07,$B8,$7D,$68,$28,$D1,$F0,$80,$80,$40,$40,$E0,$E0,$F0,$A8,$A4,$A3,$9D,$00,$04,$02,$6F,$D9,$04
+  $B1,$55,$55,$80
+end data
+data TileColZ bytes
+  $AA,$1F,$F1,$AA,$B1,$0B,$A9,$F1,$01,$A6,$B1,$AA,$A1,$1A,$AB,$01,$1B,$FF,$F5,$ED,$F1,$D1,$FF,$BD
+  $E9,$D5,$F1,$FF,$B0,$AC,$FF,$B0,$C0,$FE,$C5,$C0,$80,$7F,$E5,$80,$7E,$F9,$FF,$B9,$0A,$80,$79,$40
+  $FF,$B1,$70,$FF,$6C,$90,$9F,$C0,$30,$F7,$50,$DF,$C0,$00,$58,$F7,$0F,$0F,$80,$9F,$40,$80,$7D,$FE
+  $F7,$80,$DF,$E0,$C0,$FF,$00,$FE,$F8,$7D,$80,$1F,$C0,$5B,$07,$D1,$FE,$48,$87,$71,$17,$82,$E0,$93
+  $17,$DE,$F0,$B0,$4F,$AC,$89,$71,$07,$FF,$D2,$A0,$5E,$70,$0E,$FE,$56,$91,$0F,$56,$95,$0B,$A5,$2B
+  $A5,$02,$69,$21,$69,$01,$69,$E1,$68,$0E,$55,$88,$01,$15,$6A,$01,$87,$19,$9D,$6A,$21,$C2,$EE,$BE
+  $FE,$69,$07,$69,$0E,$6A,$47,$26,$74,$47,$28,$74,$67,$98,$76,$67,$96,$76,$47,$97,$67,$2A,$3E,$01
+  $3D,$A1,$55,$56
+end data
+data SpritePatZ bytes
+  $22,$70,$F8,$24,$70,$00,$4D,$55,$56
+end data
+
+data TxD_0 bytes
+  $04,$47,$41,$4D,$45,$0C,$28,$41,$4E,$54,$48,$52,$4F,$50,$49,$43,$29,$2C,$04,$28,$52,$55,$4E,$06
+  $31,$39,$38,$35,$29,$2E,$05,$32,$30,$32,$36,$2E,$02,$36,$34,$01,$41,$04,$41,$4D,$59,$3A,$04,$42
+  $55,$43,$4B,$02,$42,$59,$0A,$43,$48,$49,$4C,$44,$52,$45,$53,$53,$2C,$06,$43,$4C,$41,$55,$44,$45
+  $0C,$43,$4F,$4C,$45,$43,$4F,$56,$49,$53,$49,$4F,$4E,$04,$46,$52,$4F,$4D,$02,$49,$4E,$09,$4D,$41
+  $47,$41,$5A,$49,$4E,$45,$2C
+end data
+data TxD_1 bytes
+  $02,$4F,$46,$09,$4F,$52,$49,$47,$49,$4E,$41,$4C,$2E,$03,$50,$41,$4B,$04,$50,$4F,$52,$54,$05,$52
+  $45,$52,$55,$4E,$08,$53,$48,$55,$46,$46,$4C,$45,$2C,$0C,$53,$48,$55,$46,$46,$4C,$45,$42,$4F,$41
+  $52,$44,$03,$54,$48,$45,$05,$54,$49,$54,$4C,$45,$05,$54,$55,$4E,$45,$3A
+end data
+data TxDictGrp words
+  @TxD_0, @TxD_1
+end data
+data TxM_Credits bytes
+  $05,$15,$06,$00,$10,$FE,$16,$09,$FE,$08,$0A,$0D,$17,$FE,$14,$00,$12,$02,$FE,$0F,$03,$FE,$0C,$13
+  $0E,$07,$FE,$0B,$01,$04,$FE,$18,$19,$11,$FF
+end data
+data TxMsg words
+  @TxM_Credits
+end data
+
+asm {
+ScClick:
+    db $40,$40,$30,$01,$50
+ScHit:
+    db $40,$38,$10,$01,$40,$38,$30,$02,$40,$38,$50,$03,$40,$38,$80,$03,$50
+ScBell:
+    db $40,$D1,$10,$04,$40,$D1,$30,$04,$40,$D1,$50,$04,$40,$D1,$70,$03,$40,$D1,$F0,$02,$40,$D1,$10,$04
+    db $40,$D1,$30,$04,$40,$D1,$50,$04,$40,$D1,$70,$03,$40,$D1,$F0,$02,$40,$D1,$10,$04,$40,$D1,$30,$04
+    db $40,$D1,$50,$04,$40,$D1,$70,$03,$50
+ScOut:
+    db $40,$D1,$60,$02,$40,$D1,$80,$02,$40,$D1,$A0,$02,$40,$D1,$C0,$02,$50
+ScGone:
+    db $40,$1F,$20,$03,$40,$1F,$40,$06,$40,$1F,$70,$05,$50
+ScPush:
+    db $00,$00,$56,$02,$00,$00,$86,$03,$10
+ScWin:
+    db $40,$1D,$21,$06,$40,$1D,$51,$02,$40,$D6,$20,$06,$40,$D6,$50,$02,$40,$AA,$20,$06,$40,$AA,$50,$02
+    db $40,$8F,$20,$06,$40,$8F,$50,$02,$40,$AA,$20,$06,$40,$AA,$50,$02,$40,$8F,$20,$10,$40,$8F,$50,$02
+    db $50
+ScWin2:
+    db $80,$7C,$21,$06,$80,$7C,$51,$02,$80,$1D,$21,$06,$80,$1D,$51,$02,$80,$E2,$20,$06,$80,$E2,$50,$02
+    db $80,$BF,$20,$06,$80,$BF,$50,$02,$80,$E2,$20,$06,$80,$E2,$50,$02,$80,$BF,$20,$10,$80,$BF,$50,$02
+    db $90
+ScLose:
+    db $40,$1D,$21,$0A,$40,$53,$31,$0A,$40,$AB,$31,$0A,$40,$3B,$42,$18,$50
+
+ScSoundTable:
+    dw ScTuneMel,$702B
+    dw ScTuneHarm,$7035
+    dw ScTuneBassVol,$703F
+    dw ScTuneBassPitch,$7049
+    dw ScClick,$705D
+    dw ScHit,$705D
+    dw ScBell,$705D
+    dw ScOut,$705D
+    dw ScGone,$705D
+    dw ScPush,$7053
+    dw ScWin,$705D
+    dw ScWin2,$7067
+    dw ScLose,$705D
+; Deck Shuffle (original) - Tiny Sound tone 1/2 + OS7 noise bass/drums (kit/music/tinybass.py)
+ScTuneMel:
+    db $44
+    dw sndtiny_1
+    db 8
+    db $02,$40,$1A,$21,$1A,$01,$1F,$01,$23,$01,$26,$01,$01,$01,$23,$01
+    db $26,$01,$01,$01,$28,$01,$26,$01,$23,$01,$1F,$01,$21,$01,$01,$01
+    db $23,$01,$01,$01,$1A,$01,$1F,$01,$23,$01,$26,$01,$01,$01,$28,$01
+    db $2A,$01,$01,$01,$2B,$01,$26,$01,$23,$01,$21,$01,$1F,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneHarm:
+    db $84
+    dw sndtiny_2
+    db 8
+    db $02,$60,$1A,$21,$17,$01,$01,$01,$1A,$01,$01,$01,$1F,$01,$01,$01
+    db $1E,$01,$01,$01,$1F,$01,$01,$01,$1C,$01,$01,$01,$1E,$01,$01,$01
+    db $1A,$01,$01,$01,$17,$01,$01,$01,$1A,$01,$01,$01,$18,$01,$01,$01
+    db $1A,$01,$01,$01,$23,$01,$01,$01,$1E,$01,$01,$01,$1A,$01,$00,$00
+    db $00,$01,$01,$01
+    db $FF
+ScTuneBassVol:
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$22,$02,$45,$05,$13,$11,$02,$33,$19,$14,$66,$22
+    db $02,$36,$04,$13,$11,$02,$33,$1A,$14,$66,$3F,$23
+    db $10
+ScTuneBassPitch:
+    db $C0,$72,$F0,$25,$C0,$98,$F0,$1F,$C0,$72,$F0,$21,$C0,$98,$F0,$1F,$C0,$AB,$F0,$21,$C0,$72,$F0,$1F
+    db $C0,$98,$F0,$21,$C0,$66,$F0,$1F,$C0,$72,$F0,$21,$C0,$98,$F0,$1F,$C0,$AB,$F0,$21,$C0,$98,$F0,$1F
+    db $C0,$72,$F0,$21,$C0,$98,$F0,$1F,$C0,$72,$F0,$1A,$FF,$E3
+    db $D0
+}
