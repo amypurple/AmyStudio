@@ -38,10 +38,13 @@ AMY_CLEAR_SPRITES_LOOP:
 AMY_UPDATE_SPRITES:
     ld a,(AMY_SPRITE_COUNT)
     ld e,a
+    ld a,$A5
+    ld ($701F),a
     xor a
     out (VDP_CTRL_PORT),a
     ld a,$5B
     out (VDP_CTRL_PORT),a
+    call AMY_RELEASE_VDP_GUARD
     ld a,e
     or a
     jr z,AMY_UPDATE_SPRITES_TERMINATOR
@@ -114,10 +117,13 @@ AMY_UPDATE_SPRITES_FLICKER_STORE_PHASE:
     ld (AMY_SPRITE_FLICKER_PHASE),a
 
 AMY_UPDATE_SPRITES_FLICKER_OPEN:
+    ld a,$A5
+    ld ($701F),a
     xor a
     out (VDP_CTRL_PORT),a
     ld a,$5B
     out (VDP_CTRL_PORT),a
+    call AMY_RELEASE_VDP_GUARD
     ld a,(AMY_SPRITE_COUNT)
     or a
     jr z,AMY_UPDATE_SPRITES_FLICKER_TERMINATOR

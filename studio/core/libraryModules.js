@@ -314,10 +314,18 @@ const splitLibraryCatalog = {
   ],
   "src/alexis_lib/coleco_sprite.asm": [
     { path: "src/alexis_lib/coleco_sprite_config.asm", symbols: ["AMY_SET_SPRITES8X8", "AMY_SET_SPRITES16X16", "AMY_SET_SPRITES_SIMPLE", "AMY_SET_SPRITES_DOUBLE"] },
-    { path: "src/alexis_lib/coleco_sprite_table.asm", symbols: ["AMY_SET_SPRITE_COUNT", "AMY_CLEAR_SPRITES", "AMY_UPDATE_SPRITES"] },
+    {
+      path: "src/alexis_lib/coleco_sprite_table.asm",
+      symbols: ["AMY_SET_SPRITE_COUNT", "AMY_CLEAR_SPRITES", "AMY_UPDATE_SPRITES"],
+      deps: ["src/alexis_lib/coleco_vdp_guard.asm"]
+    },
     { path: "src/alexis_lib/coleco_sprite_collision.asm", symbols: ["AMY_CHECK_COLLISION_RAW", "AMY_CHECK_SPRITE_COLLISION_BOX"] },
     { path: "src/alexis_lib/coleco_sprite_set.asm", symbols: ["AMY_SET_SPRITE", "AMY_HIDE_SPRITE"] },
-    { path: "src/alexis_lib/coleco_sprite_partial.asm", symbols: ["AMY_UPDATE_SPRITES_PARTIAL"] }
+    {
+      path: "src/alexis_lib/coleco_sprite_partial.asm",
+      symbols: ["AMY_UPDATE_SPRITES_PARTIAL"],
+      deps: ["src/alexis_lib/coleco_vdp_guard.asm"]
+    }
   ]
 };
 

@@ -5,11 +5,14 @@
 ; Upload A sprite entries from HL to VRAM sprite attribute table at DE, then write $D0 terminator.
 AMY_UPDATE_SPRITES_PARTIAL:
     ld b,a
+    ld a,$A5
+    ld ($701F),a
     ld a,e
     out (VDP_CTRL_PORT),a
     ld a,d
     or $40
     out (VDP_CTRL_PORT),a
+    call AMY_RELEASE_VDP_GUARD
     ld a,b
     or a
     jr z,AMY_UPDATE_SPRITES_PARTIAL_TERMINATOR

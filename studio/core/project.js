@@ -76,6 +76,8 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   const usesFormatFp5    = /\bAMY_FP5_TO_ASCII16\b/.test(asmBody);
   const usesVramUpload   = /\bAMY_VRAM_(?:BEGIN|END)\b/.test(asmBody);
   const usesRawMode2     = /\bAMY_SET_GRAPHICS_MODE2_RAW\b/.test(asmBody);
+  const usesSpriteUpdate = /\bAMY_UPDATE_SPRITES(?:_PARTIAL|_FLICKER)?\b/.test(asmBody)
+    || /\bupdate\s+sprites\b/i.test(sourceText);
   const usesCompareU32   = /\bAMY_CMP_U32_MEM\b/.test(asmBody);
   const usesCompareS32   = /\bAMY_CMP_S32_MEM\b/.test(asmBody);
   const usesCompareSmall = /\bAMY_(?:CMP_U8|CMP_S8|CMP_U16|CMP_S16)\b/.test(asmBody);
@@ -91,6 +93,9 @@ function withRequiredAlexisLibs(project, libs, asmBody) {
   // Emit in dependency order (u32/compare before format)
   if (usesVramUpload) resolved.add("src/alexis_lib/coleco_vram_upload.asm");
   if (usesRawMode2) resolved.add("src/alexis_lib/coleco_vdp_mode2_raw.asm");
+  if (usesSpriteUpdate || [...resolved].some((path) => /coleco_sprite_(?:table|partial)\.asm$/i.test(path))) {
+    resolved.add("src/alexis_lib/coleco_vdp_guard.asm");
+  }
   if (usesRandomU8)    resolved.add("src/alexis_lib/coleco_random.asm");
   if (usesSqrt)         resolved.add("src/alexis_lib/coleco_math_sqrt.asm");
   if (usesU32Zero || usesFx16Div || usesFx16Sqrt || usesFormatFx16) resolved.add("src/alexis_lib/coleco_math_u32_zero.asm");

@@ -3428,6 +3428,15 @@ end sub
 
 Rules:
 - Inline ASM is copied into generated output after labels are namespaced.
+- Executable top-level blocks are emitted in source order at `Start:`. A block
+  containing only labels with `db`/`dw` data, `equ` definitions, or callable
+  routines is kept outside the fall-through path. Inside a `sub` or function,
+  the block remains exactly at that point in the routine. Use an explicit
+  `call asm` when intent would otherwise be ambiguous.
+- `org` may move forward in ROM. A backward `org` is treated as entry into
+  uninitialized RAM/BSS and may contain labels plus `ds` without a fill value;
+  emitting instructions or initialized data there is rejected because a flat
+  ROM cannot represent overlapping/backward output ranges.
 - May reference generated labels, ColecoVision BIOS symbols, and Amy runtime symbols visible in the expanded ASM view.
 - Must not reference reserved `AMY_SCENE_*` or `AMY_OVERLAY_*` aliases. Inline ASM and
   resolvable ASM includes containing those names are rejected because they could retain

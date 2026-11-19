@@ -117,7 +117,8 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     /^\s*put\s+char\b/im.test(codeText) ||
     /=\s*get\s+char\s+at\b/im.test(codeText) ||
     /^\s*fill(?:\s+.+?\s+count\s+.+?\s+at\b|\s+at\b)/im.test(codeText) ||
-    /\bAMY_(?:PUT_CHAR_AT|GET_CHAR_AT|FILL_AT|PRINT_AT|RELEASE_VDP_GUARD)\b/i.test(text);
+    /^\s*update\s+sprites\b/im.test(codeText) ||
+    /\bAMY_(?:PUT_CHAR_AT|GET_CHAR_AT|FILL_AT|PRINT_AT|UPDATE_SPRITES(?:_PARTIAL|_FLICKER)?|RELEASE_VDP_GUARD)\b/i.test(text);
   const usesWipeWithHalt = /\bwipe\s+(?:screen|bitmap)\s+(?:up|down)\b/i.test(text);
   const usesTextScreen = /\btext\s+screen\b/i.test(text);
   const usesGraphicsMode2Text = /\bgraphics\s+mode\s+2\s+text\b/i.test(text);

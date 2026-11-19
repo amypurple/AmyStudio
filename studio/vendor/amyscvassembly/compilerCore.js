@@ -2695,6 +2695,25 @@ function isIxIyDisplacementOperandText(value) {
                             }
                         }
 
+                        // A backward ORG is the legacy spelling for entering
+                        // uninitialized RAM/BSS. The binary writer is append-only,
+                        // so emitting bytes there would assign symbols to the
+                        // requested address while silently appending the bytes at
+                        // the end of ROM. Reject that mismatch instead.
+                        const bssDirectiveEmitsBytes = token instanceof Directive && (
+                            ['DB', 'DEFB', 'DEFM', 'ASCII', 'TEXT', 'BYTE',
+                             'DW', 'DEFW', 'WORD', 'BLOCK', 'FILL', 'INCBIN',
+                             'ALIGN', 'STRUCT'].includes(token.name) ||
+                            (['DS', 'DEFS'].includes(token.name) && token.operands.length > 1)
+                        );
+                        if ((inBSSSection || this.currentSection === 'BSS') && (token instanceof Instruction || bssDirectiveEmitsBytes)) {
+                            throw new Error(
+                                `Cannot emit code or initialized data at $${this.pc.toString(16).toUpperCase().padStart(4, '0')} ` +
+                                `after a backward ORG or in SECTION BSS. Use DS without a fill value for RAM, ` +
+                                `or keep ROM origins increasing.`
+                            );
+                        }
+
                         if (token instanceof Directive) {
                             switch (token.name) {
                                 case 'FORG': {
@@ -2730,6 +2749,7 @@ function isIxIyDisplacementOperandText(value) {
                                     } else if (newPC >= this.firstOrg) {
                                         this.currentSection = 'CODE';
                                     }
+                                    inBSSSection = (this.currentSection === 'BSS');
 
                                     this.pc = newPC;
                                     this.sectionPCs[this.currentSection] = newPC;

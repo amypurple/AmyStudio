@@ -524,12 +524,15 @@ export const alexisRuntimeCatalog = {
   "AMY_UPDATE_SPRITES": {
     "group": "sprites",
     "sourcePath": "src/alexis_lib/coleco_sprite.asm",
+    "deps": [
+      "AMY_RELEASE_VDP_GUARD"
+    ],
     "clobbers": [
       "af",
       "de",
       "hl"
     ],
-    "asm": "AMY_UPDATE_SPRITES:\n    ld a,(AMY_SPRITE_COUNT)\n    ld e,a\n    xor a\n    out (VDP_CTRL_PORT),a\n    ld a,$5B\n    out (VDP_CTRL_PORT),a\n    ld a,e\n    or a\n    jr z,AMY_UPDATE_SPRITES_TERMINATOR\n    push bc\n    ld c,VDP_DATA_PORT\n    ld hl,AMY_SPRITE_TABLE\nAMY_UPDATE_SPRITES_LOOP:\n    outi\n    jr $+2\n    outi\n    jr $+2\n    outi\n    jr $+2\n    ld a,(hl)\n    and $8F\n    out (c),a\n    inc hl\n    dec e\n    jr nz,AMY_UPDATE_SPRITES_LOOP\n    pop bc\nAMY_UPDATE_SPRITES_TERMINATOR:\n    ld a,$D0\n    out (VDP_DATA_PORT),a\n    ret\n\n; Enable status-driven sprite priority rotation. Stable sprites are configured by\n; the project constants AMY_SPRITE_STABLE_FIRST/LAST and always upload first.",
+    "asm": "AMY_UPDATE_SPRITES:\n    ld a,(AMY_SPRITE_COUNT)\n    ld e,a\n    ld a,$A5\n    ld ($701F),a\n    xor a\n    out (VDP_CTRL_PORT),a\n    ld a,$5B\n    out (VDP_CTRL_PORT),a\n    call AMY_RELEASE_VDP_GUARD\n    ld a,e\n    or a\n    jr z,AMY_UPDATE_SPRITES_TERMINATOR\n    push bc\n    ld c,VDP_DATA_PORT\n    ld hl,AMY_SPRITE_TABLE\nAMY_UPDATE_SPRITES_LOOP:\n    outi\n    jr $+2\n    outi\n    jr $+2\n    outi\n    jr $+2\n    ld a,(hl)\n    and $8F\n    out (c),a\n    inc hl\n    dec e\n    jr nz,AMY_UPDATE_SPRITES_LOOP\n    pop bc\nAMY_UPDATE_SPRITES_TERMINATOR:\n    ld a,$D0\n    out (VDP_DATA_PORT),a\n    ret\n\n; Enable status-driven sprite priority rotation. Stable sprites are configured by\n; the project constants AMY_SPRITE_STABLE_FIRST/LAST and always upload first.",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_sprite_table.asm",
     "extractedFromLabel": "AMY_UPDATE_SPRITES"
@@ -560,7 +563,8 @@ export const alexisRuntimeCatalog = {
     "group": "sprites",
     "sourcePath": "src/alexis_lib/coleco_sprite_table.asm",
     "deps": [
-      "AMY_UPDATE_SPRITES"
+      "AMY_UPDATE_SPRITES",
+      "AMY_RELEASE_VDP_GUARD"
     ],
     "clobbers": [
       "af",
@@ -568,7 +572,7 @@ export const alexisRuntimeCatalog = {
       "de",
       "hl"
     ],
-    "asm": "AMY_UPDATE_SPRITES_FLICKER:\n    ld a,(AMY_SPRITE_FLICKER_ENABLED)\n    or a\n    jp z,AMY_UPDATE_SPRITES\n    ld a,(AMY_SPRITE_COUNT)\n    or a\n    jr z,AMY_UPDATE_SPRITES_FLICKER_OPEN\n    ld e,a\n    ld a,(VDP_STATUS)\n    and $40\n    jr z,AMY_UPDATE_SPRITES_FLICKER_OPEN\n    ld a,(AMY_SPRITE_FLICKER_PHASE)\n    ld b,e\nAMY_UPDATE_SPRITES_FLICKER_ADVANCE_PHASE:\n    inc a\n    cp e\n    jr c,AMY_UPDATE_SPRITES_FLICKER_PHASE_NO_WRAP\n    xor a\nAMY_UPDATE_SPRITES_FLICKER_PHASE_NO_WRAP:\n    cp AMY_SPRITE_STABLE_FIRST\n    jr c,AMY_UPDATE_SPRITES_FLICKER_STORE_PHASE\n    cp AMY_SPRITE_STABLE_LAST+1\n    jr nc,AMY_UPDATE_SPRITES_FLICKER_STORE_PHASE\n    djnz AMY_UPDATE_SPRITES_FLICKER_ADVANCE_PHASE\n    xor a                     ; Every active sprite is stable: keep identity phase.\nAMY_UPDATE_SPRITES_FLICKER_STORE_PHASE:\n    ld (AMY_SPRITE_FLICKER_PHASE),a\n\nAMY_UPDATE_SPRITES_FLICKER_OPEN:\n    xor a\n    out (VDP_CTRL_PORT),a\n    ld a,$5B\n    out (VDP_CTRL_PORT),a\n    ld a,(AMY_SPRITE_COUNT)\n    or a\n    jr z,AMY_UPDATE_SPRITES_FLICKER_TERMINATOR\n    ld e,a\n\n    ; Stable logical sprites are packed first while retaining their relative order.\n    ld b,AMY_SPRITE_STABLE_FIRST\nAMY_UPDATE_SPRITES_FLICKER_STABLE_LOOP:\n    ld a,b\n    cp e\n    jr nc,AMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_BEGIN\n    cp AMY_SPRITE_STABLE_LAST+1\n    jr nc,AMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_BEGIN\n    call AMY_UPDATE_SPRITES_FLICKER_WRITE_B\n    inc b\n    jr AMY_UPDATE_SPRITES_FLICKER_STABLE_LOOP\n\n    ; Scan every active logical index from the rotating phase and upload only\n    ; non-stable entries. This is fair without changing logical sprite identity.\nAMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_BEGIN:\n    ld a,(AMY_SPRITE_FLICKER_PHASE)\n    ld b,a\n    ld d,e\nAMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_LOOP:\n    ld a,b\n    cp AMY_SPRITE_STABLE_FIRST\n    jr c,AMY_UPDATE_SPRITES_FLICKER_WRITE_ELIGIBLE\n    cp AMY_SPRITE_STABLE_LAST+1\n    jr c,AMY_UPDATE_SPRITES_FLICKER_SKIP_ELIGIBLE\nAMY_UPDATE_SPRITES_FLICKER_WRITE_ELIGIBLE:\n    call AMY_UPDATE_SPRITES_FLICKER_WRITE_B\nAMY_UPDATE_SPRITES_FLICKER_SKIP_ELIGIBLE:\n    inc b\n    ld a,b\n    cp e\n    jr c,AMY_UPDATE_SPRITES_FLICKER_NO_WRAP\n    ld b,0\nAMY_UPDATE_SPRITES_FLICKER_NO_WRAP:\n    dec d\n    jr nz,AMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_LOOP\n\nAMY_UPDATE_SPRITES_FLICKER_TERMINATOR:\n    ld a,$D0\n    out (VDP_DATA_PORT),a\n    ret\n\n; Input B = logical sprite index. Preserves BC, DE and writes one SAT entry.\nAMY_UPDATE_SPRITES_FLICKER_WRITE_B:\n    push bc\n    push de\n    ld a,b\n    add a,a\n    add a,a\n    ld l,a\n    ld h,0\n    ld de,AMY_SPRITE_TABLE\n    add hl,de\n    ld c,VDP_DATA_PORT\n    outi\n    jr $+2\n    outi\n    jr $+2\n    outi\n    jr $+2\n    ld a,(hl)\n    and $8F\n    out (c),a\n    pop de\n    pop bc\n    ret",
+    "asm": "AMY_UPDATE_SPRITES_FLICKER:\n    ld a,(AMY_SPRITE_FLICKER_ENABLED)\n    or a\n    jp z,AMY_UPDATE_SPRITES\n    ld a,(AMY_SPRITE_COUNT)\n    or a\n    jr z,AMY_UPDATE_SPRITES_FLICKER_OPEN\n    ld e,a\n    ld a,(VDP_STATUS)\n    and $40\n    jr z,AMY_UPDATE_SPRITES_FLICKER_OPEN\n    ld a,(AMY_SPRITE_FLICKER_PHASE)\n    ld b,e\nAMY_UPDATE_SPRITES_FLICKER_ADVANCE_PHASE:\n    inc a\n    cp e\n    jr c,AMY_UPDATE_SPRITES_FLICKER_PHASE_NO_WRAP\n    xor a\nAMY_UPDATE_SPRITES_FLICKER_PHASE_NO_WRAP:\n    cp AMY_SPRITE_STABLE_FIRST\n    jr c,AMY_UPDATE_SPRITES_FLICKER_STORE_PHASE\n    cp AMY_SPRITE_STABLE_LAST+1\n    jr nc,AMY_UPDATE_SPRITES_FLICKER_STORE_PHASE\n    djnz AMY_UPDATE_SPRITES_FLICKER_ADVANCE_PHASE\n    xor a                     ; Every active sprite is stable: keep identity phase.\nAMY_UPDATE_SPRITES_FLICKER_STORE_PHASE:\n    ld (AMY_SPRITE_FLICKER_PHASE),a\n\nAMY_UPDATE_SPRITES_FLICKER_OPEN:\n    ld a,$A5\n    ld ($701F),a\n    xor a\n    out (VDP_CTRL_PORT),a\n    ld a,$5B\n    out (VDP_CTRL_PORT),a\n    call AMY_RELEASE_VDP_GUARD\n    ld a,(AMY_SPRITE_COUNT)\n    or a\n    jr z,AMY_UPDATE_SPRITES_FLICKER_TERMINATOR\n    ld e,a\n\n    ; Stable logical sprites are packed first while retaining their relative order.\n    ld b,AMY_SPRITE_STABLE_FIRST\nAMY_UPDATE_SPRITES_FLICKER_STABLE_LOOP:\n    ld a,b\n    cp e\n    jr nc,AMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_BEGIN\n    cp AMY_SPRITE_STABLE_LAST+1\n    jr nc,AMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_BEGIN\n    call AMY_UPDATE_SPRITES_FLICKER_WRITE_B\n    inc b\n    jr AMY_UPDATE_SPRITES_FLICKER_STABLE_LOOP\n\n    ; Scan every active logical index from the rotating phase and upload only\n    ; non-stable entries. This is fair without changing logical sprite identity.\nAMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_BEGIN:\n    ld a,(AMY_SPRITE_FLICKER_PHASE)\n    ld b,a\n    ld d,e\nAMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_LOOP:\n    ld a,b\n    cp AMY_SPRITE_STABLE_FIRST\n    jr c,AMY_UPDATE_SPRITES_FLICKER_WRITE_ELIGIBLE\n    cp AMY_SPRITE_STABLE_LAST+1\n    jr c,AMY_UPDATE_SPRITES_FLICKER_SKIP_ELIGIBLE\nAMY_UPDATE_SPRITES_FLICKER_WRITE_ELIGIBLE:\n    call AMY_UPDATE_SPRITES_FLICKER_WRITE_B\nAMY_UPDATE_SPRITES_FLICKER_SKIP_ELIGIBLE:\n    inc b\n    ld a,b\n    cp e\n    jr c,AMY_UPDATE_SPRITES_FLICKER_NO_WRAP\n    ld b,0\nAMY_UPDATE_SPRITES_FLICKER_NO_WRAP:\n    dec d\n    jr nz,AMY_UPDATE_SPRITES_FLICKER_ELIGIBLE_LOOP\n\nAMY_UPDATE_SPRITES_FLICKER_TERMINATOR:\n    ld a,$D0\n    out (VDP_DATA_PORT),a\n    ret\n\n; Input B = logical sprite index. Preserves BC, DE and writes one SAT entry.\nAMY_UPDATE_SPRITES_FLICKER_WRITE_B:\n    push bc\n    push de\n    ld a,b\n    add a,a\n    add a,a\n    ld l,a\n    ld h,0\n    ld de,AMY_SPRITE_TABLE\n    add hl,de\n    ld c,VDP_DATA_PORT\n    outi\n    jr $+2\n    outi\n    jr $+2\n    outi\n    jr $+2\n    ld a,(hl)\n    and $8F\n    out (c),a\n    pop de\n    pop bc\n    ret",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_sprite_table.asm",
     "extractedFromLabel": "AMY_UPDATE_SPRITES_FLICKER"
@@ -576,13 +580,16 @@ export const alexisRuntimeCatalog = {
   "AMY_UPDATE_SPRITES_PARTIAL": {
     "group": "sprites",
     "sourcePath": "src/vendor/cvdevkit_sdcc/lib4ksa",
+    "deps": [
+      "AMY_RELEASE_VDP_GUARD"
+    ],
     "clobbers": [
       "af",
       "bc",
       "de",
       "hl"
     ],
-    "asm": "AMY_UPDATE_SPRITES_PARTIAL:\n    ld b,a\n    ld a,e\n    out (VDP_CTRL_PORT),a\n    ld a,d\n    or $40\n    out (VDP_CTRL_PORT),a\n    ld a,b\n    or a\n    jr z,AMY_UPDATE_SPRITES_PARTIAL_TERMINATOR\nAMY_UPDATE_SPRITES_PARTIAL_LOOP:\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    ld a,(hl)\n    and $8F\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    djnz AMY_UPDATE_SPRITES_PARTIAL_LOOP\nAMY_UPDATE_SPRITES_PARTIAL_TERMINATOR:\n    ld a,$D0\n    out (VDP_DATA_PORT),a\n    ret",
+    "asm": "AMY_UPDATE_SPRITES_PARTIAL:\n    ld b,a\n    ld a,$A5\n    ld ($701F),a\n    ld a,e\n    out (VDP_CTRL_PORT),a\n    ld a,d\n    or $40\n    out (VDP_CTRL_PORT),a\n    call AMY_RELEASE_VDP_GUARD\n    ld a,b\n    or a\n    jr z,AMY_UPDATE_SPRITES_PARTIAL_TERMINATOR\nAMY_UPDATE_SPRITES_PARTIAL_LOOP:\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    ld a,(hl)\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    ld a,(hl)\n    and $8F\n    out (VDP_DATA_PORT),a\n    nop\n    inc hl\n    djnz AMY_UPDATE_SPRITES_PARTIAL_LOOP\nAMY_UPDATE_SPRITES_PARTIAL_TERMINATOR:\n    ld a,$D0\n    out (VDP_DATA_PORT),a\n    ret",
     "extractedFromSource": true,
     "extractedFromPath": "src/alexis_lib/coleco_sprite_partial.asm",
     "extractedFromLabel": "AMY_UPDATE_SPRITES_PARTIAL"

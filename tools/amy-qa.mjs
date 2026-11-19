@@ -46,6 +46,8 @@ const quickTests = [
   "test-computed-word-compare-rom.mjs",
   "test-shift16-constant-rom.mjs",
   "test-nmi-enable-preserves-pending-vblank.mjs",
+  "test-assembler-backward-org.mjs",
+  "test-sprite-update-nmi-guard.mjs",
   "test-expression-fail-closed.mjs",
   "test-function-goto-return-boundary.mjs",
   "test-120-color-runtime.mjs",

@@ -368,6 +368,7 @@ export const alexisRuntimeCatalog = {
   "AMY_UPDATE_SPRITES": {
     "group": "sprites",
     "sourcePath": "src/alexis_lib/coleco_sprite.asm",
+    "deps": ["AMY_RELEASE_VDP_GUARD"],
     "clobbers": [
       "af",
       "de",
@@ -390,13 +391,14 @@ export const alexisRuntimeCatalog = {
   "AMY_UPDATE_SPRITES_FLICKER": {
     "group": "sprites",
     "sourcePath": "src/alexis_lib/coleco_sprite_table.asm",
-    "deps": ["AMY_UPDATE_SPRITES"],
+    "deps": ["AMY_UPDATE_SPRITES", "AMY_RELEASE_VDP_GUARD"],
     "clobbers": ["af", "bc", "de", "hl"],
     "asm": "AMY_UPDATE_SPRITES_FLICKER:\n    jp AMY_UPDATE_SPRITES"
   },
   "AMY_UPDATE_SPRITES_PARTIAL": {
     "group": "sprites",
     "sourcePath": "src/vendor/cvdevkit_sdcc/lib4ksa",
+    "deps": ["AMY_RELEASE_VDP_GUARD"],
     "clobbers": [
       "af",
       "bc",
