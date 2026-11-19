@@ -1606,6 +1606,8 @@ and floating-point values are not currently accepted.
 - `if Score > StartScore goto Label` accepts a named `const` on the right side
 - `Score += Bonus` and `Score -= Delta` accept `u8` or `i8` sources
 - `Score += OtherScore` and `Score -= OtherScore` accept same-size BCD sources
+- `Score += WordValue` and `Score -= WordValue` accept bounded `u16` values;
+  subtraction saturates at zero
 - `bcd digits 5 Credits` stores 5 displayed decimal digits in packed BCD
 - `bcd digits 8 Score8` gives an 8-digit BCD value
 - current implementation range is `bcd digits 1` .. `bcd digits 12`
@@ -1923,11 +1925,6 @@ callbacks therefore pause rather than catching up afterward. Keep such regions
 short, split long rendering across frames, or explicitly poll and count VBlank
 status in a documented hardware-specific ASM engine.
 
-If at least one VBlank is pending when `nmi on`, `screen on`, or a managed VRAM
-batch restores interrupts, Amy leaves the status latch intact. The VDP can then
-deliver one immediate NMI. Amy never reads the status register after enabling
-the VDP interrupt because that race could silently discard the pending frame.
-
 ```basic
 nmi off
 copy PatternData count 768 to vram.pattern
@@ -2007,7 +2004,7 @@ VDP side-effect contract:
 |---|---|---|---|---|
 | `screen on/off` | changes | changes | R1 shadow/write | no upload |
 | `display on/off` | changes | unchanged | R1 shadow/write | no upload |
-| `nmi on/off` | unchanged | changes | R1 shadow/write; pending VBlank is preserved | no upload |
+| `nmi on/off` | unchanged | changes | R1 shadow/write; `nmi on` acknowledges VDP status | no upload |
 | `graphics mode ...` | usually blanks | mode default | mode registers/table shadows | mode-specific setup |
 | `text screen` | blanks until `screen on` | mode default | standard 32x24 text setup | font, 32 color groups, cls |
 | `show picture Name` | blanks, then shows | unchanged unless mode helper changes it | bitmap setup | uploads picture |
@@ -2065,21 +2062,6 @@ ASCII, duplicate pattern thirds, duplicate color thirds, fill colors, or clear
 the name table. Use this for Dacman-style screens where tiles are placed through
 the NAME table, but different screen thirds may need independent color tables
 (for example bronze/silver/gold medal colors sharing the same patterns).
-
-For a slow custom Mode 2 setup, stop frame service and keep the display blank
-immediately after selecting the mode, before uploading or drawing tables:
-
-```basic
-mode 2 screen
-nmi off
-display off
-' upload PATTERN, COLOR, NAME, and sprite tables here
-nmi on
-display on
-```
-
-Do not arm title/menu input before a multi-frame setup is complete. Input read
-during a long draw can be consumed before the finished screen becomes usable.
 
 ### Temporal 120-color pictures
 
@@ -2286,24 +2268,6 @@ Source and destination address expressions use 16-bit arithmetic. For example,
 without wrapping the computed offset at 255; no temporary `u16` is required.
 The same rule applies to declared RAM arrays: `copy RowBuffer count RowSize to
 Board + DestinationOffset` adds the byte offset to `Board` with 16-bit arithmetic.
-
-Amy checks a constant count and constant source offset against the declared source
-extent. `copy Tiles + 8 count 8 ...` is valid for a 16-byte table; a count that
-continues past byte 16 is rejected. A scalar source also requires a constant count
-that fits its declared width. Use an array, record, or DATA block when the count is
-runtime-dependent.
-
-When adjacent declarations intentionally form one raw binary stream, make that
-low-level contract explicit with `copy bytes`:
-
-```basic
-copy bytes Frame0 count 192 to vram.pattern
-```
-
-This form permits a transfer to continue beyond `Frame0` into immediately following
-ROM data. It does not add padding or bounds checking, so reserve it for generated or
-verified layouts. It is distinct from `copy bytes of Value to Buffer`, which exposes
-the in-memory bytes of one numeric scalar for debugging.
 
 `decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 
@@ -3103,11 +3067,7 @@ if chars in box TileX - 1,TileY - 1 size 3,3 contain $20 goto Blocked
 
 ```
 
-`if any collision` checks the VDP coincidence bit captured in `VDP_STATUS` by
-the NMI handler. It therefore requires NMI to be enabled and a completed frame;
-it is not a valid collision query inside a programmer-owned `nmi off` batch.
-Use sprite hitboxes or logical box collision when collision checks must continue
-while NMI is disabled.
+`if any collision` checks the VDP coincidence bit.  
 `hitbox Name = X,Y size W,H` declares a local rectangle inside a sprite.  
 `if sprite A hitbox HitA collides with sprite B hitbox HitB` is the preferred
 gameplay collision form because each object can have its own logical hitbox.  
@@ -3490,13 +3450,6 @@ Rules:
 - Prefer putting inline ASM in a small `sub` with an explicit `return`, mirroring
   the Z80 rule that every callable block must end in `ret` or an intentional jump.
 
-Assembler `EQU` expressions may refer forward to labels or other `EQU` symbols.
-`$` means the address of that `EQU` line, not the final program counter. Numeric
-literals such as `$FACE`, `&H20`, and `0FFh` are values, not dependencies on symbols
-named `FACE`, `H20`, or `FF`. If an included legacy source defines the same `EQU`
-name more than once, the last definition wins; avoid relying on that compatibility
-rule in new code.
-
 Use inline ASM only after checking:
 1. Does a direct Amy statement already exist for this?
 2. Does a `print`, `format`, `u32`, `bcd`, sprite, text, VRAM, decompression, or input helper cover it?
@@ -3546,16 +3499,6 @@ u8 Buffer[32]
 
 BufferAddress = address of Buffer
 call asm FillBuffer with hl = BufferAddress
-```
-
-An inline conditional accepts `if Condition then call asm Label` without
-register arguments. When a bridge needs a `with` register list, use a block so
-the register ABI remains unambiguous:
-
-```basic
-if Ready then
-  call asm DrawObject with a = Kind, hl = address of Object
-end if
 ```
 
 The assignment form accepts addressable global data, arrays, records, and variables. Its target
@@ -3636,34 +3579,6 @@ Rules:
 - `call asm` targets a raw assembler label; it does not apply Amy `sub` name mangling.
 - Arguments are Z80 ABI registers, not typed Amy parameters; document what the routine destroys.
 - `include asm` emits code at that source position. If the include contains executable routines, place it after a terminating jump/loop or call it through a forward `call asm` so normal program flow cannot fall into the included code accidentally.
-
-#### Where inline ASM is emitted
-
-Amy classifies a top-level `asm {}` block by what it contains:
-
-- an executable block stays in source order; if it appears before the first Amy statement, Amy opens `Start:` first, so the block executes during startup;
-- a block containing `db`, `dw`, `ds`, `defb`, `defw`, `defs`, or `incbin` is ROM data and is detached from main-program flow;
-- a block containing only `Name equ Value` definitions is also detached;
-- a block inside a `sub` or `function` remains inside that routine, including a mixed instruction/data block.
-
-Do not mix a callable top-level routine and its data merely to control placement. Put execution
-behind a terminating jump or loop, or keep the data in a separate block:
-
-```basic
-asm {
-DrawThing:
-  ; executable routine
-  ret
-}
-
-asm {
-ThingData:
-  db 1,2,3,4
-}
-```
-
-The optimizer treats user ASM as an opaque timing and side-effect barrier. Labels remain callable
-with `call asm DrawThing`; detached data remains addressable by its raw assembler label.
 
 ---
 
