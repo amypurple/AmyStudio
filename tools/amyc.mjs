@@ -646,9 +646,19 @@ async function main() {
       const failedInstruction = err.match(/\bLine\s+\d+:\s*(.+?)\s+-\s+[^|]+/i)?.[1]?.trim();
       const normalizeAsm = (line) => String(line || "").replace(/;.*/, "").replace(/\s+/g, "").toLowerCase();
       const failedNormalized = normalizeAsm(failedInstruction);
-      const matchingLines = failedNormalized
+      let matchingLines = failedNormalized
         ? asmLines.map((line, index) => normalizeAsm(line) === failedNormalized ? index : -1).filter((index) => index >= 0)
         : [];
+      if (matchingLines.length !== 1) {
+        const failedMnemonic = failedInstruction?.match(/^([A-Za-z][A-Za-z0-9]*)\b/)?.[1];
+        if (failedMnemonic) {
+          const mnemonicPattern = new RegExp(`^\\s*(?:[A-Za-z_.$][A-Za-z0-9_.$]*\\s*:\\s*)?${failedMnemonic}\\b`, "i");
+          const mnemonicLines = asmLines
+            .map((line, index) => mnemonicPattern.test(String(line || "").replace(/;.*/, "")) ? index : -1)
+            .filter((index) => index >= 0);
+          if (mnemonicLines.length === 1) matchingLines = mnemonicLines;
+        }
+      }
       const markerStart = matchingLines.length === 1
         ? matchingLines[0]
         : Math.min(generatedLine - 1, asmLines.length - 1);
@@ -657,8 +667,10 @@ async function main() {
         if (!marker) continue;
         const amyLine = Number.parseInt(marker[1], 10);
         const sourceLine = sourceText.split(/\r?\n/)[amyLine - 1]?.trim() || "";
-        err = `Amy line ${amyLine} (inline ASM): ${err}. ` +
-          `Check the symbol spelling; use amy(Name) when referring to an Amy variable or constant.${sourceLine ? ` Source: ${sourceLine}` : ""}`;
+        const symbolHint = /(?:unknown|undefined)\s+(?:name|symbol)|invalid expression/i.test(err)
+          ? " Check the symbol spelling; use amy(Name) when referring to an Amy variable or constant."
+          : "";
+        err = `Amy line ${amyLine} (inline ASM): ${err}.${symbolHint}${sourceLine ? ` Source: ${sourceLine}` : ""}`;
         break;
       }
     }

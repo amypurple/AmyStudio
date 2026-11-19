@@ -3606,7 +3606,15 @@ ThingData:
 ```
 
 The optimizer treats user ASM as an opaque timing and side-effect barrier. Labels remain callable
-with `call asm DrawThing`; detached data remains addressable by its raw assembler label.
+with `call asm DrawThing`; detached data remains addressable by its raw assembler label. Amy keeps
+the programmer's selected Z80 instructions and lengths intact, except that a `jr` whose final
+target is outside the signed-byte range must be legalized to `jp` so the program can assemble.
+
+Assembler macros use the Amy CV Assembly form `macro Name parameters`, followed by the macro body
+and `endm`. The name-first form `Name macro parameters` is rejected with a source-line diagnostic.
+Inside `asm {}`, conditional assembly accepts either `#ifdef`/`#else`/`#endif` or
+`ifdef`/`else`/`endif`. Bare `else` and `endif` are treated as assembler directives only while
+lexically inside the ASM block, so they cannot consume an Amy-language conditional accidentally.
 
 ---
 

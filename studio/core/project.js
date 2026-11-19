@@ -1,7 +1,7 @@
 import { renderAlexisRuntime } from "./alexisRuntime.js?v=20260803-120-colors";
 import { getSplitLibraryCatalog, resolveSelectedLibModulesDetailed } from "./libraryModules.js";
 import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
-import { inferAmyMemoryCapabilities, inferControllerBackendFromSource } from "./compilerFrontend.js?v=20260609-show-picture-nmi1";
+import { inferAmyMemoryCapabilities, inferControllerBackendFromSource, stripAmyCommentsForCapabilityScan } from "./compilerFrontend.js?v=20260609-show-picture-nmi1";
 import { EOS_PUBLIC_VECTORS } from "./firmwareMaps.js";
 import { normalizeCompressionIncludes } from "./compressionIncludes.js";
 
@@ -1398,7 +1398,7 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
     usesSpinner,
     usesSleepService
   });
-  const codeText = sourceText.split(/\r?\n/).map((line) => line.replace(/'.*$/, "")).join("\n");
+  const codeText = stripAmyCommentsForCapabilityScan(sourceText);
   const usesFrameCounter =
     /\bread\s+frame\s+into\s+[A-Za-z_][A-Za-z0-9_]*\b/i.test(sourceText) ||
     /\bAMY_FRAME_COUNTER\b/.test(asmBody) ||

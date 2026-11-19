@@ -339,6 +339,15 @@ export function transpileAmyCore(sourceText, deps) {
       return { handled: false };
     };
 
+    let lexicalAsm = false;
+    const asmLineMask = rawLines.map((rawLine) => {
+      const text = String(rawLine || "").trim();
+      if (/^asm\s*\{$/i.test(text)) lexicalAsm = true;
+      const inside = lexicalAsm;
+      if (lexicalAsm && text === "}") lexicalAsm = false;
+      return inside;
+    });
+
     for (let index = 0; index < rawLines.length; index += 1) {
       const line = strippedLine(index);
       if (!line) continue;
@@ -385,7 +394,8 @@ export function transpileAmyCore(sourceText, deps) {
         continue;
       }
 
-      if (/^(?:#else|else\s+ifdef|else\s+ifndef)$/i.test(line)) {
+      if (/^(?:#else|else\s+ifdef|else\s+ifndef)$/i.test(line) ||
+          (/^else$/i.test(line) && asmLineMask[index] && stack.length > 0 && !stack[stack.length - 1].modern)) {
         result[index] = "";
         if (!stack.length) return { ok: false, log: `else without matching ifdef/ifndef at line ${index + 1}` };
         const current = stack[stack.length - 1];
@@ -395,7 +405,8 @@ export function transpileAmyCore(sourceText, deps) {
         continue;
       }
 
-      if (/^(?:#endif|end\s+ifdef|end\s+ifndef|end\s+defined)$/i.test(line)) {
+      if (/^(?:#endif|end\s+ifdef|end\s+ifndef|end\s+defined)$/i.test(line) ||
+          (/^endif$/i.test(line) && asmLineMask[index] && stack.length > 0 && !stack[stack.length - 1].modern)) {
         result[index] = "";
         if (!stack.length) return { ok: false, log: `endif without matching ifdef/ifndef at line ${index + 1}` };
         stack.pop();

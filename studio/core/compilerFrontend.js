@@ -1,8 +1,38 @@
-export function inferControllerBackendFromSource(sourceText) {
-  const codeText = String(sourceText || "")
+export function stripAmyCommentsForCapabilityScan(sourceText) {
+  let inAsm = false;
+  return String(sourceText || "")
     .split(/\r?\n/)
-    .map((line) => line.replace(/'.*$/, ""))
+    .map((rawLine) => {
+      const trimmed = rawLine.trim();
+      if (!inAsm && /^asm\s*\{$/i.test(trimmed)) {
+        inAsm = true;
+        return rawLine;
+      }
+      if (inAsm) {
+        if (trimmed === "}") {
+          inAsm = false;
+          return rawLine;
+        }
+        let quote = null;
+        for (let index = 0; index < rawLine.length; index += 1) {
+          const char = rawLine[index];
+          if (quote) {
+            if (char === quote && rawLine[index - 1] !== "\\") quote = null;
+          } else if (char === '"' || char === "'") {
+            quote = char;
+          } else if (char === ";") {
+            return rawLine.slice(0, index);
+          }
+        }
+        return rawLine;
+      }
+      return rawLine.replace(/'.*$/, "");
+    })
     .join("\n");
+}
+
+export function inferControllerBackendFromSource(sourceText) {
+  const codeText = stripAmyCommentsForCapabilityScan(sourceText);
   if (/\bspinner\s*\(/i.test(codeText)) return null;
   const ports = {
     1: { segment0: false, segment1: false, joypad: false, keypad: false },
@@ -82,7 +112,7 @@ export function inferControllerBackendFromSource(sourceText) {
 
 export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const text = sourceText || "";
-  const codeText = text.split(/\r?\n/).map((line) => line.replace(/'.*$/, "")).join("\n");
+  const codeText = stripAmyCommentsForCapabilityScan(text);
   const needsCompleteDefaultAscii = Array.from(text.matchAll(/"(?:""|[^"])*"/g), (match) => match[0])
     .some((literal) => /[}~\x7F]/.test(literal));
   const constBytes = new Map();

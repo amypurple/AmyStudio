@@ -1033,6 +1033,7 @@ export class Z80Optimizer {
                 let pc = this.assembler.firstOrg || 0;
                 const newSymbolTable = {};
                 let timingSensitiveRegion = false;
+                let userAsmRegion = false;
                 let currentGlobalLabel = '';
                 const qualifyLabel = value => {
                     const name = String(value ?? '');
@@ -1071,9 +1072,39 @@ export class Z80Optimizer {
                     }
 
                     const timingLabel = String(token?.label || '');
-                    // User ASM is opaque to value/peephole transforms, but its
-                    // relative branches still need address relaxation after
-                    // final layout. Truly cycle-timed regions remain frozen.
+                    if (/^AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_/i.test(timingLabel)) {
+                        userAsmRegion = true;
+                    }
+                    if (userAsmRegion && /^AMY_OPTIMIZER_TIMING_END_USER_ASM_/i.test(timingLabel)) {
+                        optimized.push(token);
+                        userAsmRegion = false;
+                        continue;
+                    }
+
+                    // User ASM is opaque, including its selected instruction
+                    // lengths. Only mandatory JR range legalization may alter it.
+                    if (userAsmRegion && token instanceof Instruction) {
+                        const userMnemonic = token.mnemonic.toLowerCase();
+                        if (userMnemonic === 'jr' && token.operands.length >= 1) {
+                            const lastOp = token.operands[token.operands.length - 1];
+                            if (lastOp.type === 'symbol' || lastOp.type === 'immediate') {
+                                const targetAddr = resolveBranchTarget(lastOp);
+                                if (targetAddr !== undefined && !this.canUseRelativeJump(pc, targetAddr, 2)) {
+                                    optimized.push(new Instruction(token.label, 'jp', token.operands, token.lineNumber, token.sourceLine));
+                                    rememberLabel(token.label, pc);
+                                    this.stats.jrExpanded++;
+                                    pc += 3;
+                                    continue;
+                                }
+                            }
+                        }
+                        rememberLabel(token.label, pc);
+                        optimized.push(token);
+                        pc += this.estimateTokenByteSize(token);
+                        continue;
+                    }
+
+                    // Compiler-marked timing regions remain frozen.
                     if (/^AMY_OPTIMIZER_TIMING_BEGIN_/i.test(timingLabel) &&
                         !/^AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_/i.test(timingLabel)) {
                         timingSensitiveRegion = true;

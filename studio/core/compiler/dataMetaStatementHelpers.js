@@ -110,7 +110,12 @@ export function handleDataMetaStatement({
         /^\s*[A-Za-z_][A-Za-z0-9_]*\s+equ\b/i.test(String(entry || ""))
       );
       if (!state.insideRoutine && (emitsInlineData || emitsOnlyEqu)) {
-        state.detachedAsmData.push(...state.asmBuffer);
+        const markerId = Number.isInteger(state.sourceLineNumber) ? state.sourceLineNumber : 0;
+        state.detachedAsmData.push(
+          `AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_${markerId}:`,
+          ...state.asmBuffer,
+          `AMY_OPTIMIZER_TIMING_END_USER_ASM_${markerId}:`
+        );
       } else {
         if (state.asmNeedsImplicitStart) state.ensureImplicitStartForExecutable?.();
         const markerId = Number.isInteger(state.sourceLineNumber) ? state.sourceLineNumber : 0;
@@ -126,6 +131,14 @@ export function handleDataMetaStatement({
       const asmLine = rawLine.replace(/^  /, "");
       const overlayAliasError = validateOverlayAsmText(asmLine, "Inline ASM");
       if (overlayAliasError) return { handled: true, ok: false, log: overlayAliasError };
+      const nameFirstMacro = asmLine.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s+macro(?:\s+.*)?$/i);
+      if (nameFirstMacro) {
+        return {
+          handled: true,
+          ok: false,
+          log: `Line ${state.sourceLineNumber}: ASM macros use 'macro ${nameFirstMacro[1]} params', not '${nameFirstMacro[1]} macro params'. Offending line: ${rawLine.trim()}`
+        };
+      }
       const asmEqu = asmLine.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s+equ\b/i);
       if (asmEqu && typeof state.registerInlineAsmSymbol === "function") {
         state.registerInlineAsmSymbol(asmEqu[1]);
