@@ -3610,6 +3610,29 @@ with `call asm DrawThing`; detached data remains addressable by its raw assemble
 the programmer's selected Z80 instructions and lengths intact, except that a `jr` whose final
 target is outside the signed-byte range must be legalized to `jp` so the program can assemble.
 
+Use `asm relax {` only when instruction timing is not part of the routine's contract. Its initial
+whitelist permits an in-range `jp` to become `jr` at optimization levels that enable branch
+shortening; no value, flag, register, stack, or dead-code peephole is enabled by this spelling.
+Protect a cycle-sensitive subsection with `.timed` and `.endtimed`:
+
+```basic
+asm relax {
+Dispatch:
+  jp nz,Ready       ; may become JR NZ,Ready
+.timed
+VdpLoop:
+  outi              ; preserved byte-for-byte
+  jp nz,VdpLoop
+.endtimed
+Ready:
+  ret
+}
+```
+
+The markers cannot nest and are valid only in `asm relax`. To inspect opportunities without
+changing ordinary opaque blocks, compile with `--report-jr-candidates`; the CLI lists each eligible
+user-ASM `jp`, its one-byte gain, and whether it was applied, protected, or left for the programmer.
+
 Assembler macros use the Amy CV Assembly form `macro Name parameters`, followed by the macro body
 and `endm`. The name-first form `Name macro parameters` is rejected with a source-line diagnostic.
 Inside `asm {}`, conditional assembly accepts either `#ifdef`/`#else`/`#endif` or

@@ -63,6 +63,8 @@ const quickTests = [
   "test-call-asm-abi-rom.mjs",
   "test-leading-inline-asm-runtime.mjs",
   "test-user-asm-optimizer-opacity.mjs",
+  "test-user-asm-relax.mjs",
+  "test-user-asm-jr-final-legalization.mjs",
   "test-asm-comment-capability-inference.mjs",
   "test-inline-asm-cli-diagnostic.mjs",
   "test-megacart-cli-runtime.mjs",

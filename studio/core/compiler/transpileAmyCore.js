@@ -29,7 +29,7 @@ export function analyzeGlobalScratchClobbers(sourceText, stripComment = (line) =
   let inAsm = false;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (/^asm\s*\{$/i.test(line)) { inAsm = true; continue; }
+    if (/^asm(?:\s+relax)?\s*\{$/i.test(line)) { inAsm = true; continue; }
     if (inAsm) { if (line === "}") inAsm = false; continue; }
     const routine = line.match(/^(?:sub|function)\s+([A-Za-z_][A-Za-z0-9_]*)\b/i);
     if (routine) { active = routine[1].toLowerCase(); continue; }
@@ -342,7 +342,7 @@ export function transpileAmyCore(sourceText, deps) {
     let lexicalAsm = false;
     const asmLineMask = rawLines.map((rawLine) => {
       const text = String(rawLine || "").trim();
-      if (/^asm\s*\{$/i.test(text)) lexicalAsm = true;
+      if (/^asm(?:\s+relax)?\s*\{$/i.test(text)) lexicalAsm = true;
       const inside = lexicalAsm;
       if (lexicalAsm && text === "}") lexicalAsm = false;
       return inside;
@@ -817,7 +817,7 @@ export function transpileAmyCore(sourceText, deps) {
     let reachableRoutineGotoReferences = new Set();
     const isRootTerminator = (line) => /^(?:return(?:\s+.+)?|goto\s+[A-Za-z_][A-Za-z0-9_]*|loop\s+forever)$/i.test(line);
     const closesBlock = (line) => /^(?:end\s*if|endif|next\b|loop\b|end\s*select|endselect|end\s+with)$/i.test(line);
-    const topLevelDirective = (line) => /^(?:asm\s*\{|include\s+asm\s+"|include\s+"|asset\b|data\b|const\b|enum\b|record\b|type\b|global\b)/i.test(line);
+    const topLevelDirective = (line) => /^(?:asm(?:\s+relax)?\s*\{|include\s+asm\s+"|include\s+"|asset\b|data\b|const\b|enum\b|record\b|type\b|global\b)/i.test(line);
     const opensBlock = (line) => {
       if (/^if\b/i.test(line)) return /\bthen\s*$/i.test(line) && !/\bgoto\b/i.test(line);
       return /^(?:while\b|for\b|do\b|select\s+case\b|with\b)/i.test(line);
@@ -1231,7 +1231,7 @@ export function transpileAmyCore(sourceText, deps) {
         if (stripped === "}") loweringAsm = false;
         return rawLine;
       }
-      if (/^asm\s*\{$/i.test(stripped)) {
+      if (/^asm(?:\s+relax)?\s*\{$/i.test(stripped)) {
         loweringAsm = true;
         return rawLine;
       }
@@ -1293,7 +1293,7 @@ export function transpileAmyCore(sourceText, deps) {
         if (stripped === "}") scanAsm = false;
         continue;
       }
-      if (/^asm\s*\{$/i.test(stripped)) {
+      if (/^asm(?:\s+relax)?\s*\{$/i.test(stripped)) {
         scanAsm = true;
         continue;
       }
@@ -1445,7 +1445,7 @@ export function transpileAmyCore(sourceText, deps) {
         if (stripped === "}") rewriteAsm = false;
         return rawLine;
       }
-      if (/^asm\s*\{$/i.test(stripped)) {
+      if (/^asm(?:\s+relax)?\s*\{$/i.test(stripped)) {
         rewriteAsm = true;
         return rawLine;
       }
@@ -1706,6 +1706,8 @@ export function transpileAmyCore(sourceText, deps) {
   const dataLengths = new Map();
   let inAsm = false;
   let asmNeedsImplicitStart = false;
+  let asmRelax = false;
+  let asmTimedDepth = 0;
   let inData = null;
   let asmBuffer = [];
   let selectedMemoryProfile = buildContext?.memoryProfile || "colecovision_legacy_sdcc";
@@ -2382,7 +2384,7 @@ export function transpileAmyCore(sourceText, deps) {
             return new RegExp(`\\b${escaped}\\s*\\(`, "i").test(entry)
               || new RegExp(`^${escaped}\\s*$`, "i").test(entry);
           });
-          return /^(?:asm\s*\{|include\b|goto\b|on\s+frame\b|print\b|play\b|sound\b|music\b|wait\b|screen\b|v(?:poke|peek)\b|put\b|get\b|copy\b|fill\b|randomize\b)/i.test(entry)
+          return /^(?:asm(?:\s+relax)?\s*\{|include\b|goto\b|on\s+frame\b|print\b|play\b|sound\b|music\b|wait\b|screen\b|v(?:poke|peek)\b|put\b|get\b|copy\b|fill\b|randomize\b)/i.test(entry)
             || /\b(?:peek|random|min|max|abs|absdiff)\s*\(/i.test(entry)
             || /(?:\*|\/|\bmod\b)/i.test(entry)
             || invokesDeclaredRoutine
@@ -2401,7 +2403,7 @@ export function transpileAmyCore(sourceText, deps) {
       if (recordDefinitionLineNumbers?.has(lineIndex)) continue;
       const rawLine = lines[lineIndex];
       const trimmed = stripAmyInlineComment(rawLine).trim();
-      if (/^asm\s*\{$/i.test(trimmed)) {
+      if (/^asm(?:\s+relax)?\s*\{$/i.test(trimmed)) {
         if (scanProc) scanProcHasAsm = true;
         scanInAsm = true;
         continue;
@@ -5201,6 +5203,10 @@ export function transpileAmyCore(sourceText, deps) {
           set inAsm(value) { inAsm = value; },
           get asmNeedsImplicitStart() { return asmNeedsImplicitStart; },
           set asmNeedsImplicitStart(value) { asmNeedsImplicitStart = value; },
+          get asmRelax() { return asmRelax; },
+          set asmRelax(value) { asmRelax = value; },
+          get asmTimedDepth() { return asmTimedDepth; },
+          set asmTimedDepth(value) { asmTimedDepth = value; },
           get asmBuffer() { return asmBuffer; },
           set asmBuffer(value) { asmBuffer = value; },
           get selectedMemoryProfile() { return selectedMemoryProfile; },
@@ -5417,7 +5423,7 @@ export function transpileAmyCore(sourceText, deps) {
     {
       const normalizedFutureLine = (index) => String(lines[index] || "").replace(/'.*$/, "").trim();
       const skipDetachedAsmBlock = (index) => {
-        if (!/^asm\s*\{/i.test(normalizedFutureLine(index))) return index;
+        if (!/^asm(?:\s+relax)?\s*\{/i.test(normalizedFutureLine(index))) return index;
         while (index + 1 < lines.length && !/^\s*}\s*$/.test(String(lines[index] || ""))) index += 1;
         return index + 1;
       };
@@ -5438,7 +5444,7 @@ export function transpileAmyCore(sourceText, deps) {
           while (probe < lines.length) {
             const probeLine = normalizedFutureLine(probe);
             if (!probeLine) { probe += 1; continue; }
-            if (/^asm\s*\{/i.test(probeLine)) { probe = skipDetachedAsmBlock(probe); continue; }
+            if (/^asm(?:\s+relax)?\s*\{/i.test(probeLine)) { probe = skipDetachedAsmBlock(probe); continue; }
             if (/^sub\s+/i.test(probeLine)) { routineStart = probe; break; }
             return probe;
           }
@@ -5458,7 +5464,7 @@ export function transpileAmyCore(sourceText, deps) {
         while (probe < lines.length) {
           const probeLine = normalizedFutureLine(probe);
           if (!probeLine) { probe += 1; continue; }
-          if (/^asm\s*\{/i.test(probeLine)) { probe = skipDetachedAsmBlock(probe); continue; }
+          if (/^asm(?:\s+relax)?\s*\{/i.test(probeLine)) { probe = skipDetachedAsmBlock(probe); continue; }
           return !/^sub\s+/i.test(probeLine);
         }
         return false;

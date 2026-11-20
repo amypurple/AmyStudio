@@ -102,6 +102,9 @@ export function handleDataMetaStatement({
 
   if (state.inAsm) {
     if (line === "}") {
+      if (state.asmTimedDepth) {
+        return { handled: true, ok: false, log: `Line ${state.sourceLineNumber}: asm relax block ended before .endtimed.` };
+      }
       const emitsInlineData = state.asmBuffer.some((entry) =>
         /^\s*(?:\.?d(?:b|w|s)|defb|defw|defs|incbin)\b/i.test(String(entry || ""))
       );
@@ -109,26 +112,51 @@ export function handleDataMetaStatement({
       const emitsOnlyEqu = substantiveAsm.length > 0 && substantiveAsm.every((entry) =>
         /^\s*[A-Za-z_][A-Za-z0-9_]*\s+equ\b/i.test(String(entry || ""))
       );
+      const markerId = Number.isInteger(state.sourceLineNumber) ? state.sourceLineNumber : 0;
+      const markedAsm = state.asmRelax
+        ? [
+            `AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_${markerId}:`,
+            `AMY_USER_ASM_RELAX_BEGIN_${markerId}:`,
+            ...state.asmBuffer,
+            `AMY_USER_ASM_RELAX_END_${markerId}:`,
+            `AMY_OPTIMIZER_TIMING_END_USER_ASM_${markerId}:`
+          ]
+        : [
+            `AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_${markerId}:`,
+            ...state.asmBuffer,
+            `AMY_OPTIMIZER_TIMING_END_USER_ASM_${markerId}:`
+          ];
       if (!state.insideRoutine && (emitsInlineData || emitsOnlyEqu)) {
-        const markerId = Number.isInteger(state.sourceLineNumber) ? state.sourceLineNumber : 0;
-        state.detachedAsmData.push(
-          `AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_${markerId}:`,
-          ...state.asmBuffer,
-          `AMY_OPTIMIZER_TIMING_END_USER_ASM_${markerId}:`
-        );
+        state.detachedAsmData.push(...markedAsm);
       } else {
         if (state.asmNeedsImplicitStart) state.ensureImplicitStartForExecutable?.();
-        const markerId = Number.isInteger(state.sourceLineNumber) ? state.sourceLineNumber : 0;
-        body.push(
-          `AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_${markerId}:`,
-          ...state.asmBuffer,
-          `AMY_OPTIMIZER_TIMING_END_USER_ASM_${markerId}:`
-        );
+        body.push(...markedAsm);
       }
       state.asmBuffer = [];
       state.inAsm = false;
+      state.asmRelax = false;
+      state.asmTimedDepth = 0;
     } else {
       const asmLine = rawLine.replace(/^  /, "");
+      if (/^\.timed\s*$/i.test(asmLine.trim())) {
+        if (!state.asmRelax) {
+          return { handled: true, ok: false, log: `Line ${state.sourceLineNumber}: .timed is only valid inside 'asm relax {'.` };
+        }
+        if (state.asmTimedDepth) {
+          return { handled: true, ok: false, log: `Line ${state.sourceLineNumber}: nested .timed regions are not supported.` };
+        }
+        state.asmTimedDepth = 1;
+        state.asmBuffer.push(`AMY_USER_ASM_TIMED_BEGIN_${state.sourceLineNumber}:`);
+        return { handled: true, ok: true };
+      }
+      if (/^\.endtimed\s*$/i.test(asmLine.trim())) {
+        if (!state.asmRelax || !state.asmTimedDepth) {
+          return { handled: true, ok: false, log: `Line ${state.sourceLineNumber}: .endtimed has no matching .timed in this asm relax block.` };
+        }
+        state.asmBuffer.push(`AMY_USER_ASM_TIMED_END_${state.sourceLineNumber}:`);
+        state.asmTimedDepth = 0;
+        return { handled: true, ok: true };
+      }
       const overlayAliasError = validateOverlayAsmText(asmLine, "Inline ASM");
       if (overlayAliasError) return { handled: true, ok: false, log: overlayAliasError };
       const nameFirstMacro = asmLine.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s+macro(?:\s+.*)?$/i);
@@ -173,9 +201,11 @@ export function handleDataMetaStatement({
     return { handled: true, ok: true };
   }
 
-  if (/^asm\s*\{$/i.test(line)) {
+  if (/^asm(?:\s+relax)?\s*\{$/i.test(line)) {
     state.asmNeedsImplicitStart = Boolean(state.needsImplicitStart);
     state.inAsm = true;
+    state.asmRelax = /^asm\s+relax\s*\{$/i.test(line);
+    state.asmTimedDepth = 0;
     return { handled: true, ok: true };
   }
 

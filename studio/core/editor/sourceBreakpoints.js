@@ -70,7 +70,7 @@ export function breakpointEligibleLineNumbers(sourceText) {
       ) block = "";
       continue;
     }
-    if (/^asm\s*\{$/i.test(line)) { block = "asm"; continue; }
+    if (/^asm(?:\s+relax)?\s*\{$/i.test(line)) { block = "asm"; continue; }
     const recordStart = line.match(/^record\s+([A-Za-z_][A-Za-z0-9_]*)/i);
     if (recordStart) {
       aggregateTypes.add(recordStart[1].toLowerCase());

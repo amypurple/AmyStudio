@@ -35,9 +35,11 @@ export class Z80Optimizer {
                     inlinePasses: 0,
                     bytesSaved: 0,
                     djnzExpanded: 0,
-                    jrExpanded: 0
+                    jrExpanded: 0,
+                    jrCandidates: []
                 };
                 this.rstMappings = {}; // Track which routines are mapped to which RST vectors
+                this.jrCandidateKeys = new Set();
             }
 
             snapshotTokens(tokens) {
@@ -1034,6 +1036,8 @@ export class Z80Optimizer {
                 const newSymbolTable = {};
                 let timingSensitiveRegion = false;
                 let userAsmRegion = false;
+                let relaxedUserAsmRegion = false;
+                let timedUserAsmRegion = false;
                 let currentGlobalLabel = '';
                 const qualifyLabel = value => {
                     const name = String(value ?? '');
@@ -1072,12 +1076,26 @@ export class Z80Optimizer {
                     }
 
                     const timingLabel = String(token?.label || '');
-                    if (/^AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_/i.test(timingLabel)) {
+                    if (/^AMY_OPTIMIZER_TIMING_BEGIN_USER_ASM_\d+$/i.test(timingLabel)) {
                         userAsmRegion = true;
                     }
-                    if (userAsmRegion && /^AMY_OPTIMIZER_TIMING_END_USER_ASM_/i.test(timingLabel)) {
+                    if (userAsmRegion && /^AMY_USER_ASM_RELAX_BEGIN_/i.test(timingLabel)) {
+                        relaxedUserAsmRegion = true;
+                    }
+                    if (userAsmRegion && /^AMY_USER_ASM_TIMED_BEGIN_/i.test(timingLabel)) {
+                        timedUserAsmRegion = true;
+                    }
+                    if (userAsmRegion && /^AMY_USER_ASM_TIMED_END_/i.test(timingLabel)) {
+                        timedUserAsmRegion = false;
+                    }
+                    if (userAsmRegion && /^AMY_USER_ASM_RELAX_END_/i.test(timingLabel)) {
+                        relaxedUserAsmRegion = false;
+                    }
+                    if (userAsmRegion && /^AMY_OPTIMIZER_TIMING_END_USER_ASM_\d+$/i.test(timingLabel)) {
                         optimized.push(token);
                         userAsmRegion = false;
+                        relaxedUserAsmRegion = false;
+                        timedUserAsmRegion = false;
                         continue;
                     }
 
@@ -1085,15 +1103,39 @@ export class Z80Optimizer {
                     // lengths. Only mandatory JR range legalization may alter it.
                     if (userAsmRegion && token instanceof Instruction) {
                         const userMnemonic = token.mnemonic.toLowerCase();
-                        if (userMnemonic === 'jr' && token.operands.length >= 1) {
+                        if (userMnemonic === 'jp' && token.operands.length > 0) {
                             const lastOp = token.operands[token.operands.length - 1];
-                            if (lastOp.type === 'symbol' || lastOp.type === 'immediate') {
-                                const targetAddr = resolveBranchTarget(lastOp);
-                                if (targetAddr !== undefined && !this.canUseRelativeJump(pc, targetAddr, 2)) {
-                                    optimized.push(new Instruction(token.label, 'jp', token.operands, token.lineNumber, token.sourceLine));
+                            const condition = token.operands.length === 2
+                                ? String(token.operands[0].value || '').toLowerCase()
+                                : null;
+                            const supportedCondition = condition === null || ['z', 'nz', 'c', 'nc'].includes(condition);
+                            const directTarget = lastOp.type === 'symbol' || lastOp.type === 'immediate';
+                            const targetAddr = directTarget ? resolveBranchTarget(lastOp) : null;
+                            const inRange = targetAddr !== null && targetAddr !== undefined
+                                && this.canUseRelativeJump(pc, targetAddr, 2);
+                            const headerSafe = !(pc >= 0x8000 && pc <= 0x8023);
+                            if (supportedCondition && directTarget && inRange && headerSafe) {
+                                const candidateKey = `${token.lineNumber}|${token.sourceLine || ''}`;
+                                if (!this.jrCandidateKeys.has(candidateKey)) {
+                                    this.jrCandidateKeys.add(candidateKey);
+                                    this.stats.jrCandidates.push({
+                                        line: token.lineNumber,
+                                        source: token.sourceLine || '',
+                                        address: pc,
+                                        target: targetAddr,
+                                        condition,
+                                        bytes: 1,
+                                        relaxed: relaxedUserAsmRegion,
+                                        timed: timedUserAsmRegion,
+                                        applied: relaxedUserAsmRegion && !timedUserAsmRegion
+                                    });
+                                }
+                                if (relaxedUserAsmRegion && !timedUserAsmRegion && this.config.branchShortening) {
+                                    optimized.push(new Instruction(token.label, 'jr', token.operands, token.lineNumber, token.sourceLine));
                                     rememberLabel(token.label, pc);
-                                    this.stats.jrExpanded++;
-                                    pc += 3;
+                                    this.stats.jpToJr++;
+                                    this.stats.bytesSaved++;
+                                    pc += 2;
                                     continue;
                                 }
                             }
@@ -1260,34 +1302,6 @@ export class Z80Optimizer {
                             }
                         } else {
                             optimizerLog(`  [JP→JR] Line ${token.lineNumber}: JP indirect - SKIP (operand type: ${lastOp.type})`, 'debug');
-                        }
-                    }
-
-                    // Mandatory legalization: JR → JP when the final target is out of range.
-                    // This is correctness work, not an optional size optimization. In
-                    // particular, optimizer Off must still assemble a program whose
-                    // layout makes a relative branch exceed the Z80's signed byte.
-                    if (mnem === 'jr' && token.operands.length >= 1) {
-                        const lastOp = token.operands[token.operands.length - 1];
-                        if (lastOp.type === 'symbol' || lastOp.type === 'immediate') {
-                            const targetAddr = resolveBranchTarget(lastOp);
-                            if (targetAddr !== undefined && !this.canUseRelativeJump(pc, targetAddr, 2)) {
-                                const pcAfter = pc + 2;
-                                const offset = targetAddr - pcAfter;
-                                const jpToken = new Instruction(token.label, 'jp', token.operands, token.lineNumber);
-                                optimized.push(jpToken);
-                                rememberLabel(token.label, pc);
-                                this.stats.jrExpanded++;
-                                // Net +1 byte vs JR (was 2, now 3)
-                                pc += 3;
-                                const targetLabel = typeof lastOp.value === 'string'
-                                    ? lastOp.value
-                                    : (lastOp.value !== null && lastOp.value !== undefined
-                                        ? '$' + lastOp.value.toString(16)
-                                        : '?');
-                                optimizerLog(`  [JR→JP] Line ${token.lineNumber}: JR ${targetLabel} expanded (PC=$${(pc-3).toString(16)}, target=$${targetAddr !== null && targetAddr !== undefined ? targetAddr.toString(16) : '?'}, offset=${offset})`, 'debug');
-                                continue;
-                            }
                         }
                     }
 

@@ -1612,7 +1612,7 @@ export function finalizeAmyTranspile({
     );
   const optimizedGeneratedBody = optimizeGeneratedMemoryLoads(
     bodyBeforeMemoryLoads,
-    hasExternalAsmInclude || /(^|\n)\s*asm\s*\{/i.test(String(activeSourceText || ""))
+    hasExternalAsmInclude || /(^|\n)\s*asm(?:\s+relax)?\s*\{/i.test(String(activeSourceText || ""))
       ? null
       : inferGeneratedUserRoutineClobbers(bodyBeforeMemoryLoads)
   );

@@ -125,7 +125,7 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
     const hook = !current && text.match(/^on\s+(?:vblank|frame)\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
     if (hook) nmiRoots.add(lower(hook[1]));
     if (!current) {
-      if (/^asm\s*\{$/i.test(text)) { inAsm = true; continue; }
+      if (/^asm(?:\s+relax)?\s*\{$/i.test(text)) { inAsm = true; continue; }
       if (inAsm) {
         if (text === "}") { inAsm = false; continue; }
         const transfer = parseAsmTransfer(text);
@@ -137,7 +137,7 @@ export function analyzeStaticAbiEligibility(sourceLines, options = {}) {
       if (/^call\s+asm\b/i.test(text)) opaqueAsm = true;
       continue;
     }
-    if (/^asm\s*\{$/i.test(text)) { inAsm = true; continue; }
+    if (/^asm(?:\s+relax)?\s*\{$/i.test(text)) { inAsm = true; continue; }
     if (inAsm) {
       if (text === "}") { inAsm = false; continue; }
       current.asm.push(text);

@@ -17,6 +17,7 @@ Run `node tools/amyc.mjs --help` for the authoritative, version-matched option l
 | `--optimized-asm [path]` | Write assembly after optimizer passes. |
 | `--symbols [path]` | Write debugger symbols. |
 | `--report-json path` | Write the machine-readable build result and diagnostics. |
+| `--report-jr-candidates` | List shorten-able user-ASM `jp` instructions and their one-byte gains. |
 
 Paths in square brackets are optional. Without one, the output is written beside the source. Parent directories are created automatically. Compilation and the ROM/RAM report still run when no output option is selected.
 
@@ -99,5 +100,9 @@ node tools/amyc.mjs megacart-game.amy.json --output build/megacart-game.rom --sy
 Unknown options, invalid values, missing values and extra positional arguments are rejected. Exit code `0` means success, `1` means compilation/assembly failure, and `2` means invalid command-line use.
 
 ## Advanced Options
+
+`--report-jr-candidates` does not relax ordinary `asm {}` blocks. It reports each candidate as
+opaque, applied by `asm relax`, or protected by `.timed`; use `safe` or a higher profile because
+`--opt off` does not run the address-dependent analyzer.
 
 `--disable-opt-pass id` disables one named optimizer pass and may be repeated. `--experimental-record-ix` enables experimental record-array IX generation. These are compiler-development controls, not recommended release defaults.

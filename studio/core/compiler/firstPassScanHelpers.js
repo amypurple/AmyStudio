@@ -158,7 +158,7 @@ export function scanAmyFirstPass({
     const rawLine = lines[lineIndex];
     if (firstPassNameError) break;
     const trimmed = stripAmyInlineComment(rawLine).trim();
-    if (/^asm\s*\{$/i.test(trimmed)) {
+    if (/^asm(?:\s+relax)?\s*\{$/i.test(trimmed)) {
       firstPassInAsm = true;
       continue;
     }

@@ -288,7 +288,7 @@ export function scanGraphicsBlindSpots(sourceText) {
   lines.forEach((line, index) => {
     const clean = stripAmyComment(line).trim();
     if (!clean) return;
-    if (/^asm\s*\{/i.test(clean)) {
+    if (/^asm(?:\s+relax)?\s*\{/i.test(clean)) {
       inAsmBlock = true;
       spots.push({ zone: "C", line: index + 1, type: "asm-block", statement: clean });
       return;

@@ -110,6 +110,7 @@ Outputs (not written unless requested):
   --optimized-asm [path]   Write assembly after optimizer passes
   --symbols [path]         Write debugger symbols
   --report-json <path>     Write a machine-readable build report
+  --report-jr-candidates   List user-ASM JP instructions that can become JR
 
 Build options:
   --opt <level>            auto | off | safe | balanced | aggressive | experimental
@@ -177,7 +178,7 @@ const DEPS = {
 };
 
 function parseArgs(argv) {
-  const opts = { file: null, help: false, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, reportJson: null, opt: "balanced", projectDir: null, target: "colecovision-cartridge", targetExplicit: false, medium: null, memoryProfile: null, hardware: [], defines: [], disabledOptimizerPasses: [], experimentalRecordIx: false };
+  const opts = { file: null, help: false, asm: undefined, optimizedAsm: undefined, rom: undefined, symbols: undefined, reportJson: null, reportJrCandidates: false, opt: "balanced", projectDir: null, target: "colecovision-cartridge", targetExplicit: false, medium: null, memoryProfile: null, hardware: [], defines: [], disabledOptimizerPasses: [], experimentalRecordIx: false };
   const requiredValue = (index, option) => {
     const value = argv[index + 1];
     if (!value || value.startsWith("--")) throw new Error(`${option} requires a value.`);
@@ -191,6 +192,7 @@ function parseArgs(argv) {
     else if (a === "--rom" || a === "--output") opts.rom = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--symbols") opts.symbols = (argv[i + 1] && !argv[i + 1].startsWith("--")) ? argv[++i] : true;
     else if (a === "--report-json") opts.reportJson = requiredValue(i++, a);
+    else if (a === "--report-jr-candidates") opts.reportJrCandidates = true;
     else if (a === "--opt") opts.opt = requiredValue(i++, a).toLowerCase();
     else if (a === "--project-dir") opts.projectDir = requiredValue(i++, a);
     else if (a === "--target") { opts.target = requiredValue(i++, a).toLowerCase(); opts.targetExplicit = true; }
@@ -678,6 +680,24 @@ async function main() {
     console.error("Assemble failed (" + opts.opt + "): " + (err || "see assembler log"));
     process.exit(1);
   }
+  const jrCandidates = Array.isArray(assembled.stats?.optimizer?.jrCandidates)
+    ? assembled.stats.optimizer.jrCandidates
+    : [];
+  if (opts.reportJrCandidates) {
+    if (!profile.optimizerEnabled) {
+      console.warn("JR candidates unavailable with --opt off; use safe or a higher profile.");
+    } else if (!jrCandidates.length) {
+      console.log("JR candidates: none in user ASM.");
+    } else {
+      console.log(`JR candidates: ${jrCandidates.length} (${jrCandidates.length} byte${jrCandidates.length === 1 ? "" : "s"} potential)`);
+      for (const candidate of jrCandidates) {
+        const address = Number.isInteger(candidate.address) ? `$${candidate.address.toString(16).toUpperCase().padStart(4, "0")}` : "$????";
+        const state = candidate.timed ? "timed/protected" : (candidate.applied ? "applied by asm relax" : "opaque; programmer decision");
+        const source = String(candidate.source || "").trim();
+        console.log(`  ASM line ${candidate.line} ${address}: JP${candidate.condition ? ` ${String(candidate.condition).toUpperCase()}` : ""} -> JR, save ${candidate.bytes} byte (${state})${source ? ` | ${source}` : ""}`);
+      }
+    }
+  }
   let rom = assembled.binary || assembled.bytes || new Uint8Array();
   if (opts.target === "colecovision-megacart") {
     try {
@@ -724,6 +744,7 @@ async function main() {
     romBytes: rom.length,
     ramUsage: transpiled.ramUsage || null,
     diagnostics: (transpiled.warnings || transpiled.metadata?.warnings || []).map((warning) => diagnosticFromLog(srcPath, "transpile", warning, "warning", sourceText)),
+    jrCandidates,
     artifacts: {
       asm: opts.asm !== undefined ? (typeof opts.asm === "string" ? path.resolve(opts.asm) : base + ".asm") : null,
       optimizedAsm: opts.optimizedAsm !== undefined ? (typeof opts.optimizedAsm === "string" ? path.resolve(opts.optimizedAsm) : base + ".optimized.asm") : null,

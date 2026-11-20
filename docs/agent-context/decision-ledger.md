@@ -1727,3 +1727,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - `test-megacart-cli-project-runtime.mjs` validates the final image, Amy and ASM
   calls, mapper restoration, and exact asset bytes at all five profiles.
 
+## 2026-11-19 - JR expansion is a final-address-only operation
+
+- Iterative optimizer passes must not expand `jr` using symbol addresses that can become stale as
+  earlier instructions change size in the same pass.
+- Only the final branch legalizer may expand a genuinely out-of-range `jr`, after rebuilding final
+  symbols. A near hand-written branch remains byte- and timing-stable.
+- Ordinary `asm {}` stays opaque. `asm relax {}` explicitly permits direct `jp` to `jr` shortening;
+  `.timed` / `.endtimed` protects selected relaxed regions, and `--report-jr-candidates` reports
+  possible savings without requiring source changes.
+- Evidence: the five-profile near/far branch regression passes; Strata changes from 30,278 bytes in
+  r12.8 to 30,138 bytes with nearby manual `jr z` instructions preserved.
+

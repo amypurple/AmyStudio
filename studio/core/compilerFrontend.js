@@ -4,7 +4,7 @@ export function stripAmyCommentsForCapabilityScan(sourceText) {
     .split(/\r?\n/)
     .map((rawLine) => {
       const trimmed = rawLine.trim();
-      if (!inAsm && /^asm\s*\{$/i.test(trimmed)) {
+      if (!inAsm && /^asm(?:\s+relax)?\s*\{$/i.test(trimmed)) {
         inAsm = true;
         return rawLine;
       }

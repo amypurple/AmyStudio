@@ -614,6 +614,7 @@ function isIxIyDisplacementOperandText(value) {
                             inlinePasses: s.inlinePasses,
                             djnzExpanded: s.djnzExpanded,
                             jrExpanded: s.jrExpanded,
+                            jrCandidates: s.jrCandidates,
                             bytesSaved: s.bytesSaved
                         };
                         log(`Optimizations applied:`, 'success');
@@ -652,6 +653,7 @@ function isIxIyDisplacementOperandText(value) {
                             routinesInlined: 0,
                             inlinePasses: 0,
                             jrExpanded: 0,
+                            jrCandidates: [],
                             bytesSaved: 0
                         };
                         // Optimizer disabled - hide bytes saved display
