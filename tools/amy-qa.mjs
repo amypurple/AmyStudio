@@ -75,6 +75,8 @@ const quickTests = [
   "test-fujinet-appbank.mjs",
   "test-fujinet-appbank-cli-runtime.mjs",
   "test-gearcoleco-fujinet.mjs",
+  "test-fujinet-test-server.mjs",
+  "test-fujinet-scripted-runtime.mjs",
   "test-overlay-layout-rom.mjs",
   "test-sprite-count-init-runtime.mjs",
   "test-optimizer-indexed-immediate-a-liveness.mjs",

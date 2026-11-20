@@ -1,7 +1,8 @@
 import { validateTms9918Snapshot } from "./tms9918StateValidator.js";
+import { FujiNetTestServer } from "./fujinetTestServer.js";
 
 const DEFAULT_MODULE_URL = new URL(
-  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261117-coleco-tv-audio",
+  "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261120-fujinet-scripted",
   import.meta.url
 );
 
@@ -68,6 +69,7 @@ export class GearcolecoTestCore {
     this.destroyed = false;
     this.biosRegion = GEARCOLECO_TEST_REGION.NTSC;
     this.region = GEARCOLECO_TEST_REGION.NTSC;
+    this.fujiNetServer = new FujiNetTestServer();
   }
 
   static async create({ seed = 0, moduleUrl = DEFAULT_MODULE_URL } = {}) {
@@ -151,6 +153,47 @@ export class GearcolecoTestCore {
     return typeof this.module._gcw_get_fujinet_mode === "function" && this.module._gcw_get_fujinet_mode() === 1;
   }
 
+  setFujiNetTestProfile(profile, script = null) {
+    const profiles = new Set(["presence", "loopback", "amy-chess", "scripted"]);
+    if (!profiles.has(profile)) throw new RangeError(`Unknown FujiNet test profile '${profile}'.`);
+    if (profile === "scripted" && (!script || script.version !== 1 || !Array.isArray(script.steps))) {
+      throw new TypeError("FujiNet scripted profile requires a version 1 scenario with a steps array.");
+    }
+    this.fujiNetServer = new FujiNetTestServer({ profile, script });
+  }
+
+  getFujiNetTrace() {
+    return this.fujiNetServer.getTrace();
+  }
+
+  disconnectFujiNetTestServer() {
+    this.fujiNetServer.disconnect();
+  }
+
+  processFujiNetRequest() {
+    if (typeof this.module._gcw_fujinet_pending_request !== "function") return false;
+    if (this.module._gcw_fujinet_pending_request(0, 0, 0, 0) !== 1) return false;
+    const metadata = this.module._malloc(5);
+    const payload = this.module._malloc(0x400);
+    try {
+      this.module._gcw_fujinet_pending_request(metadata, 5, payload, 0x400);
+      const header = this.module.HEAPU8.slice(metadata, metadata + 5);
+      const length = header[3] | (header[4] << 8);
+      const request = {
+        device: header[0],
+        command: header[1],
+        sequence: header[2],
+        payload: this.module.HEAPU8.slice(payload, payload + length),
+      };
+      const response = this.fujiNetServer.handle(request);
+      return this.withInputBytes(response.reply, "FujiNet reply", (pointer, size) =>
+        this.module._gcw_fujinet_complete_request(response.error, response.replyCommand, pointer, size) === 1);
+    } finally {
+      this.module._free(payload);
+      this.module._free(metadata);
+    }
+  }
+
   getRegion() {
     this.assertAlive();
     this.region = this.module._gcw_get_region() | 0;
@@ -180,6 +223,7 @@ export class GearcolecoTestCore {
     this.assertAlive();
     const result = this.module._gcw_run_frame();
     if (result < 0) throw new Error("GearColeco frame execution failed.");
+    this.processFujiNetRequest();
     return {
       breakpointHit: result === 1,
       pc: this.module._gcw_get_pc() & 0xFFFF

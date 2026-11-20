@@ -432,6 +432,8 @@ const tests = [
   { file: "test-fujinet-appbank.mjs", area: "fujinet-appbank-project", evidence: "compile+package", suite: "studio" },
   { file: "test-fujinet-appbank-cli-runtime.mjs", area: "fujinet-appbank-cli-runtime", evidence: "runtime", suite: "studio" },
   { file: "test-gearcoleco-fujinet.mjs", area: "fujinet-debug-device", evidence: "runtime", suite: "emulator" },
+  { file: "test-fujinet-test-server.mjs", area: "fujinet-scripted-server", evidence: "unit", suite: "studio" },
+  { file: "test-fujinet-scripted-runtime.mjs", area: "fujinet-scripted-runtime", evidence: "runtime", suite: "studio" },
   { file: "test-rom-debug-adam-writable-media.mjs", area: "adam-writable-media-debugger", evidence: "unit", suite: "emulator" },
   { file: "test-rom-debug-adam-reset-ui.mjs", area: "adam-dual-reset-ui", evidence: "unit", suite: "emulator" },
   { file: "test-rom-execution-location.mjs", area: "bank-aware-execution-location", evidence: "unit", suite: "emulator" },

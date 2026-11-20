@@ -120,7 +120,7 @@ diff --git a/src/FujiNetMapper.h b/src/FujiNetMapper.h
 new file mode 100644
 --- /dev/null
 +++ b/src/FujiNetMapper.h
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,116 @@
 +#ifndef FUJINETMAPPER_H
 +#define FUJINETMAPPER_H
 +
@@ -135,6 +135,7 @@ new file mode 100644
 +    void Reset() override
 +    {
 +        m_Page = 0; m_Register = 0; m_Device = 0; m_Command = 0; m_TxLength = 0;
++        m_Pending = false; m_PendingSequence = 0;
 +        memset(m_Status, 0, sizeof(m_Status)); memset(m_Reply, 0, sizeof(m_Reply));
 +        m_Status[9] = 'F'; m_Status[10] = 'N'; m_Status[11] = 1;
 +    }
@@ -178,9 +179,36 @@ new file mode 100644
 +        stream.read(reinterpret_cast<char*>(m_Reply), sizeof(m_Reply));
 +        stream.read(reinterpret_cast<char*>(&m_TxLength), sizeof(m_TxLength));
 +        stream.read(reinterpret_cast<char*>(m_Tx), sizeof(m_Tx));
++        m_Pending = false;
++        m_PendingSequence = 0;
 +    }
 +    u8 GetRomBank() override { return m_Page; }
 +    u32 GetRomBankAddress() override { return m_Page ? 0x8000 + (m_Page - 1) * 0x2000 : 0x4000; }
++
++    bool HasPendingRequest() const { return m_Pending; }
++    u8 GetPendingDevice() const { return m_Device; }
++    u8 GetPendingCommand() const { return m_Command; }
++    u8 GetPendingSequence() const { return m_PendingSequence; }
++    u16 GetPendingLength() const { return m_TxLength; }
++    u16 CopyPendingData(u8* output, u16 capacity) const
++    {
++        const u16 count = m_TxLength < capacity ? m_TxLength : capacity;
++        if (output && count) memcpy(output, m_Tx, count);
++        return count;
++    }
++    void CompletePendingRequest(u8 error, u8 replyCommand, const u8* reply, u16 length)
++    {
++        if (!m_Pending) return;
++        const u16 count = length < sizeof(m_Reply) ? length : sizeof(m_Reply);
++        memset(m_Reply, 0, sizeof(m_Reply));
++        if (reply && count) memcpy(m_Reply, reply, count);
++        m_Status[0] = m_PendingSequence;
++        m_Status[2] = error;
++        m_Status[3] = replyCommand;
++        m_Status[4] = count & 0xFF;
++        m_Status[5] = count >> 8;
++        m_Pending = false;
++    }
 +
 +private:
 +    void WriteRegister(u8 value)
@@ -190,14 +218,22 @@ new file mode 100644
 +        if (m_Register == 5) m_TxLength = 0;
 +        if (m_Register == 0x10) {
 +            const bool probe = m_Device == 0x70 && m_Command == 0xC4;
-+            m_Status[0] = value;
-+            m_Status[2] = probe ? 0 : 1;
-+            m_Status[3] = probe ? 0x06 : 0x15;
-+            m_Status[4] = m_Status[5] = 0;
++            if (probe) {
++                m_Pending = false;
++                m_Status[0] = value;
++                m_Status[2] = 0;
++                m_Status[3] = 0x06;
++                m_Status[4] = m_Status[5] = 0;
++            } else {
++                m_PendingSequence = value;
++                m_Pending = true;
++            }
 +        }
 +    }
 +    u8 m_Page, m_Register, m_Device, m_Command, m_Status[0x100], m_Reply[0x400], m_Tx[0x400];
 +    u16 m_TxLength;
++    bool m_Pending;
++    u8 m_PendingSequence;
 +};
 +
 +#endif

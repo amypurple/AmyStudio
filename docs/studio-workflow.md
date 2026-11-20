@@ -290,11 +290,37 @@ Current debugging tools include:
 - named development checkpoints, recorded routes, and fast replay after recompilation;
 - recorded controller scenarios and replayable `.amy-rom-test.json` files.
 
-Under **Hardware & compatibility**, **FujiNet: Test device** enables the
-deterministic cartridge mailbox and APPBANK mapper. Use it to test presence,
-page selection, framed command writes, NAK/error handling and timeout paths.
-It is deliberately offline: real HTTP/TCP servers require physical FujiNet or
-a compatible external bridge.
+Under **Hardware & compatibility**, FujiNet offers three deterministic modes.
+**Presence only** validates the cartridge mailbox, APPBANK mapper, NAK/error
+handling and timeout paths. **TCP loopback** accepts Network Device OPEN,
+STATUS, READ, WRITE and CLOSE commands and returns written bytes. **Amy Chess
+peer** implements the separate edition's eight-byte relay protocol, creates or
+joins a table, supplies a virtual opponent and accepts draw offers. The
+**FujiNet** debugger tab shows every request and reply and can inject a lost
+connection. These modes never contact the Internet; release validation still
+requires physical FujiNet or a compatible external bridge.
+
+The SP0256 **Voice module** selector is independent and can be enabled at the
+same time. Voice is separate cartridge hardware, not a FujiNet Network Device
+command.
+
+For a game-specific server, select **Scripted JSON** and load a version 1 file:
+
+```json
+{
+  "version": 1,
+  "steps": [{
+    "expect": { "device": 113, "command": 79, "payloadPrefix": [1, 12] },
+    "response": { "replyCommand": 6, "reply": [], "connected": true }
+  }]
+}
+```
+
+Steps are consumed in order. `expect` may constrain `device`, `command` and a
+`payloadPrefix`. `response` may set `error`, `replyCommand`, immediate `reply`,
+bytes to `queue` for a later READ, and `connected`. A mismatch returns a
+deterministic NAK and appears in the FujiNet trace. Scenario files are data,
+not JavaScript, so loading one cannot execute host code.
 
 Changing only a breakpoint does not modify ROM bytes. Changing source or project files makes the existing source map and compiled ROM stale and requires a rebuild.
 

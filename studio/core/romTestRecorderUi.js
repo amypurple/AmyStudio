@@ -341,7 +341,7 @@ function ensureStyles() {
     .rom-recorder__tabs button[aria-selected="true"] { color:#081014; background:#65dbef; }
     .rom-recorder__pane { display:none; padding:8px; min-height:0; overflow:auto; }
     .rom-recorder__pane.is-active { display:block; min-height:0; }
-    .rom-recorder__pane[data-pane="asm"].is-active,.rom-recorder__pane[data-pane="ram"].is-active,.rom-recorder__pane[data-pane="vram"].is-active,.rom-recorder__pane[data-pane="map"].is-active { display:flex; flex-direction:column; overflow:hidden; }
+    .rom-recorder__pane[data-pane="asm"].is-active,.rom-recorder__pane[data-pane="ram"].is-active,.rom-recorder__pane[data-pane="vram"].is-active,.rom-recorder__pane[data-pane="map"].is-active,.rom-recorder__pane[data-pane="fujinet"].is-active { display:flex; flex-direction:column; overflow:hidden; }
     .rom-recorder__summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:7px; }
     .rom-recorder__card { padding:8px; border:1px solid #26343c; background:#091015; }
     .rom-recorder__card strong { display:block; color:#65dbef; font-size:10px; text-transform:uppercase; }
@@ -452,7 +452,7 @@ function buildDialog() {
           <label>Keys<select data-field="keyboardTarget" title="Route the computer keyboard to the ADAM keyboard or a joystick port"><option value="adam" selected>ADAM</option><option value="joy1">JOY P1</option><option value="joy2">JOY P2</option></select></label>
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
           <label>VDP timing<select data-field="vdpTiming" title="Model real TMS9918A VRAM access slots and expose unsafe transfers"><option value="compatible" selected>Compatible</option><option value="realistic">Realistic TMS9918A</option></select></label>
-          <label>FujiNet<select data-field="fujinet" title="Enable the deterministic FujiNet mailbox and APPBANK test device. Internet servers still require hardware or an external bridge."><option value="off" selected>Off</option><option value="test">Test device</option></select></label>
+          <label>FujiNet<select data-field="fujinet" title="Enable the deterministic FujiNet mailbox and APPBANK test device, optionally with a scripted network peer."><option value="off" selected>Off</option><option value="presence">Presence only</option><option value="loopback">TCP loopback</option><option value="amy-chess">Amy Chess peer</option><option value="scripted">Scripted JSON</option></select></label>
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
           <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
           <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="adamlink-hayes">AdamLink Hayes modem</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="eve-hayes">Eve Hayes modem</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option><option value="micro-hayes">MicroInnovations Hayes modem</option></select></label>
@@ -473,13 +473,14 @@ function buildDialog() {
       </div>
       <section class="rom-recorder__debug">
         <div class="rom-recorder__tabs" role="tablist">
-          <button data-tab="state" aria-selected="true">CPU / VDP</button><button data-tab="asm" aria-selected="false" title="Z80 execution and stack">ASM</button><button data-tab="ram" aria-selected="false" title="CPU memory">RAM</button><button data-tab="vram" aria-selected="false">VRAM</button><button data-tab="map" aria-selected="false" title="Memory map">MAP</button><button data-tab="adam" aria-selected="false" title="ADAMnet devices and printer output">ADAM</button><button data-tab="breakpoints" aria-selected="false" title="Breakpoints">BP</button><button data-tab="profiler" aria-selected="false">Cycles</button>
+          <button data-tab="state" aria-selected="true">CPU / VDP</button><button data-tab="asm" aria-selected="false" title="Z80 execution and stack">ASM</button><button data-tab="ram" aria-selected="false" title="CPU memory">RAM</button><button data-tab="vram" aria-selected="false">VRAM</button><button data-tab="map" aria-selected="false" title="Memory map">MAP</button><button data-tab="fujinet" aria-selected="false" title="FujiNet transactions">FujiNet</button><button data-tab="adam" aria-selected="false" title="ADAMnet devices and printer output">ADAM</button><button data-tab="breakpoints" aria-selected="false" title="Breakpoints">BP</button><button data-tab="profiler" aria-selected="false">Cycles</button>
         </div>
         <div class="rom-recorder__pane is-active" data-pane="state"><div data-field="machineState"></div></div>
         <div class="rom-recorder__pane" data-pane="asm"><div class="rom-recorder__memory-controls rom-recorder__memory-controls--asm"><button class="rom-recorder__compact-action" data-action="stepInto" title="Step into: execute one Z80 instruction" aria-label="Step into one Z80 instruction">&#x2193;</button><button class="rom-recorder__compact-action" data-action="stepOver" title="Step over CALL or RST" aria-label="Step over Z80 call">&#x21B7;</button><span title="Instruction stepping does not modify the ROM">Z80 instruction</span></div><pre class="rom-recorder__dump" data-field="asmDump"></pre></div>
         <div class="rom-recorder__pane" data-pane="ram"><div class="rom-recorder__memory-controls"><input data-field="ramAddress" value="$7000" aria-label="CPU memory address"><select data-field="ramLength"><option>64</option><option>128</option><option>256</option><option selected>384</option><option>512</option></select><button class="rom-recorder__compact-action" data-action="refreshRam" title="Refresh CPU memory" aria-label="Refresh CPU memory">&#x21BB;</button></div><pre class="rom-recorder__dump" data-field="ramDump"></pre></div>
         <div class="rom-recorder__pane" data-pane="vram"><div class="rom-recorder__memory-controls"><input data-field="vramAddress" value="$0000" aria-label="VRAM address"><select data-field="vramLength"><option>64</option><option>128</option><option>256</option><option selected>384</option><option>512</option></select><button class="rom-recorder__compact-action" data-action="refreshVram" title="Refresh VRAM" aria-label="Refresh VRAM">&#x21BB;</button></div><pre class="rom-recorder__dump" data-field="vramDump"></pre></div>
         <div class="rom-recorder__pane" data-pane="map"><input data-field="symbolFilter" placeholder="Filter symbols or address, e.g. Player or $70" aria-label="Filter symbols"><div class="rom-recorder__symbol-list" data-field="symbolList"></div><details><summary>Raw linker memory map</summary><pre class="rom-recorder__raw-map" data-field="rawMap"></pre></details></div>
+        <div class="rom-recorder__pane" data-pane="fujinet"><div class="rom-recorder__memory-controls"><button class="rom-recorder__compact-action" data-action="loadFujiNetScript" title="Load a deterministic FujiNet JSON scenario">Load script</button><button class="rom-recorder__compact-action" data-action="disconnectFujiNet" title="Simulate a lost network connection">Disconnect</button></div><input data-field="fujinetScriptFile" type="file" accept=".json,.fujinet.json,application/json" hidden><pre class="rom-recorder__dump" data-field="fujinetTrace">FujiNet is disabled.</pre></div>
         <div class="rom-recorder__pane" data-pane="adam"><div class="rom-recorder__memory-controls"><button class="rom-recorder__compact-action" data-action="refreshAdam" title="Refresh ADAMnet state" aria-label="Refresh ADAMnet state">&#x21BB;</button><button class="rom-recorder__compact-action" data-action="clearAdamPrinter" title="Clear captured printer output" aria-label="Clear captured printer output">Clear printer</button><button class="rom-recorder__compact-action" data-action="saveAdamMedia" title="Download the current writable DSK or DDP image" aria-label="Save modified ADAM media">Save media</button></div><div data-field="adamState"></div><pre class="rom-recorder__dump" data-field="adamPrinterOutput">ADAM machine not running.</pre></div>
         <div class="rom-recorder__pane" data-pane="breakpoints"><div class="rom-recorder__memory-controls rom-recorder__memory-controls--breakpoint"><input data-field="breakpointAddress" placeholder="Code symbol or $8000" aria-label="Breakpoint code address"><input data-field="breakpointCondition" placeholder="Optional: Score >= 5" aria-label="Optional RAM breakpoint condition"><select data-field="breakpointValueType" aria-label="Condition value type"><option value="auto">auto</option><option value="u8">u8</option><option value="i8">i8</option><option value="u16">u16</option><option value="i16">i16</option></select><button class="rom-recorder__compact-action" data-action="addBreakpoint" title="Add execute breakpoint, optionally conditional" aria-label="Add execute breakpoint">+</button></div><div class="rom-recorder__memory-controls rom-recorder__memory-controls--watch"><input data-field="watchCondition" placeholder="RAM watch: Lives = 0" aria-label="RAM watch condition"><select data-field="watchValueType" aria-label="RAM watch value type"><option value="auto">auto</option><option value="u8">u8</option><option value="i8">i8</option><option value="u16">u16</option><option value="i16">i16</option></select><button class="rom-recorder__compact-action" data-action="addWatch" title="Add RAM watch" aria-label="Add RAM watch">+</button></div><div class="rom-recorder__breakpoints" data-field="breakpointList"></div><button class="rom-recorder__compact-action" data-action="clearBreakpoints" title="Clear all breakpoints and RAM watches" aria-label="Clear all breakpoints and RAM watches">&#x00D7;</button></div>
         <div class="rom-recorder__pane" data-pane="profiler"><div class="rom-recorder__profiler-controls"><input data-field="profileTarget" list="rom-recorder-profile-targets" placeholder="Amy sub, symbol, or $8000" aria-label="Routine to profile"><datalist id="rom-recorder-profile-targets" data-field="profileTargets"></datalist><button class="rom-recorder__compact-action" data-action="profileRoutine" title="Profile next routine entry" aria-label="Profile next routine entry">&#x25B6;</button><button class="rom-recorder__compact-action" data-action="clearProfiles" title="Clear profiles" aria-label="Clear profiles">&#x00D7;</button></div><div class="rom-recorder__profiler-results" data-field="profileResults"></div><p class="rom-recorder__profiler-note" title="Runs include nested calls and recursion. Main execution excludes NMI and IRQ cycles. Own range is diagnostic, not exclusive self-time. Profiling does not modify the ROM.">Inclusive · main excludes NMI/IRQ · ROM unchanged</p></div>
@@ -543,6 +544,7 @@ export function createRomTestRecorderUi({
   let videoExporting = false;
   const developmentRoutes = createDevelopmentRouteStore(window.localStorage);
   let routeRecording = null;
+  let fujiNetScript = null;
 
   function releaseAdamKeyboard() {
     if (core) {
@@ -881,6 +883,25 @@ export function createRomTestRecorderUi({
       state.textContent = error.message || String(error);
       output.textContent = "Unable to read ADAM printer output.";
     }
+  }
+
+  function refreshFujiNetTrace() {
+    const output = field("fujinetTrace");
+    if (!core || field("fujinet").value === "off") {
+      output.textContent = "FujiNet is disabled.";
+      return;
+    }
+    const trace = core.getFujiNetTrace();
+    if (!trace.length) {
+      output.textContent = `FujiNet ${field("fujinet").selectedOptions[0]?.textContent || "test device"}\nNo network transactions yet.`;
+      return;
+    }
+    output.textContent = trace.map((entry, index) => {
+      const data = entry.payload.map((value) => value.toString(16).toUpperCase().padStart(2, "0")).join(" ");
+      const printable = entry.payload.map((value) => value >= 32 && value < 127 ? String.fromCharCode(value) : ".").join("");
+      return `${String(index + 1).padStart(3, "0")} ${entry.direction.toUpperCase()} dev $${entry.device.toString(16).toUpperCase().padStart(2, "0")} cmd $${entry.command.toString(16).toUpperCase().padStart(2, "0")} seq ${entry.sequence}\n    ${data || "(empty)"}${printable ? `  |${printable}|` : ""}`;
+    }).join("\n");
+    output.scrollTop = output.scrollHeight;
   }
 
   function renderRegionToggle() {
@@ -1290,6 +1311,7 @@ export function createRomTestRecorderUi({
     if (active === "asm") refreshAssembly();
     if (active === "ram") refreshMemory("ram");
     if (active === "vram") refreshMemory("vram");
+    if (active === "fujinet") refreshFujiNetTrace();
     if (active === "adam") refreshAdamState();
   }
 
@@ -1780,7 +1802,8 @@ export function createRomTestRecorderUi({
     core.setVideoChip(field("videoChip").value);
     core.setAccurateVdpTiming(field("vdpTiming").value === "realistic");
     core.setAudioOutputProfile(field("audioOutput").value);
-    core.setFujiNetEnabled(field("fujinet").value === "test");
+    core.setFujiNetEnabled(field("fujinet").value !== "off");
+    if (field("fujinet").value !== "off") core.setFujiNetTestProfile(field("fujinet").value, fujiNetScript);
     const serialSetting = field("adamSerial").value;
     core.setAdamSoundExpansion(field("adamSound").value);
     const serialProfile = serialSetting.split("-")[0];
@@ -1865,6 +1888,7 @@ export function createRomTestRecorderUi({
     if (name === "ram") refreshMemory("ram");
     if (name === "vram") refreshMemory("vram");
     if (name === "state") refreshMachineState();
+    if (name === "fujinet") refreshFujiNetTrace();
     if (name === "adam") refreshAdamState();
     if (name === "map") renderSymbolList();
     if (name === "profiler") renderProfileResults();
@@ -2281,6 +2305,28 @@ export function createRomTestRecorderUi({
     action("refreshRam").addEventListener("click", () => refreshMemory("ram"));
     action("refreshVram").addEventListener("click", () => refreshMemory("vram"));
     action("refreshAdam").addEventListener("click", refreshAdamState);
+    action("loadFujiNetScript").addEventListener("click", () => field("fujinetScriptFile").click());
+    field("fujinetScriptFile").addEventListener("change", async () => {
+      const file = field("fujinetScriptFile").files?.[0];
+      if (!file) return;
+      try {
+        const candidate = JSON.parse(await file.text());
+        if (candidate.version !== 1 || !Array.isArray(candidate.steps)) throw new Error("Expected version 1 and a steps array.");
+        fujiNetScript = candidate;
+        field("fujinet").value = "scripted";
+        await startCore();
+        setRecorderStatus(`Loaded FujiNet scenario ${file.name} with ${candidate.steps.length} step${candidate.steps.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        setRecorderStatus(`FujiNet script error: ${error.message || error}`);
+      } finally {
+        field("fujinetScriptFile").value = "";
+      }
+    });
+    action("disconnectFujiNet").addEventListener("click", () => {
+      core?.disconnectFujiNetTestServer();
+      refreshFujiNetTrace();
+      setRecorderStatus("FujiNet test connection disconnected.");
+    });
     action("clearAdamPrinter").addEventListener("click", () => {
       if (!core || core.getMachine() !== GEARCOLECO_MACHINE.ADAM) {
         setRecorderStatus("Start ADAM media before clearing its printer spool.");
@@ -2488,7 +2534,9 @@ export function createRomTestRecorderUi({
         loadedRom = rom;
         core.setVideoChip(testCase.environment?.videoChip || field("videoChip").value);
         core.setAccurateVdpTiming((testCase.environment?.vdpTiming || field("vdpTiming").value) === "realistic");
-        core.setFujiNetEnabled((testCase.environment?.fujinet || field("fujinet").value) === "test");
+        const fujiNetProfile = testCase.environment?.fujinet || field("fujinet").value;
+        core.setFujiNetEnabled(fujiNetProfile !== "off");
+        if (fujiNetProfile !== "off") core.setFujiNetTestProfile(fujiNetProfile === "test" ? "presence" : fujiNetProfile, fujiNetScript);
         core.setAudioOutputProfile(testCase.environment?.audioOutput || field("audioOutput").value);
         core.loadBios(bios);
         const replayRegion = testCase.environment?.region === "pal" ? GEARCOLECO_TEST_REGION.PAL : GEARCOLECO_TEST_REGION.NTSC;

@@ -2000,3 +2000,24 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   not claim Internet transport. End-to-end networking remains a hardware or
   compatible external-device gate.
 
+## 2026-11-20: Scripted FujiNet Network Device simulation
+
+- Extended the test mapper with asynchronous pending requests exposed to the
+  browser core between emulated frames. This preserves the ROM's normal
+  `FN_COMMIT_BEGIN` / `FN_POLL` behavior instead of short-circuiting Amy code.
+- Added bounded deterministic profiles for presence-only failure paths, TCP
+  loopback, and an Amy Chess virtual peer. The latter mirrors the real
+  eight-byte relay handshake, turns, moves, draw offers and disconnect state.
+- Added a transaction inspector to ROM Test & Debug. It shows device, command,
+  sequence and exact payload bytes; the test server never opens host sockets.
+- Added a versioned declarative JSON scenario format for game-specific virtual
+  servers. Ordered expectations match device, command and payload prefixes;
+  responses control ACK/NAK, reply bytes, queued READ data and connection state.
+  Arbitrary JavaScript is intentionally not accepted in the debugger.
+- Kept SP0256 voice emulation orthogonal. The Coleco FujiNet handbook exposes
+  network and storage devices, not a network speech command; simultaneous
+  FujiNet plus voice testing uses the two independent hardware selectors.
+- Preserved GearColeco save-state size. Pending browser-serviced requests are
+  cleared on raw core-state restore; deterministic scenario replay should
+  restart from boot rather than rewind across a network transaction.
+

@@ -112,6 +112,8 @@ $exported = @(
     "_gcw_load_rom",
     "_gcw_set_fujinet_mode",
     "_gcw_get_fujinet_mode",
+    "_gcw_fujinet_pending_request",
+    "_gcw_fujinet_complete_request",
     "_gcw_reset",
     "_gcw_set_video_chip",
     "_gcw_get_video_chip",
@@ -209,7 +211,7 @@ $versionFile = Join-Path $OutputDir "BUILD.txt"
     "cpu_state=enabled"
     "native_disassembler=enabled"
     "megacart_debug=active_rom_bank,cartridge_type"
-    "fujinet=appbank,test_mailbox"
+    "fujinet=appbank,scripted_test_server,transaction_trace"
     "sp0256_core=rom_microsequencer_lpc12"
     "sp0256_voice_modules=lundy_43_44_45,eve_48_49_4a_4b"
     "video_chips=tms9918a,f18a_v1.9"

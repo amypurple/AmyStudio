@@ -94,10 +94,13 @@ selects page `n`. `FN_SELECT_APPBANK_PAGE` performs that read. Call it only
 from resident code at `$8000-$BFFF` or `$E000-$F7FF`, never from code that is
 about to map itself out.
 
-ROM Test & Debug offers **FujiNet: Test device**. It validates detection,
-APPBANK mapping, command framing, NAK handling and timeouts deterministically.
-It does not open Internet connections. End-to-end server validation still
-requires physical FujiNet or a compatible external emulator/bridge.
+ROM Test & Debug offers deterministic **Presence only**, **TCP loopback** and
+**Amy Chess peer** profiles. They validate detection, APPBANK mapping, Network
+Device OPEN/STATUS/READ/WRITE/CLOSE framing, NAK handling, timeouts and the
+Amy Chess relay protocol without opening an Internet connection. The FujiNet
+debugger tab records the bytes sent and received and can simulate a disconnect.
+End-to-end public-server validation still requires physical FujiNet or a
+compatible external emulator/bridge.
 
 ---
 

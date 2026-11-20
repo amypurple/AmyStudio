@@ -15,6 +15,7 @@
 #include "Adam.h"
 #include "AdamNet.h"
 #include "AdamMedia.h"
+#include "FujiNetMapper.h"
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
@@ -118,6 +119,14 @@ namespace
     bool IsReady()
     {
         return g_core != NULL;
+    }
+
+    FujiNetMapper* GetFujiNetMapper()
+    {
+        if (!IsReady() || !g_core->GetMemory() ||
+            g_core->GetCartridge()->GetType() != Cartridge::CartridgeFujiNet)
+            return NULL;
+        return static_cast<FujiNetMapper*>(g_core->GetMemory()->GetMapper());
     }
 
     void ResetControllerMasks()
@@ -459,6 +468,37 @@ extern "C"
     GCW_EXPORT int gcw_get_fujinet_mode()
     {
         return g_fujinet_mode;
+    }
+
+    GCW_EXPORT int gcw_fujinet_pending_request(u8* metadata, u32 metadata_size,
+                                                u8* payload, u32 payload_size)
+    {
+        FujiNetMapper* mapper = GetFujiNetMapper();
+        if (!mapper || !mapper->HasPendingRequest()) return 0;
+        if (metadata && metadata_size >= 5)
+        {
+            const u16 length = mapper->GetPendingLength();
+            metadata[0] = mapper->GetPendingDevice();
+            metadata[1] = mapper->GetPendingCommand();
+            metadata[2] = mapper->GetPendingSequence();
+            metadata[3] = length & 0xFF;
+            metadata[4] = length >> 8;
+        }
+        if (payload && payload_size)
+            mapper->CopyPendingData(payload, static_cast<u16>(payload_size > 0xFFFF ? 0xFFFF : payload_size));
+        return 1;
+    }
+
+    GCW_EXPORT int gcw_fujinet_complete_request(int error, int reply_command,
+                                                 const u8* reply, u32 reply_size)
+    {
+        FujiNetMapper* mapper = GetFujiNetMapper();
+        if (!mapper || !mapper->HasPendingRequest() || error < 0 || error > 0xFF ||
+            reply_command < 0 || reply_command > 0xFF || reply_size > 0x400)
+            return 0;
+        mapper->CompletePendingRequest(static_cast<u8>(error), static_cast<u8>(reply_command),
+                                       reply, static_cast<u16>(reply_size));
+        return 1;
     }
 
     GCW_EXPORT int gcw_reset(int preserve_ram)
