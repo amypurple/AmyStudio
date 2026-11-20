@@ -63,6 +63,24 @@ print at 10,11, "HELLO WORLD" ' HUD text
 screen on
 ```
 
+### Experimental FujiNet cartridge target
+
+Select `--target colecovision-fujinet` in the CLI, or start a **ColecoVision
+FujiNet** project in Studio. The resulting exact 32 KiB ROM reserves
+`$F800-$FFFF` for the cartridge mailbox, leaving 30 KiB for Amy code and data.
+The packager writes the required `FUJI` claim at `$FCFC` automatically.
+
+```basic
+memory "colecovision-fujinet"
+include "include/fujinet_mailbox.inc"
+```
+
+The included low-level routines are non-blocking so NMI-driven sound and input
+can continue while a program polls a transaction. Programs must impose a
+timeout and must never access `$F800` or above from an NMI handler. GearColeco
+does not yet emulate FujiNet; use the FujiNet MAME device with `fujinet-pc` or
+physical hardware for runtime validation.
+
 ---
 
 ## File Shape

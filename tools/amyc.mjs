@@ -29,6 +29,7 @@ import { transpileAmySource } from "../studio/core/amyCompiler.js";
 import { buildMegaCartImage } from "../studio/core/megaCartImage.js";
 import { buildMegaCartProject } from "../studio/core/megaCartProjectBuild.js";
 import { buildMegaCartImportTrampolines } from "../studio/core/megaCartTrampolines.js";
+import { buildFujiNetImage } from "../studio/core/fujiNetImage.js";
 import { formatMegaCartDebuggerSymbols } from "../studio/core/megaCartLinkMap.js";
 import { emitSafeCall as emitSafeCallCore } from "../studio/core/compiler/runtimeCallHelpers.js";
 import { createBcdHelpers } from "../studio/core/compiler/bcdHelpers.js";
@@ -93,9 +94,9 @@ function makePortableOptimizedAssembly(source) {
 
 const CLI_VALUES = Object.freeze({
   optimization: ["auto", "off", "safe", "balanced", "aggressive", "experimental"],
-  target: ["colecovision-cartridge", "colecovision-megacart", "adam-native-program", "adam-disk", "adam-data-pack"],
+  target: ["colecovision-cartridge", "colecovision-megacart", "colecovision-fujinet", "adam-native-program", "adam-disk", "adam-data-pack"],
   medium: ["dsk", "ddp"],
-  memoryProfile: ["colecovision-cartridge", "colecovision-megacart", "colecovision_legacy_sdcc", "adam-eos-application", "adam-os7-eos-drivers"],
+  memoryProfile: ["colecovision-cartridge", "colecovision-megacart", "colecovision-fujinet", "colecovision_legacy_sdcc", "adam-eos-application", "adam-os7-eos-drivers"],
   hardware: ["sgm", "sgm1", "adam-sound-enhancer", "adamlink", "eve-serial", "orphanware-serial", "micro-serial", "microinnovations-serial"]
 });
 
@@ -539,11 +540,17 @@ async function main() {
   const sourceMemoryProfile = sourceText.match(/^\s*memory\s+["']([^"']+)["']/im)?.[1] || null;
   const sourceMegaCartSize = Number(sourceText.match(/^\s*bank\s+rom\s+(64|128|256|512|1024)(?:\s*kb)?\s*$/im)?.[1] || 0) || null;
   const sourceRequestsMegaCart = sourceMemoryProfile === "colecovision-megacart" || sourceMegaCartSize != null;
+  const sourceRequestsFujiNet = sourceMemoryProfile === "colecovision-fujinet";
   if (sourceRequestsMegaCart && opts.targetExplicit && opts.target !== "colecovision-megacart") {
     console.error(`Compile failed: source requests a ColecoVision MegaCart, but --target ${opts.target} was selected.`);
     process.exit(1);
   }
   if (sourceRequestsMegaCart) opts.target = "colecovision-megacart";
+  if (sourceRequestsFujiNet && opts.targetExplicit && opts.target !== "colecovision-fujinet") {
+    console.error(`Compile failed: source requests a ColecoVision FujiNet cartridge, but --target ${opts.target} was selected.`);
+    process.exit(1);
+  }
+  if (sourceRequestsFujiNet) opts.target = "colecovision-fujinet";
   const resolveStaticAbiInclude = (includePath) => {
     const normalized = String(includePath || "").replace(/\\/g, "/");
     const abs = normalized.toLowerCase().startsWith("@project/")
@@ -703,6 +710,16 @@ async function main() {
     try {
       const sizeKb = Number(transpiled.metadata?.megaCart?.romSizeKb || sourceMegaCartSize || 128);
       rom = buildMegaCartImage({ sizeKb, fixedBank: rom }).image;
+    } catch (error) {
+      const message = error?.message || String(error);
+      writeBuildReport(opts, { ok: false, source: srcPath, stage: "package", diagnostics: [diagnosticFromLog(srcPath, "package", message)] });
+      console.error(`Compile failed: ${message}`);
+      process.exit(1);
+    }
+  }
+  if (opts.target === "colecovision-fujinet") {
+    try {
+      rom = buildFujiNetImage(rom);
     } catch (error) {
       const message = error?.message || String(error);
       writeBuildReport(opts, { ok: false, source: srcPath, stage: "package", diagnostics: [diagnosticFromLog(srcPath, "package", message)] });

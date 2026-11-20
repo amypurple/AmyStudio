@@ -1,5 +1,6 @@
 import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260731-source-marker-alignment";
 import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260802-crt-safe-pause";
+import { buildFujiNetImage } from "./fujiNetImage.js";
 
 const textEncoder = new TextEncoder();
 
@@ -77,6 +78,13 @@ function shortHash(bytes) {
 function enforceTargetBinaryCapacity(result, options = {}) {
   if (!result?.ok || !result.binary) return result;
   const target = String(options.amyTarget || "").toLowerCase();
+  if (target === "colecovision-fujinet") {
+    try {
+      return { ...result, binary: buildFujiNetImage(result.binary) };
+    } catch (error) {
+      return { ...result, ok: false, log: `${result.log || ""}\n[error] ${error.message || error}`.trim() };
+    }
+  }
   if (target !== "colecovision-cartridge") return result;
   const capacity = 32 * 1024;
   if (result.binary.length <= capacity) return result;

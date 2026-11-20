@@ -428,6 +428,7 @@ const tests = [
   { file: "test-generic-adam-hybrid-template.mjs", area: "generic-adam-hybrid-media", evidence: "compile+assemble", suite: "studio" },
   { file: "test-project-form-learning-materials.mjs", area: "project-learning-materials", evidence: "unit", suite: "studio" },
   { file: "test-project-targets.mjs", area: "project-targets", evidence: "unit", suite: "studio" },
+  { file: "test-fujinet-target.mjs", area: "fujinet-target-packaging", evidence: "compile+package", suite: "studio" },
   { file: "test-rom-debug-adam-writable-media.mjs", area: "adam-writable-media-debugger", evidence: "unit", suite: "emulator" },
   { file: "test-rom-debug-adam-reset-ui.mjs", area: "adam-dual-reset-ui", evidence: "unit", suite: "emulator" },
   { file: "test-rom-execution-location.mjs", area: "bank-aware-execution-location", evidence: "unit", suite: "emulator" },

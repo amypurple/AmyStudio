@@ -263,6 +263,8 @@ export function bindTopUiEvents(ctx) {
           ? "Experimental ADAM compatibility target: build coverage is still expanding."
       : target === "megacart"
         ? "Experimental bank-switched cartridge target."
+        : target === "fujinet"
+          ? "Experimental 30 KB FujiNet cartridge target. Runtime testing requires the FujiNet MAME device or hardware."
         : target === "sgm"
           ? "Experimental Super Game Module target with AY-3-8910 sound and expanded RAM capabilities."
           : "Creates a regular ColecoVision cartridge project.";

@@ -20,6 +20,7 @@ const soundNotesModule = resolve(root, "toolchain", "studio", "core", "colecoSou
 assert.ok(existsSync(zx0Module), `Missing staged host-side ZX0 compressor: ${zx0Module}`);
 assert.ok(existsSync(compressionModule), `Missing staged build-side compression module: ${compressionModule}`);
 assert.ok(existsSync(soundNotesModule), `Missing staged build-side sound module: ${soundNotesModule}`);
+assert.ok(existsSync(resolve(root, "toolchain", "include", "fujinet_mailbox.inc")), "Missing staged FujiNet mailbox include");
 const { ZX0Codec } = await import(pathToFileURL(zx0Module).href);
 const zx0 = new ZX0Codec();
 const zx0Input = Uint8Array.from({ length: 320 }, (_, index) => (index >> 3) & 0x0F);
@@ -71,6 +72,15 @@ compile("u32 plus named constant", `
 const Funeral = 10
 u32 Fe = 24980
   Fe = Fe + Funeral
+`);
+
+compile("FujiNet cartridge target", `
+memory "colecovision-fujinet"
+u8 Present = 0
+asm {
+  call FN_PRESENT
+}
+include "include/fujinet_mailbox.inc"
 `);
 
 compile("late global diagnostic", `

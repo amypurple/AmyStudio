@@ -61,6 +61,7 @@ function copyModule(path) {
 rmSync(stageRoot, { recursive: true, force: true });
 copyModule(entry);
 cpSync(join(repoRoot, "src"), join(stageRoot, "src"), { recursive: true });
+cpSync(join(repoRoot, "include"), join(stageRoot, "include"), { recursive: true });
 cpSync(join(repoRoot, "studio", "core"), join(stageRoot, "studio", "core"), { recursive: true });
 cpSync(
   join(repoRoot, "studio", "vendor", "retrocompress-lite"),
@@ -75,6 +76,7 @@ for (const path of [...copied].sort()) {
   hash.update(readFileSync(path));
 }
 hash.update("src-runtime-tree");
+hash.update("include-tree");
 hash.update("studio-core-build-tree");
 hash.update("retrocompress-lite-tree");
 

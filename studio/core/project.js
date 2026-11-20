@@ -9,6 +9,7 @@ function isColecoOs7MemoryProfile(memoryProfile) {
   return memoryProfile === "colecovision_legacy_sdcc"
     || memoryProfile === "colecovision-cartridge"
     || memoryProfile === "colecovision-megacart"
+    || memoryProfile === "colecovision-fujinet"
     || memoryProfile === "adam-os7-eos-drivers";
 }
 

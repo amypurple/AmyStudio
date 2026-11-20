@@ -288,7 +288,8 @@ function buildColecoLegacyLayout(capabilities = null) {
 export function getRamLayout(profileId, capabilities = null) {
   if (profileId === "colecovision_legacy_sdcc"
     || profileId === "colecovision-cartridge"
-    || profileId === "colecovision-megacart") {
+    || profileId === "colecovision-megacart"
+    || profileId === "colecovision-fujinet") {
     return buildColecoLegacyLayout(capabilities);
   }
   if (profileId === "adam-eos-application") {

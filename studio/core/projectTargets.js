@@ -17,6 +17,11 @@ export const AMY_TARGETS = Object.freeze({
     memoryProfile: "colecovision-megacart",
     capabilities: ["cartridge", "megacart", "os7", "controller", "vdp", "psg", "rom-assets"]
   }),
+  "colecovision-fujinet": Object.freeze({
+    id: "colecovision-fujinet", machine: "colecovision", artifact: "fujinet-rom", extension: ".rom",
+    memoryProfile: "colecovision-fujinet",
+    capabilities: ["cartridge", "fujinet", "network", "os7", "controller", "vdp", "psg", "rom-assets"]
+  }),
   "adam-native-program": Object.freeze({
     id: "adam-native-program",
     machine: "adam",
@@ -62,6 +67,17 @@ export const AMY_MEMORY_MAPS = Object.freeze({
       { name: "fixed-final-bank", start: 0x8000, endExclusive: 0xC000, access: "rom" },
       { name: "switchable-16k-bank", start: 0xC000, endExclusive: 0x10000, access: "banked-rom" },
       { name: "mapper-read-window", start: 0xFFC0, endExclusive: 0x10000, access: "mapper" }
+    ])
+  }),
+  "colecovision-fujinet": Object.freeze({
+    id: "colecovision-fujinet", addressSpace: 0x10000, programEndExclusive: 0xF800,
+    regions: Object.freeze([
+      { name: "hardware-and-os7", start: 0x0000, endExclusive: 0x6000, access: "mapped" },
+      { name: "console-ram-mirrors", start: 0x6000, endExclusive: 0x8000, access: "ram" },
+      { name: "cartridge-program", start: 0x8000, endExclusive: 0xF800, access: "rom" },
+      { name: "fujinet-reply", start: 0xF800, endExclusive: 0xFC00, access: "mailbox-reply" },
+      { name: "fujinet-status", start: 0xFC00, endExclusive: 0xFD00, access: "mailbox-status" },
+      { name: "fujinet-hotspots", start: 0xFD00, endExclusive: 0x10000, access: "mailbox-hotspot" }
     ])
   }),
   "adam-eos-application": Object.freeze({
@@ -269,6 +285,7 @@ export function getBuildContextDefines(context) {
   if (capabilities.has("os7")) defines.push("AMY_HAS_OS7");
   if (capabilities.has("eos")) defines.push("AMY_HAS_EOS");
   if (capabilities.has("megacart")) defines.push("AMY_HAS_MEGACART");
+  if (capabilities.has("fujinet")) defines.push("AMY_HAS_FUJINET");
   if (capabilities.has("adamnet")) defines.push("AMY_HAS_ADAMNET");
   if (capabilities.has("file-io")) defines.push("AMY_HAS_FILE_IO");
   if (capabilities.has("sgm")) defines.push("AMY_HAS_SGM");
@@ -350,6 +367,7 @@ export function inferSourceKind(path) {
 export function estimateTargetCapacity(targetId, options = {}) {
   if (targetId === "colecovision-cartridge") return Number(options.romSizeKb || 32) * KB;
   if (targetId === "colecovision-megacart") return Number(options.romSizeKb || 128) * KB;
+  if (targetId === "colecovision-fujinet") return 30 * KB;
   if (targetId === "adam-disk") return Number(options.blockCount || 160) * KB;
   if (targetId === "adam-data-pack") return Number(options.blockCount || 256) * KB;
   return AMY_MEMORY_MAPS["adam-eos-application"].programEndExclusive - AMY_MEMORY_MAPS["adam-eos-application"].programStart;

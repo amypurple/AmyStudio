@@ -22,6 +22,18 @@ const TEMPLATES = Object.freeze({
     experimental: true,
     source: ["' MegaCart project: fixed code safely consumes exported bank data.", "bank rom 128", "u8 BankBuffer[8]", "text screen", "call bank 2, Bank2Setup", "copy Bank2Data from bank 2 count 8 to vram.name + 328", "decompress mdkrle Bank2Compressed from bank 2 to vram.name + 360", "copy Bank2Data from bank 2 count 8 to BankBuffer", "print at 7,9, \"MEGACART PROJECT\"", "screen on"].join("\n")
   },
+  fujinet: {
+    label: "ColecoVision FujiNet", platform: "colecovision-fujinet", memoryProfile: "colecovision-fujinet",
+    medium: "rom", experimental: true,
+    source: [
+      "' FujiNet mailbox prototype. The build reserves $F800-$FFFF.",
+      "memory \"colecovision-fujinet\"", "u8 FujiPresent = 0", "text screen", "asm {",
+      "  call FN_PRESENT", "  jr nz,FujiAbsent", "  ld a,1", "  ld (amy(FujiPresent)),a", "FujiAbsent:", "}",
+      "if FujiPresent = 1 then", "  print at 7,10, \"FUJINET DETECTED\"", "else",
+      "  print at 5,10, \"FUJINET NOT DETECTED\"", "end if",
+      "print at 3,12, \"MAILBOX PROTOTYPE TARGET\"", "screen on", "include \"include/fujinet_mailbox.inc\""
+    ].join("\n")
+  },
   "adam-eos": {
     label: "ADAM Native EOS",
     platform: "adam-native-program",

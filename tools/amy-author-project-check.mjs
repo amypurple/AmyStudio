@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const targets = new Set(["colecovision-cartridge", "colecovision-megacart", "adam-dsk", "adam-ddp", "adam-native"]);
+const targets = new Set(["colecovision-cartridge", "colecovision-megacart", "colecovision-fujinet", "adam-dsk", "adam-ddp", "adam-native"]);
 const optimizations = new Set(["off", "safe", "balanced", "aggressive", "experimental"]);
 const classifications = new Set(["faithful-port", "expanded-port", "reimagined-adaptation", "inspired", "original", "non-game"]);
 

@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { buildFujiNetImage, inspectFujiNetImage, FUJINET_PROGRAM_BYTES } from "../studio/core/fujiNetImage.js";
+import { getAmyTarget, resolveAmyBuildContext, estimateTargetCapacity, getBuildContextDefines } from "../studio/core/projectTargets.js";
+const program = new Uint8Array(321); program[0] = 0x55; program[1] = 0xAA;
+const image = buildFujiNetImage(program); const info = inspectFujiNetImage(image);
+assert.equal(image.length, 32768); assert.equal(info.ok, true);
+assert.deepEqual([...image.slice(0x7CFC, 0x7D00)], [0x46, 0x55, 0x4A, 0x49]);
+assert.equal(estimateTargetCapacity("colecovision-fujinet"), FUJINET_PROGRAM_BYTES);
+assert.equal(getAmyTarget("colecovision-fujinet")?.artifact, "fujinet-rom");
+const context = resolveAmyBuildContext({ target: { platform: "colecovision-fujinet" } });
+assert.equal(context.memoryMap.programEndExclusive, 0xF800); assert(context.capabilities.includes("fujinet"));
+assert(getBuildContextDefines(context).includes("AMY_HAS_FUJINET"));
+const oversized = new Uint8Array(FUJINET_PROGRAM_BYTES + 1); oversized[0] = 0x55; oversized[1] = 0xAA;
+assert.throws(() => buildFujiNetImage(oversized), /mailbox owns \$F800-\$FFFF/i);
+console.log("FujiNet target packaging: PASS");

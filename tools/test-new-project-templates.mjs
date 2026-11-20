@@ -12,7 +12,7 @@ assert.match(styles, /\.project-file__meta\s*\{[^}]*min-width:\s*0;[^}]*text-ove
 
 const base = { version: 2, sourceLang: "amy", projectFiles: [], generatedAsm: "old" };
 const templates = listNewProjectTemplates();
-assert.equal(templates.length, 6);
+assert.equal(templates.length, 7);
 assert.equal(templates.find(({ id }) => id === "adam-eos").experimental, false);
 assert.equal(templates.find(({ id }) => id === "adam-hybrid").experimental, false);
 const cartridge = createProjectFromTemplate(base, { templateId: "cartridge", projectName: "Test" });
@@ -48,6 +48,11 @@ assert.deepEqual(megaCartMain.metadata.megaCart.imports.map(({ operation, kind }
   { operation: "call", kind: "procedure" }, { operation: "copy-vram", kind: "data" },
   { operation: "decompress-vram", kind: "data" }, { operation: "copy-ram", kind: "data" }
 ]);
+const fujinet = createProjectFromTemplate(base, { templateId: "fujinet", projectName: "Fuji Test" });
+assert.equal(fujinet.target.platform, "colecovision-fujinet");
+assert.equal(fujinet.memoryProfile, "colecovision-fujinet");
+assert.match(fujinet.sourceText, /include "include\/fujinet_mailbox\.inc"/);
+assert.equal(transpileAmyForTest(fujinet.sourceText).ok, true);
 
 const eos = createProjectFromTemplate(base, { templateId: "adam-eos", projectName: "EOS Test", medium: "ddp" });
 assert.equal(eos.target.platform, "adam-native-program");

@@ -26,9 +26,9 @@ Paths in square brackets are optional. Without one, the output is written beside
 | Option | Accepted values | Default |
 |---|---|---|
 | `--opt` | `auto`, `off`, `safe`, `balanced`, `aggressive`, `experimental` | `balanced` |
-| `--target` | `colecovision-cartridge`, `colecovision-megacart`, `adam-native-program`, `adam-disk`, `adam-data-pack` | `colecovision-cartridge` |
+| `--target` | `colecovision-cartridge`, `colecovision-megacart`, `colecovision-fujinet`, `adam-native-program`, `adam-disk`, `adam-data-pack` | `colecovision-cartridge` |
 | `--medium` | `dsk`, `ddp`; ADAM targets only | target-dependent |
-| `--memory-profile` | `colecovision-cartridge`, `colecovision-megacart`, `colecovision_legacy_sdcc`, `adam-eos-application`, `adam-os7-eos-drivers` | target-dependent |
+| `--memory-profile` | `colecovision-cartridge`, `colecovision-megacart`, `colecovision-fujinet`, `colecovision_legacy_sdcc`, `adam-eos-application`, `adam-os7-eos-drivers` | target-dependent |
 | `--project-dir` | Directory containing files referenced as `@project/...` | none |
 | `--hardware` | See the hardware list below; repeatable | none |
 | `--define` | Compile-time symbol; repeatable | none |

@@ -20,6 +20,11 @@ export const manifest = {
       detail: "VDP/PSG/SGM ports"
     },
     {
+      id: "include/fujinet_mailbox.inc",
+      label: "FujiNet mailbox",
+      detail: "Non-blocking ColecoVision FujiNet presence, transaction, stream, poll, and reply primitives"
+    },
+    {
       id: "include/coleco_macros.inc",
       label: "Coleco macros",
       detail: "Small helper macros used by demos"

@@ -72,6 +72,7 @@ const quickTests = [
   "test-megacart-cli-runtime.mjs",
   "test-megacart-cli-project-runtime.mjs",
   "test-megacart-cli-diagnostic.mjs",
+  "test-fujinet-target.mjs",
   "test-overlay-layout-rom.mjs",
   "test-sprite-count-init-runtime.mjs",
   "test-optimizer-indexed-immediate-a-liveness.mjs",
