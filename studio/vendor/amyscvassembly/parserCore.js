@@ -230,8 +230,12 @@ export class Lexer {
                 // This preserves expressions like "($ - test1) == 256"
             }
 
-            // Try to parse as number first
-            const numValue = this.numberParser.parseNumber(part);
+            // A suffix-H token beginning with A-F is ambiguous: CAH can be either
+            // an Intel-style $CA literal or a valid symbol. Keep it symbolic here
+            // so the evaluator can prefer a declared symbol while retaining CAH
+            // as a number when no such symbol exists. 0CAH is always unambiguous.
+            const ambiguousIntelHexIdentifier = /^[A-Fa-f][0-9A-Fa-f]*[Hh]$/.test(part);
+            const numValue = ambiguousIntelHexIdentifier ? null : this.numberParser.parseNumber(part);
             if (numValue !== null) {
                 operands.push(new Operand('immediate', numValue));
                 continue;

@@ -1739,3 +1739,13 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Evidence: the five-profile near/far branch regression passes; Strata changes from 30,278 bytes in
   r12.8 to 30,138 bytes with nearby manual `jr z` instructions preserved.
 
+## 2026-11-19 - Declared suffix-H symbols take precedence over hex literals
+
+- An identifier such as `CaH` is ambiguous with Intel-style hexadecimal `$CA`.
+  When that name is declared as a label, constant, or variable, the assembler
+  resolves the symbol first, including inside expressions and regardless of case.
+- If no matching symbol exists, legacy `CAH` remains a hexadecimal literal.
+  Authors can use `0CAH` when they want an explicitly unambiguous suffix-H number.
+- Evidence: `tools/test-assembler-suffix-h-symbols.mjs` covers direct, forward,
+  expression, mixed-case, explicit-number, and legacy-number forms.
+

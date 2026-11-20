@@ -3688,19 +3688,21 @@ function isIxIyDisplacementOperandText(value) {
                         if (Object.prototype.hasOwnProperty.call(table, upper)) return table[upper];
                         const lower = name.toLowerCase();
                         if (Object.prototype.hasOwnProperty.call(table, lower)) return table[lower];
+                        const mixedCaseKey = Object.keys(table).find(key => key.toLowerCase() === lower);
+                        if (mixedCaseKey !== undefined) return table[mixedCaseKey];
                         return undefined;
                     };
 
                     // Most generated operands are a single literal or symbol. Resolve these
                     // without sorting every symbol and constructing thousands of regexes.
-                    const directNumber = this.numberParser.parseNumber(expr);
-                    if (directNumber !== null) return directNumber;
                     const directVariable = directTableValue(this.variableTable, expr);
                     if (directVariable !== undefined) return preserveFloat ? directVariable : Math.floor(directVariable);
                     const directConstant = directTableValue(this.constantTable, expr);
                     if (directConstant !== undefined) return preserveFloat ? directConstant : Math.floor(directConstant);
                     const directSymbol = directTableValue(this.symbolTable, expr);
                     if (directSymbol !== undefined) return directSymbol;
+                    const directNumber = this.numberParser.parseNumber(expr);
+                    if (directNumber !== null) return directNumber;
 
                     // Check if it's a direct opcode reference
                     const opcode = Z80_OPCODES[expr.toLowerCase()];
@@ -3711,6 +3713,20 @@ function isIxIyDisplacementOperandText(value) {
                     // IMPORTANT: Parse hex/bin/oct numbers FIRST, before replacing $ with PC
                     // This allows $702b to be treated as hex, not $ (PC) followed by 702b
                     let parsedExpr = expr;
+                    // Suffix-H identifiers beginning with A-F are ambiguous. Resolve any
+                    // declared variable/constant/symbol before interpreting the remaining
+                    // tokens as Intel-style hexadecimal literals.
+                    for (const table of [this.variableTable, this.constantTable, this.symbolTable]) {
+                        if (!table) continue;
+                        const names = Object.keys(table)
+                            .filter(name => /^[A-Fa-f][0-9A-Fa-f]*[Hh]$/.test(name))
+                            .sort((a, b) => b.length - a.length);
+                        for (const name of names) {
+                            const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const regex = new RegExp(`\\b${escapedName}\\b`, 'gi');
+                            parsedExpr = parsedExpr.replace(regex, table[name]);
+                        }
+                    }
                     parsedExpr = parsedExpr.replace(/\b0x([0-9a-fA-F]+)/gi, (match, hex) => parseInt(hex, 16));
                     parsedExpr = parsedExpr.replace(/\$([0-9a-fA-F]+)\b/g, (match, hex) => parseInt(hex, 16));
                     parsedExpr = parsedExpr.replace(/\b([0-9a-fA-F]+)h\b/gi, (match, hex) => parseInt(hex, 16));
