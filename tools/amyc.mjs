@@ -29,7 +29,8 @@ import { transpileAmySource } from "../studio/core/amyCompiler.js";
 import { buildMegaCartImage } from "../studio/core/megaCartImage.js";
 import { buildMegaCartProject } from "../studio/core/megaCartProjectBuild.js";
 import { buildMegaCartImportTrampolines } from "../studio/core/megaCartTrampolines.js";
-import { buildFujiNetImage } from "../studio/core/fujiNetImage.js";
+import { buildFujiNetAppBankImage, buildFujiNetImage } from "../studio/core/fujiNetImage.js";
+import { buildFujiNetAppBankProject } from "../studio/core/fujiNetAppBankProjectBuild.js";
 import { formatMegaCartDebuggerSymbols } from "../studio/core/megaCartLinkMap.js";
 import { emitSafeCall as emitSafeCallCore } from "../studio/core/compiler/runtimeCallHelpers.js";
 import { createBcdHelpers } from "../studio/core/compiler/bcdHelpers.js";
@@ -94,9 +95,9 @@ function makePortableOptimizedAssembly(source) {
 
 const CLI_VALUES = Object.freeze({
   optimization: ["auto", "off", "safe", "balanced", "aggressive", "experimental"],
-  target: ["colecovision-cartridge", "colecovision-megacart", "colecovision-fujinet", "adam-native-program", "adam-disk", "adam-data-pack"],
+  target: ["colecovision-cartridge", "colecovision-megacart", "colecovision-fujinet", "colecovision-fujinet-appbank", "adam-native-program", "adam-disk", "adam-data-pack"],
   medium: ["dsk", "ddp"],
-  memoryProfile: ["colecovision-cartridge", "colecovision-megacart", "colecovision-fujinet", "colecovision_legacy_sdcc", "adam-eos-application", "adam-os7-eos-drivers"],
+  memoryProfile: ["colecovision-cartridge", "colecovision-megacart", "colecovision-fujinet", "colecovision-fujinet-appbank", "colecovision_legacy_sdcc", "adam-eos-application", "adam-os7-eos-drivers"],
   hardware: ["sgm", "sgm1", "adam-sound-enhancer", "adamlink", "eve-serial", "orphanware-serial", "micro-serial", "microinnovations-serial"]
 });
 
@@ -328,8 +329,9 @@ function loadMegaCartCliProject(manifestPath) {
   } catch (error) {
     throw new Error(`Cannot read MegaCart project '${manifestPath}': ${error.message || error}`);
   }
-  if (manifestObject?.target?.platform !== "colecovision-megacart") {
-    throw new Error("Project JSON must declare target.platform as 'colecovision-megacart'.");
+  const platform = manifestObject?.target?.platform;
+  if (platform !== "colecovision-megacart" && platform !== "colecovision-fujinet-appbank") {
+    throw new Error("CLI project JSON must declare a MegaCart or FujiNet APPBANK target.");
   }
   const outputs = Array.isArray(manifestObject.outputs) ? manifestObject.outputs : [];
   if (!outputs.length) throw new Error("MegaCart project JSON has no outputs.");
@@ -347,7 +349,7 @@ function loadMegaCartCliProject(manifestPath) {
       if (!source.path || findEmbedded(source.path)) continue;
       const absolute = path.resolve(projectDir, String(source.path).replace(/^@project[\\/]/i, ""));
       if (!existsSync(absolute)) {
-        if (output.type === "fixed-bank" && source.kind === "amy" && typeof manifestObject.sourceText === "string") {
+        if ((output.type === "fixed-bank" || output.type === "appbank-window") && source.kind === "amy" && typeof manifestObject.sourceText === "string") {
           projectFiles.push({ path: source.path, kind: "amy-source", base64: Buffer.from(manifestObject.sourceText, "utf8").toString("base64") });
           continue;
         }
@@ -360,9 +362,9 @@ function loadMegaCartCliProject(manifestPath) {
       });
     }
   }
-  const fixedOutput = outputs.find((output) => output.type === "fixed-bank");
+  const fixedOutput = outputs.find((output) => output.type === (platform === "colecovision-megacart" ? "fixed-bank" : "appbank-window"));
   const fixedSource = projectSourceDescriptor(fixedOutput?.sources?.[0]);
-  if (!fixedOutput || fixedSource.kind !== "amy") throw new Error("MegaCart CLI requires one Amy fixed-bank source.");
+  if (!fixedOutput || fixedSource.kind !== "amy") throw new Error(`${platform} CLI requires one Amy resident source.`);
   const fixedFile = findEmbedded(fixedSource.path);
   if (!fixedFile?.base64) throw new Error(`MegaCart fixed source '${fixedSource.path}' has no content.`);
   return {
@@ -441,7 +443,28 @@ async function compileMegaCartCliProject(opts, manifestPath) {
   };
   let finalFixedAsm = fixedAsm;
   let finalFixedResult = null;
-  const built = await buildMegaCartProject({
+  let built;
+  if (projectManifest.target.platform === "colecovision-fujinet-appbank") {
+    finalFixedResult = await assemble(finalFixedAsm, "window.asm", { optimize: true });
+    built = await buildFujiNetAppBankProject({
+      project,
+      manifest: projectManifest,
+      windowProgram: finalFixedResult.bytes,
+      compileAmyPage: async (source, filename, pageInfo) => {
+        const pageContext = {
+          platform: "colecovision-fujinet-appbank-page",
+          memoryProfile: buildContext.memoryProfile,
+          capabilities: ["os7", "fujinet", "fujinet-appbank", "bank-local"],
+          page: pageInfo.page
+        };
+        const transpiled = transpileSource(source, pageContext);
+        if (!transpiled.ok) throw new Error(`${filename} failed:\n${transpiled.log}`);
+        if (transpiled.assets?.length) throw new Error(`${filename} uses external Amy assets; place them directly in the page output.`);
+        return `org $C000\n${transpiled.asmBody}`;
+      },
+      compileAsm: (source, filename) => assemble(source, filename)
+    });
+  } else built = await buildMegaCartProject({
     project,
     manifest: projectManifest,
     fixedBank: null,
@@ -491,10 +514,15 @@ async function compileMegaCartCliProject(opts, manifestPath) {
     console.log(`OPT  -> ${optimizedAsmPath}`);
   }
   if (symbolsPath) {
-    writeOutputFile(symbolsPath, formatMegaCartDebuggerSymbols(finalFixedResult?.symbolsText || "", built.linkMap), "utf8");
+    const symbolsText = built.linkMap
+      ? formatMegaCartDebuggerSymbols(finalFixedResult?.symbolsText || "", built.linkMap)
+      : (finalFixedResult?.symbolsText || "");
+    writeOutputFile(symbolsPath, symbolsText, "utf8");
     console.log(`SYM  -> ${symbolsPath}`);
   }
-  console.log(`ROM  ${built.image.length} bytes (${opts.opt} optimizer, ${built.layout.bankCount} MegaCart banks)`);
+  console.log(projectManifest.target.platform === "colecovision-fujinet-appbank"
+    ? `ROM  ${built.image.length} bytes (${opts.opt} optimizer, ${built.layout.pageCount} FujiNet APPBANK pages)`
+    : `ROM  ${built.image.length} bytes (${opts.opt} optimizer, ${built.layout.bankCount} MegaCart banks)`);
   writeBuildReport(opts, {
     ok: true,
     source: manifestPath,
@@ -541,6 +569,7 @@ async function main() {
   const sourceMegaCartSize = Number(sourceText.match(/^\s*bank\s+rom\s+(64|128|256|512|1024)(?:\s*kb)?\s*$/im)?.[1] || 0) || null;
   const sourceRequestsMegaCart = sourceMemoryProfile === "colecovision-megacart" || sourceMegaCartSize != null;
   const sourceRequestsFujiNet = sourceMemoryProfile === "colecovision-fujinet";
+  const sourceRequestsFujiNetAppBank = sourceMemoryProfile === "colecovision-fujinet-appbank";
   if (sourceRequestsMegaCart && opts.targetExplicit && opts.target !== "colecovision-megacart") {
     console.error(`Compile failed: source requests a ColecoVision MegaCart, but --target ${opts.target} was selected.`);
     process.exit(1);
@@ -551,6 +580,11 @@ async function main() {
     process.exit(1);
   }
   if (sourceRequestsFujiNet) opts.target = "colecovision-fujinet";
+  if (sourceRequestsFujiNetAppBank && opts.targetExplicit && opts.target !== "colecovision-fujinet-appbank") {
+    console.error(`Compile failed: source requests a ColecoVision FujiNet APPBANK cartridge, but --target ${opts.target} was selected.`);
+    process.exit(1);
+  }
+  if (sourceRequestsFujiNetAppBank) opts.target = "colecovision-fujinet-appbank";
   const resolveStaticAbiInclude = (includePath) => {
     const normalized = String(includePath || "").replace(/\\/g, "/");
     const abs = normalized.toLowerCase().startsWith("@project/")
@@ -720,6 +754,16 @@ async function main() {
   if (opts.target === "colecovision-fujinet") {
     try {
       rom = buildFujiNetImage(rom);
+    } catch (error) {
+      const message = error?.message || String(error);
+      writeBuildReport(opts, { ok: false, source: srcPath, stage: "package", diagnostics: [diagnosticFromLog(srcPath, "package", message)] });
+      console.error(`Compile failed: ${message}`);
+      process.exit(1);
+    }
+  }
+  if (opts.target === "colecovision-fujinet-appbank") {
+    try {
+      rom = buildFujiNetAppBankImage(rom);
     } catch (error) {
       const message = error?.message || String(error);
       writeBuildReport(opts, { ok: false, source: srcPath, stage: "package", diagnostics: [diagnosticFromLog(srcPath, "package", message)] });

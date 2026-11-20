@@ -1,6 +1,6 @@
 # Amy Compiler Command Line
 
-`tools/amyc.mjs` compiles an Amy source file or a multifile ColecoVision MegaCart project with the same compiler, linker and Z80 assembler used by Amy Studio.
+`tools/amyc.mjs` compiles an Amy source file or a multifile ColecoVision MegaCart/FujiNet APPBANK project with the same compiler, linker and Z80 assembler used by Amy Studio.
 
 ```powershell
 node tools/amyc.mjs game.alexis --output --asm --opt balanced
@@ -26,9 +26,9 @@ Paths in square brackets are optional. Without one, the output is written beside
 | Option | Accepted values | Default |
 |---|---|---|
 | `--opt` | `auto`, `off`, `safe`, `balanced`, `aggressive`, `experimental` | `balanced` |
-| `--target` | `colecovision-cartridge`, `colecovision-megacart`, `colecovision-fujinet`, `adam-native-program`, `adam-disk`, `adam-data-pack` | `colecovision-cartridge` |
+| `--target` | `colecovision-cartridge`, `colecovision-megacart`, `colecovision-fujinet`, `colecovision-fujinet-appbank`, `adam-native-program`, `adam-disk`, `adam-data-pack` | `colecovision-cartridge` |
 | `--medium` | `dsk`, `ddp`; ADAM targets only | target-dependent |
-| `--memory-profile` | `colecovision-cartridge`, `colecovision-megacart`, `colecovision-fujinet`, `colecovision_legacy_sdcc`, `adam-eos-application`, `adam-os7-eos-drivers` | target-dependent |
+| `--memory-profile` | `colecovision-cartridge`, `colecovision-megacart`, `colecovision-fujinet`, `colecovision-fujinet-appbank`, `colecovision_legacy_sdcc`, `adam-eos-application`, `adam-os7-eos-drivers` | target-dependent |
 | `--project-dir` | Directory containing files referenced as `@project/...` | none |
 | `--hardware` | See the hardware list below; repeatable | none |
 | `--define` | Compile-time symbol; repeatable | none |
@@ -76,6 +76,25 @@ imports and the linker generates bank-switch/restore trampolines automatically.
 `--asm` and `--optimized-asm` write the linked fixed-bank listings. `--symbols`
 writes bank-qualified debugger symbols. The final `.rom` contains every bank;
 no separate bank files need to be joined manually.
+
+### Multifile FujiNet APPBANK Projects
+
+Set `target.platform` to `colecovision-fujinet-appbank`. The manifest requires
+one Amy `appbank-window` output and accepts `appbank-page` outputs numbered
+1 through 11. A page can contain Amy, assembly, or a binary asset and may not
+exceed 8192 bytes. The packager writes the `FUJI` claim, reserves the mailbox,
+orders all pages, fills omitted page numbers, and adds the neutral anti-MegaCart
+page when the natural image length would be 64 KiB.
+
+```json
+{
+  "target": { "platform": "colecovision-fujinet-appbank" },
+  "outputs": [
+    { "name": "WINDOW", "type": "appbank-window", "sources": [{ "path": "main.amy", "kind": "amy" }] },
+    { "name": "PAGE1", "type": "appbank-page", "page": 1, "sources": [{ "path": "pages/map.bin", "kind": "asset" }] }
+  ]
+}
+```
 
 ## Examples
 

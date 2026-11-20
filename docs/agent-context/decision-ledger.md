@@ -525,6 +525,15 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   from identical register/VRAM snapshots before RGB or television effects.
 - Audit and common-corpus specification: `docs/audits/tms9918-emulator-comparison-2026-10-30.md`.
 
+## 2026-11-15 - openMSX is the local timing oracle before GearColeco timing changes
+
+- The official openMSX 21.0 Windows x64 archive was verified against its published SHA-256 and its
+  native ColecoVision machine ran an Amy ROM with the matching OS7 SHA-1.
+- `tools/run-openmsx-coleco.ps1` and `tools/openmsx-capture.tcl` provide reproducible frame-counted
+  captures; the first proof captured Afterglow Garden's cartridge title after 300 frames.
+- GearColeco must not receive a speculative VDP rewrite. Differential too-fast-access and raster
+  tests come first; only demonstrated mismatches justify a minimal pending-access scheduler.
+
 ## 2026-10-30 - BLAM's missing sprites were an unterminated SAT, not a VDP-core verdict
 
 - BLAM updated two sprite shadow entries but omitted the required `set sprite count 2`, so
@@ -1462,6 +1471,26 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   project diagnostic rather than an undefined assembler trampoline.
 - Evidence: `build/claude-r7-validation/r7-validation.md`.
 
+# 2026-11-18 - Source-selected MegaCart packaging and leading ASM execution
+
+- `memory "colecovision-megacart"` or `bank rom N` now selects the MegaCart
+  CLI target unless an explicitly conflicting target is rejected. The declared
+  64-1024 KB size reaches the packager instead of being forced to 128 KB.
+- MegaCart project outputs reject missing embedded `base64` content and empty
+  switchable banks instead of silently shipping zero-filled bank slots.
+- Executable top-level `asm {}` before the first Amy statement is emitted after
+  `Start:` and runs in source order. ASM data and `EQU`-only blocks remain
+  detached from executable flow.
+- Multifile `.amy.json` MegaCart projects are accepted directly by the CLI.
+  Exported Amy and ASM procedures satisfy fixed-bank imports, binary assets
+  occupy declared banks, and the linker emits bank-switch/restore trampolines.
+  Standalone sources still reject unresolved bank imports clearly.
+- Evidence: `tools/test-megacart-cli-runtime.mjs`,
+  `tools/test-megacart-project-build.mjs`,
+  `tools/test-megacart-cli-project-runtime.mjs`,
+  `tools/test-megacart-cli-diagnostic.mjs`, and
+  `tools/test-leading-inline-asm-runtime.mjs`.
+
 # 2026-11-11 - Main code resumes safely after explicit sub definitions
 
 - When an explicit `sub ... end sub` interrupts an already-open implicit main
@@ -1632,57 +1661,199 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - `tools/test-fuzz-r11-byte-regressions.mjs` now verifies exact RAM results for all A-K families across all five profiles and waits for an explicit program completion marker. No A-K family remains open.
 - Evidence source: `Codex-r11-fuzz.zip`, `codex-bugs/fuzz-r11-bugs.md` and its minimized A-K repros.
 
-# 2026-11-15: verified r15 compiler and assembler fixes promoted
+# 2026-11-14: Claude r11 bug package requires correctness fixes before game import
 
-- Promoted the verified r15 compiler/assembler set from Alexis-Z80 as one atomic change rather than
-  mixing individual modules. This includes dependency-ordered `EQU` evaluation, correct per-line
-  `$`, hexadecimal-literal dependency handling, historical last-definition-wins duplicate `EQU`
-  behavior, flag-preserving far `DJNZ` trampolines, inline-ASM symbol handling, ROM-label address
-  diagnostics, and constant copy-bound validation.
-- `tools/test-claude-r15-equ-regressions.mjs` and `tools/test-label-address-assignment.mjs` pass all
-  five optimization profiles with the real OS7. `node tools/amy-qa.mjs quick` also passes in the
-  clean repository.
+- Evidence: `Codex-r11-bugs-nov14.zip`, extracted locally under `build/claude-r11-bugs-nov14/`.
+- Confirmed: IX/IY displacements outside `-128..127` wrapped silently; scalar `copy ... count` could read beyond the scalar; mixed instruction/data ASM inside a routine was detached as ROM data; repeated `(BC)/(DE)` reads could be removed.
+- Current experimental direction: reject invalid displacements and oversized scalar copies, keep mixed ASM in its routine, and treat user ASM as an optimizer barrier.
+- Validation verdict: the dedicated five-profile OS7 suite now proves exact `(BC)/(DE)` reads, mixed code/data ASM execution, IX/IY rejection, and scalar-copy rejection. Quick QA and targeted ABI/semantic tests pass. Grapple, Comet Miner, and Whitewater compile at 32,404, 20,966, and 31,488 balanced bytes respectively. Clean-repository promotion remains a separate deliberate step.
 
-# 2026-11-15: VS Code 0.1.18 carries the promoted compiler
+# 2026-11-14: OS7 transform buffers follow measured BIOS requirements
 
-- Rebuilt the extension from the clean compiler after the verified r15 promotion. The staged
-  toolchain contains 69 compiler modules and passes the bundled regression contracts.
-- Published `downloads/amy-studio-vscode-0.1.18.vsix` and updated `vscode.html`; the previous public
-  page still pointed to 0.1.15 even though 0.1.17 existed only in the internal build directory.
+- Claude's real-OS7 trace established 16-byte work space for reflect/rotate, 40 bytes for enlarge, and fixed BIOS sound state at `$7020-$702A`.
+- Reflect/rotate continue sharing `_buffer32` at `$7000`. Enlarge without sound retains `$7000-$7027`. Enlarge with sound now receives a compiler-managed 40-byte block after sound/runtime state, and the cartridge header points to `OS7_WORK_BUFFER`.
+- Raw inline `call $1F73` is included in capability inference, so it cannot bypass the enlarged-buffer allocation. Graphics I horizontal reflection no longer runs the Graphics II-only color-table pass.
+- Bare inline-ASM names defined by `EQU` now remain ASM symbols even when an Amy constant has the same name; `amy(Name)` remains the explicit Amy namespace escape.
+- Evidence: `tools/test-claude-nov14-os7-transform-regressions.mjs` passes all five profiles and verifies Graphics I VRAM, sound pointers, header addresses, and completion on the real OS7 BIOS.
+- Full Balanced corpus audit: 861/861 examples pass, 860 ROMs assemble for 9,018,722 bytes, and one target-specific project is delegated normally. Evidence: `build/full-example-audit-os7-buffer-balanced.json`.
+- `amy-qa full` advanced through the feature matrix, Ahoy five-profile tests, stack, 120-color, codecs, sound-table, UI, and several Amy Chess runtime gates, then stopped at the reproducible `test-chess-game-promotions.mjs` queen-promotion assertion. Amy Chess does not use the OS7 pattern-transform work buffer; track this as a separate runtime defect rather than a RAM-buffer regression.
 
-## 2026-11-16 - Realistic TMS9918A timing remains opt-in
+# 2026-11-14: r13 assembler regressions fixed before superseding the handoff
 
-- The GearColeco panel now offers `Compatible` and `Realistic TMS9918A` VDP
-  timing. Realistic mode models access slots, one pending VRAM request, replaced
-  requests, and address changes before completion; the frame indicator reports
-  replacements as `VDP n`.
-- Claude's 48-case ROM proves the mode changes emulation rather than merely
-  reporting it. The current core reports 105 replacements versus 64 in Claude's
-  checker and 65 in openMSX, so it is a useful interactive detector but not yet
-  the release oracle.
-- Optimizer EX/EXX pairs are timing barriers. Full sprite uploads use 31-T paced
-  writes, and the partial uploader now uses 32-T spacing. Claude independently
-  measured zero drops for the corrected runtime paths and nine VDP-safe games.
-- Final hardware-safety evidence still requires the access-trace checker or
-  openMSX until instruction-level GearColeco phase calibration is complete.
+- Forward `EQU` expressions are re-evaluated after labels and Amy data symbols are assigned, so
+  `Foo equ Bin + 2` and pure-ASM forward references no longer become `$0000`.
+- Out-of-range `DJNZ` uses a nearby `DJNZ/JR/JP` trampoline. Do not relax it to `DEC B / JP NZ`:
+  that sequence changes flags while the Z80 `DJNZ` instruction preserves them.
+- Scalar-copy validation now recognizes byte variables and folds named constant counts. Exported
+  optimized ASM omits internal `.AMY_USER_ASM_LINE_*` labels used only for source diagnostics.
+- Evidence: `tools/test-claude-r13-assembler-regressions.mjs` passes all five profiles with real
+  OS7 runtime checks; `amy-qa quick` passes, and WHITEWATER, NIGHT EXPRESS, and DEEPWARDEN compile.
+- Claude handoff r14 supersedes the incomplete r13 package and explicitly includes
+  `transpileAmyCore.js` plus the GearColeco test core.
 
-## 2026-11-16 - Public Studio and documentation audit
+# 2026-11-14: Amy Chess v1.3 retains G49 for clean-repository promotion
 
-- Browser inspection covered the portal, Studio startup, source editing, Balanced compilation,
-  ROM Test & Debug, live documentation, example browser, sound-table creator, and graphics editor;
-  no console error, unreachable control, or crash was observed.
-- Reconciled the public current-version date and corrected stale porting guidance for inline
-  statements, widening, RAM-copy offsets, runtime random bounds, `BCD +=/-= u16`, and `str$`.
-- Removed one workstation-specific path from the published assembler README and normalized the
-  duplicated ISOLATION publication label in the generated example catalogue.
-- Restored the clean repository's missing quick-QA and VDP/breakpoint tests. `amy-qa quick` now
-  passes 35 representative builds plus 25 focused compiler/runtime tests; the Studio feature
-  suite passes, including portal, mobile project creation, debugger, recording, docs, targets,
-  incremental builds, and VS Code project-model coverage.
-- Matrix file validation now applies after `--suite`/`--only` selection. Focused public regression
-  tests may remain standalone; a full matrix run still rejects any missing selected test.
+- G49 scored 9/16 against G48 and 13/20 in the progression tournament, ahead of
+  G46, Amy Chess v1.0, v1.1, and v1.2; Chess Challenger level 1 remained ahead.
+- The UCI-only G49 artifact is not a publishable cartridge. Its two measured
+  evaluator changes are integrated into the complete v1.3 game: rook activity
+  weight 6 and a two-point opponent-mobility penalty outside six-piece endings.
+- The aggressive playable ROM occupies 31,244 bytes. Runtime evidence covers
+  title/menu/game entry, 40 legal plies, and queen, rook, bishop, and knight
+  human promotions. `test-chess-game-promotions.mjs` now targets the official
+  v1.3 source rather than the historical kernel shell.
 
-## 2026-11-18 - Amy syntax lowering treats inline ASM as opaque
+# 2026-11-14: r15 EQU evaluation and copy bounds hardened
+
+- Assembly `EQU` expressions are now evaluated once in dependency order after duplicate names
+  are collapsed with the historical last-definition-wins behavior. Hexadecimal and character
+  literals no longer create false symbol dependencies, and `$` is evaluated at the EQU line's
+  own program counter rather than the final assembly address.
+- Amy `copy` validation accounts for constant source offsets. A copy past the end of a known
+  array, record, or data table is rejected, while deliberate contiguous raw storage must use
+  the explicit `copy bytes` form. Runtime counts from scalar sources are rejected because their
+  safe extent cannot be proven.
+- A bare ROM-data label in an assignment now points users to the explicit address syntax
+  `Pointer = @Label`. Hardware `if any collision` remains dependent on VDP status captured by
+  an active NMI and is documented as invalid while NMI is disabled.
+- Evidence: `tools/test-claude-r15-equ-regressions.mjs`,
+  `tools/test-claude-r13-assembler-regressions.mjs`,
+  `tools/test-label-address-assignment.mjs`, and
+  `tools/test-fuzz-r11-byte-regressions.mjs` pass all five profiles with real-OS7 runtime checks.
+  `amy-qa quick` passes. The Balanced corpus audit passes 865/865 examples, assembles 864 ROMs
+  totaling 9,118,016 bytes, and delegates one target-specific project normally; evidence is
+  `build/r15-balanced-audit.json`.
+
+# 2026-11-16: DEEPWARDEN VDP-safe build exposed a pre-existing bank-return defect
+
+- The first VDP-safe MegaCart build (`15362be2`) can reset after a dodged rat, spider, or bat attack.
+  Its paced VDP code only shifted bank data enough to expose an older hand-written game-ASM defect.
+- `MlDodge` removed two return addresses and bypassed `McSelF`, leaving the monster bank selected.
+  The corrected build removes one return address and restores the floor engine bank normally.
+- The replacement ROM is `B713A17ECEC3E2E6012283B739B8F386`. Claude validated 360 staged
+  duels, complete qbot runs, zero VDP drops, zero misdirected writes, and zero corrupted SAT frames.
+  The local realistic-TMS smoke test also reports zero drops over 2,400 frames.
+- This is a DEEPWARDEN source fix, not an Amy compiler/runtime change. Preserve the general r12 VDP
+  timing work independently. Evidence is archived in
+  `experiments/deepwarden-megacart/vdp-safe-ratfix-b713a17e/`.
+
+# 2026-11-14: Amy Chess v1.4 and Deepwarden Floor 6 remain experimental snapshots
+
+- Claude's Amy Chess v1.4 delivery contains a complete editable game and a handwritten Z80
+  alpha-beta kernel. Its supplied r11 Balanced ROM is 29,029 bytes; the current compiler rebuilds
+  Balanced and Aggressive at 28,932 bytes.
+- A current-compiler UCI ROM completed the first 12 `bench48` positions with zero errors and a
+  251.33-frame NORMAL mean. The supplied tournament claims still belong to the r11 ROM until the
+  current rebuild repeats the full legality, tactical, Stockfish, tournament, audio, keypad, and
+  hardware gates. The measured nine-byte kernel stack margin remains a release risk.
+- Deepwarden Floor 6 is present in a valid eight-bank 128 KB MegaCart and includes the Bellwright's
+  three phases plus ending text. The ending picture and the generators/bots needed for an exact
+  independent rebuild are absent, so the snapshot remains experimental.
+- Evidence: `experiments/tim-hartnell-chess/claude-v1.4-candidate/` and
+  `experiments/deepwarden-megacart/claude-floor6-snapshot/`.
+
+# 2026-11-14: Amy Chess v1.4 promoted as a separate official example
+
+- User release approval supersedes the earlier hold for Amy Chess v1.4 only; Deepwarden remains
+  experimental. Amy Chess v1.3 G49 stays published unchanged as `amy-chess`, while v1.4 is added
+  separately as `amy-chess-v1.4` so the established release is not overwritten.
+- The v1.4 source compiles as a complete browser project with all 20 shared chess assets. Aggressive
+  occupies 28,932 bytes in Alexis-Z80 and 29,027 bytes with the current clean-repository compiler;
+  both builds remain below 32 KiB with more than the recommended 64-byte stack margin.
+- The 265-position Stockfish bank has complete results for BLITZ, NORMAL, and STRONG, and the
+  current tournament/FEN harness preserves legal moves and modern draw handling. Elo calibration
+  remains a separate post-release measurement and is not claimed by the example metadata.
+
+# 2026-11-15: z88dk and devkitSMS comparison refresh
+
+- z88dk nightly `27053-e39d151a79-20261115` reproduces five ranked sizes and reduces State Update
+  from 2,672 to 2,667 bytes at the validated 500,000-node budget. The six-sample total is 17,116.
+- devkitSMS `561bc2cb` fixes SGlib's sprite Y coordinate. The metasprite fixture now passes `y+1`
+  to preserve the common rendered position. With the smallest validated 100,000/500,000-node
+  results, all six runtime contracts pass and the total is 12,997 bytes, 76 bytes above the prior
+  snapshot. This is accepted correctness cost, not a regression in the benchmark contract.
+- CVBasic remains at `e84bf978`. ugBASIC `aef4ccce` changes only GTIA/Atari XL sources, so neither
+  toolchain's ColecoVision ROMs or ranked totals are changed by this refresh.
+
+# 2026-11-15: Amy Chess v1.4 lets move effects finish before search
+
+- The handwritten search kernel disables NMI, so beginning it immediately after `play sound`
+  suspended the current PSG note for the full think time. A pending flag now adds a 20-frame wait
+  only after move, capture, or check effects; the longest encoded effect is 14 frames.
+- All five profiles compile. Balanced, Aggressive, and Experimental occupy 28,959 bytes; RAM use is
+  229/678 bytes with 449 bytes free and 450 bytes measured stack headroom.
+- The ten-byte `REPETITION` field now includes its required trailing blank. Its eleven-byte render
+  loop no longer consumes the following table's leading `F` and displays `DRAW REPETITIONF`.
+# 2026-11-15: Preserve EX timing barriers and pace sprite SAT uploads
+
+- **Decision:** Never cancel adjacent or short-range `EX`/`EXX` pairs in CV Assembly. They may be
+  deliberate VDP/PSG cycle padding, including `EX (SP),HL` pairs before a VRAM read.
+- **Decision:** Amy's ordinary and flickering sprite uploaders pace each SAT byte write to at least
+  29 Z80 cycles using retained `JR $+2` delays.
+- **Evidence:** `test-optimizer-ex-timing-barrier.mjs`, `test-sprite-vdp-write-spacing.mjs`, the
+  five-profile VPEEK ABI runtime test, sprite-flicker codegen, and `amy-qa quick` pass. Claude's
+  openMSX access-slot replay reduced the Deepwarden prototype from hundreds of thousands of
+  misdirected writes to zero after equivalent pacing.
+- **Scope:** This protects generated Amy runtime code and intentional custom-ASM delays. Deepwarden's
+  custom `StSatUp`, `StSeen`, and `McDcU0` still require the game's separately validated source fix.
+
+## 2026-11-15: GearColeco realistic TMS9918A VRAM timing is opt-in
+
+- The Studio emulator now offers `VDP timing: Realistic TMS9918A` while retaining
+  the immediate-access GearColeco behavior as the default `Compatible` mode.
+- Realistic mode schedules data-port reads, writes, and read-ahead operations on
+  measured TMS99x8 access slots. Its single pending request can be replaced by a
+  later access, and address/register writes can redirect the eventual transfer.
+- The WebAssembly API exposes the selected mode and the number of replaced VRAM
+  requests. `tools/test-gearcoleco-accurate-vdp-timing.mjs` proves that compatible
+  mode remains lossless while Claude's 48-case timing ROM exposes unsafe bursts.
+- This improves interactive visual QA, but the instruction-boundary emulator model
+  is not a substitute for the external access-trace checker or openMSX validation.
+
+## 2026-11-16: Claude VDP handoff accepted with packaging distinction
+
+- Claude independently verified the EX/EXX timing barriers and the two paced
+  full sprite-upload paths across all optimization profiles and a 48-game corpus.
+- The reported `os7_work_buffer` compiler crash belongs to the older incomplete
+  r12 handoff zip. The current experimental tree already contains the complete
+  `studio/ramLayouts.js` allocation, including ENLARGE plus sound; the five-profile
+  VPEEK runtime test passes end to end.
+- The partial sprite uploader's observed 27-T spacing was safe in Claude's
+  openMSX/checker sweep but had only about 2 T of margin. It now inserts a NOP
+  after each data write for 32-T spacing, with optimizer-preservation tests.
+- Claude's VDP-safe DEEPWARDEN MegaCart (`15362be2` MD5) is validated separately
+  from the compiler candidate: zero drops, misdirected writes, and corrupted SAT
+  frames in its checker runs. Its game-specific patches remain necessary.
+
+## 2026-11-17: Coleco TV audio is an optional output profile
+
+- GearColeco's exact SN76489/AY/SP0256 mix remains the default and retains its
+  existing deterministic output and pitch oracle.
+- The optional `Coleco TV` profile applies fixed-point 90 Hz AC coupling and a
+  two-pole 6 kHz speaker roll-off after the complete mix, so live playback and
+  deterministic AVI export hear the same result.
+- The response follows the broad method of ADAMEm's historical real-ColecoVision
+  sample banks without embedding or redistributing those samples. It is a
+  presentation profile, not a change to PSG register semantics.
+- Evidence: `test-gearcoleco-audio-clock.mjs`, `test-gearcoleco-web-audio.mjs`,
+  and `test-gearcoleco-tv-audio.mjs` prove unchanged exact output, deterministic
+  profile selection, and measurable television-speaker attenuation.
+
+## 2026-11-17: Native word expressions stay narrow and NMI enable preserves VBlank
+
+- Computed comparisons whose operands remain entirely in one `u16` or `i16`
+  domain use the existing 16-bit comparator. They retain fixed-width wrap and
+  signed semantics instead of staging two artificial 32-bit scratch values.
+- Constant unsigned `u16` right shifts from 7 through 15 use byte-oriented Z80
+  sequences. Signed shifts retain arithmetic sign extension.
+- `nmi on`, `screen on`, and managed VRAM restoration no longer read VDP status
+  after setting R1 interrupt enable. A pending TMS9918A VBlank therefore causes
+  one immediate NMI instead of being lost in an enable/acknowledge race.
+- Evidence: `test-computed-word-compare-rom.mjs`,
+  `test-shift16-constant-rom.mjs`, `test-nmi-enable-preserves-pending-vblank.mjs`,
+  and `test-nmi-vdp-guard-runtime.mjs` cover all five optimization profiles.
+
+## 2026-11-18: Amy syntax lowering treats inline ASM as opaque
 
 - Amy-level declaration and two-dimensional-array passes skip complete
   `asm {}` blocks. Brackets, commas, identifiers, and `amy(Name)` written in
@@ -1691,55 +1862,90 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   preserves the comment and source markers verbatim.
 - Evidence: `test-inline-asm-symbols.mjs` and
   `test-inline-asm-symbol-codegen.mjs` cover comments and five optimization
-  profiles; clean-repository `amy-qa quick` passes.
+  profiles; `amy-qa quick` passes.
 
-## 2026-11-18 - r12.2 contracts promoted with the r12.3 ASM fix
+## 2026-11-18: Compiler handoffs must preserve predecessor contracts
 
-- The clean compiler now retains native computed `u16`/`i16` comparisons,
-  byte-oriented constant unsigned word shifts from 7 through 15, and pending
-  VBlank across `nmi on`, `screen on`, and managed VRAM restoration.
-- The native EOS substitutions follow the same NMI contract. Optimized ASM
-  exports omit debugger-only inline-ASM source-anchor labels.
-- The three r12.2 contracts are mandatory members of `amy-qa quick`, preventing
-  a future package from silently reverting to a stale compiler base.
-- Evidence: the focused five-profile tests and clean `amy-qa quick` pass. The
-  full Balanced corpus passes 869/869 examples, assembles 868 ROMs totaling
-  8,834,549 bytes, and delegates one target-specific project normally; report:
-  `build/r12.3-clean-balanced-audit.json`.
+- The first r12.3 handoff incorrectly replaced r12.2's complete compiler tree
+  with the older clean-repository tree. The inline-ASM fix passed in isolation,
+  but computed word comparisons, constant word shifts, and pending-VBlank NMI
+  behavior regressed.
+- The corrected r12.3 package is based directly on the validated r12.2 archive
+  and adds only the opaque-ASM change. Its reference ROMs remain 142 bytes for
+  `cmp32` and 109 bytes for `shr11`.
+- The three r12.2 runtime contracts are mandatory members of `amy-qa quick` so
+  future stale-base handoffs fail before packaging.
 
-## 2026-11-18 - VS Code 0.1.19 embeds clean r12.3
+## 2026-11-19: Backward ORG is BSS-only and sprite uploads guard the VDP latch
 
-- Extension 0.1.19 stages the compiler after the r12.3 promotion rather than
-  retaining the November 15 compiler bundled by 0.1.18.
-- Its bundled-toolchain contract passes, and the published VSIX is
-  `downloads/amy-studio-vscode-0.1.19.vsix` (SHA-256
-  `B70CE221AC5D841CA27400BC1998813FC57086960006CF478A51A347B20DB25C`).
-- `vscode.html` now links and describes 0.1.19.
+- A backward `ORG` may describe reserved RAM/BSS only. Labels and uninitialized
+  `DS` remain valid there; initialized data, alignment, included bytes, and Z80
+  instructions are rejected before they can make symbols disagree with ROM data.
+- Normal, partial, and flickered `update sprites` uploads hold the existing VDP
+  critical-section guard across both control-port address bytes. An NMI can no
+  longer consume VDP status between those bytes and redirect the SAT upload.
+- Evidence: `test-assembler-backward-org.mjs` and
+  `test-sprite-update-nmi-guard.mjs` cover diagnostics plus five-profile runtime
+  isolation of the complete `$1B40-$1BFF` region for 2,200 frames.
+- Amy Chess's `wait frames` report remains a hazard, not a confirmed defect: its
+  minimal repro does not fail and the attached checker changes timing. Do not
+  change the wait runtime until an independent trace reproduces the stall.
 
-# 2026-11-18 - CLI builds complete multifile MegaCart ROMs
+## 2026-11-19: VDP guard release uses a separate pending acknowledge
 
-- `tools/amyc.mjs project.amy.json --output game.rom` now compiles one Amy
-  fixed bank plus Amy, Z80 assembly, and binary-asset switchable banks.
-- Exported bank procedures resolve `call bank N, Name`; generated fixed-bank
-  trampolines select the requested bank and restore the previous mapper state.
-- Optional ASM, optimized-ASM, JSON-report, and bank-qualified symbol outputs
-  remain available for project builds.
-- `test-megacart-cli-project-runtime.mjs` validates the final image, Amy and ASM
-  calls, mapper restoration, and exact asset bytes at all five profiles.
+- Claude's checker-free `guardrace` repro confirmed that an NMI between the old
+  guard test and `$701F` clear could erase the deferred acknowledge, stop frame
+  service, and stretch `wait 30 frames` to 121-123 frames.
+- Guarded programs now reserve one conditional `VDP_GUARD_PENDING` byte. The NMI
+  sets it without touching the VDP latch; release clears `$701F` first and then
+  services the pending status read. Programs without guarded VDP access pay no
+  RAM cost.
+- Evidence: `test-vdp-guard-release-race.mjs` keeps the 201-VPEEK repro below 40
+  frames at all five profiles; SAT isolation, deferred acknowledge, sound-area,
+  and Tiny Sound RAM-layout contracts also pass.
 
-## 2026-11-19 - JR expansion is a final-address-only operation
+## 2026-11-19: User ASM preserves instructions, flags, and selected timing
 
-- Iterative optimizer passes must not expand `jr` using symbol addresses that can become stale as
-  earlier instructions change size in the same pass.
-- Only the final branch legalizer may expand a genuinely out-of-range `jr`, after rebuilding final
-  symbols. A near hand-written branch remains byte- and timing-stable.
-- Ordinary `asm {}` stays opaque. `asm relax {}` explicitly permits direct `jp` to `jr` shortening;
-  `.timed` / `.endtimed` protects selected relaxed regions, and `--report-jr-candidates` reports
-  possible savings without requiring source changes.
-- Evidence: the five-profile near/far branch regression passes; Strata changes from 30,278 bytes in
-  r12.8 to 30,138 bytes with nearby manual `jr z` instructions preserved.
+- Every `asm {}` block is optimizer-opaque, including global blocks moved with
+  their inline `db`/`dw`/`ds` data. Amy no longer rewrites `sub 1` to `dec a`,
+  `ld a,0` to `xor a`, or a deliberately timed `jp` to `jr` in user assembly.
+- Mandatory out-of-range `jr` to `jp` legalization remains allowed because it
+  is required for the final program to assemble after layout.
+- Capability inference ignores semicolon comments inside ASM. Words such as
+  `frame` no longer pull in runtime state merely because a comment mentions it.
+- Legacy assembler conditionals using `ifdef` / `else` / `endif` are accepted
+  inside ASM without treating ordinary Amy `else` statements as preprocessors.
+- Evidence: Claude's `b03`, `b05`, `b06`, `b08`, and `b09` repros;
+  `test-user-asm-optimizer-opacity.mjs`,
+  `test-asm-comment-capability-inference.mjs`, and `amy-qa quick`.
 
-## 2026-11-19 - Declared suffix-H symbols take precedence over hex literals
+## 2026-11-19: User ASM relaxation is explicit and branch-only
+
+- `asm {}` remains opaque. `asm relax {}` opts into a whitelist that currently contains only
+  range-proven `jp` to `jr` shortening; it does not enable general peepholes.
+- `.timed` / `.endtimed` restore strict opacity around a subsection of a relaxed block.
+- `--report-jr-candidates` reports eligible user-ASM branches and their one-byte gain without
+  changing ordinary opaque blocks. This keeps timing decisions visible to the programmer.
+- Evidence: `tools/test-user-asm-relax.mjs` across safe, balanced, aggressive, and experimental.
+- A first r12.8 handoff exposed premature `jr` expansion: phase 2 compared a PC already shortened
+  in the current iteration with a stale forward-label address. All optional passes now leave `jr`
+  untouched; the existing final one-way legalizer expands only genuinely out-of-range branches
+  after the symbol table stabilizes. Strata falls from 30,278 to 30,138 bytes and its near jumps
+  remain relative. Evidence: `tools/test-user-asm-jr-final-legalization.mjs` and Strata ray3.
+
+## 2026-11-19: Quirkafleeg evaluation requires an emulator transport first
+
+- The C64 PRG loads at `$0801`, enters native code through `SYS 2061`, and keeps
+  its 64-byte board at `$7F40-$7F7F`. Values 1..6 and 9..14 encode the two
+  colors; a VICE monitor probe reconstructs the standard initial FEN exactly.
+- An Elo number is not publishable until a deterministic UCI bridge replays
+  moves through the game, validates every transition with the chess oracle, and
+  measures emulated C64 cycles rather than host wall time.
+- Start-position replay is the safe first transport. Arbitrary FEN injection is
+  deferred until castling, en-passant, repetition, clocks, and cached engine
+  state are mapped.
+
+## 2026-11-19: Declared suffix-H symbols take precedence over hex literals
 
 - An identifier such as `CaH` is ambiguous with Intel-style hexadecimal `$CA`.
   When that name is declared as a label, constant, or variable, the assembler
@@ -1748,4 +1954,49 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   Authors can use `0CAH` when they want an explicitly unambiguous suffix-H number.
 - Evidence: `tools/test-assembler-suffix-h-symbols.mjs` covers direct, forward,
   expression, mixed-case, explicit-number, and legacy-number forms.
+# 2026-11-19 - Experimental ColecoVision FujiNet target
+
+- Added a distinct `colecovision-fujinet` target rather than treating FujiNet
+  as a standard cartridge or MegaCart. Packaging enforces the 30 KiB `$8000-$F7FF`
+  program fence, emits an exact 32 KiB image and stamps `FUJI` at `$FCFC`.
+- Added non-blocking low-level mailbox primitives. Waiting and timeout policy
+  stays in the Amy program so NMI-driven sound and controllers remain active.
+- GearColeco support is intentionally not claimed; runtime proof still requires
+  the FujiNet MAME device plus `fujinet-pc` or physical hardware.
+
+## 2026-11-19: Amy Chess FujiNet uses framed TCP; lobby discovery is separate
+
+- The official FujiNet `servers` corpus confirms the two-client TCP relay model:
+  assign distinct players, preserve packet framing and forward game traffic.
+- The Amy Chess relay additionally enforces turn and per-player sequence order
+  and converts peer disconnect into a resignation, preventing an endless wait.
+- FujiNet Lobby is an optional HTTP discovery layer, not the chess transport.
+  Do not register until Amy Chess has an assigned appkey, public server URL and
+  downloadable ColecoVision client URL. This can be added server-side without
+  changing the cartridge protocol.
+
+## 2026-11-19: FujiBus parameters are size-prefixed; rich games need APPBANK
+
+- Coleco M.U.L.E. and FujiBlast encode byte parameters as `1,value` and word
+  parameters as `2,low,high`. Raw TX bytes are payload. The initial Amy Chess
+  prototype omitted these size bytes and could not be considered hardware-valid.
+- `FN_PARAM8` and `FN_PARAM16` now make the distinction explicit; Amy Chess uses
+  them for OPEN, STATUS, READ and WRITE.
+- Both reference games use 56 KiB APPBANK images with an 8 KiB window at
+  `$C000-$DFFF`, selected through `$FD80+n`. Keep flat 30 KiB FujiNet support;
+  add APPBANK as a distinct target rather than silently changing its layout.
+- Evidence and implementation plan: `docs/fujinet-reference-games-2026-11-19.md`
+  and `tools/test-fujinet-parameter-encoding.mjs`.
+
+# 2026-11-20 - FujiNet APPBANK authoring and deterministic debugger device
+
+- Kept the flat 30 KiB FujiNet target and added a distinct APPBANK target:
+  one resident 32 KiB window plus up to eleven switchable 8 KiB pages at
+  `$C000-$DFFF`.
+- The packager validates mailbox ownership, stamps `FUJI`, fills sparse pages,
+  and avoids 64 KiB MegaCart ambiguity with a neutral page.
+- ROM Test & Debug now has an explicit offline FujiNet test device. It proves
+  presence, APPBANK mapping, NAK/error paths and transaction timeouts; it does
+  not claim Internet transport. End-to-end networking remains a hardware or
+  compatible external-device gate.
 

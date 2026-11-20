@@ -110,6 +110,8 @@ $exported = @(
     "_gcw_debug_adam_port_in",
     "_gcw_debug_adam_port_out",
     "_gcw_load_rom",
+    "_gcw_set_fujinet_mode",
+    "_gcw_get_fujinet_mode",
     "_gcw_reset",
     "_gcw_set_video_chip",
     "_gcw_get_video_chip",
@@ -142,6 +144,10 @@ $exported = @(
     "_gcw_get_rom_bank",
     "_gcw_get_cartridge_type",
     "_gcw_get_sp",
+    "_gcw_stack_watermark_begin",
+    "_gcw_stack_watermark_end",
+    "_gcw_stack_watermark_start",
+    "_gcw_stack_watermark_minimum",
     "_gcw_get_cpu_state",
     "_gcw_disassemble",
     "_gcw_get_master_clock",
@@ -199,16 +205,15 @@ $versionFile = Join-Path $OutputDir "BUILD.txt"
     "random_seed=wrapper_to_core"
     "master_cycle_counter=enabled"
     "stack_pointer=enabled"
+    "stack_watermark=instruction_granularity"
     "cpu_state=enabled"
     "native_disassembler=enabled"
     "megacart_debug=active_rom_bank,cartridge_type"
+    "fujinet=appbank,test_mailbox"
     "sp0256_core=rom_microsequencer_lpc12"
     "sp0256_voice_modules=lundy_43_44_45,eve_48_49_4a_4b"
-    "audio_output_profiles=psg_accurate,coleco_tv_fixed_point"
     "video_chips=tms9918a,f18a_v1.9"
-    "tms9918a_vram_timing=compatible,realistic_access_slots_single_pending_request"
     "adam=firmware,adamnet,keyboard,ddp,disk,media_export,printer,64k_expansion_ram"
-    "adam_reset=eos_computer,os7_cartridge_on_adam_hardware"
     "adam_serial=adamlink,eve_orphanware,microinnovations,offline,loopback,hayes,scripted_rx,tx_capture,debug_inspector,selectable_8n1_timing,scn2651_txrdy_txemt,savestate_v112"
     "adam_video_compatibility=startup_unterminated_overlapping_sprite_table"
 ) | Set-Content -LiteralPath $versionFile -Encoding ascii

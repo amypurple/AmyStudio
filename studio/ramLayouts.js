@@ -79,9 +79,6 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   const needsExomizer = !!caps.needsExomizer;
   const needsVoiceQueue = !!caps.needsVoiceQueue;
   const needsEnlargePattern = !!caps.needsEnlargePattern;
-  if (needsEnlargePattern && needsSound) {
-    throw new Error("OS7 ENLARGE needs a 40-byte BIOS work buffer that overlaps the fixed $7020 sound pointer; this combination is not supported yet");
-  }
   const needsRuntimeState =
     needsControllers ||
     needsSpinner ||
@@ -99,12 +96,14 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
 
   const needsSoundState = !!caps.needsSoundState || needsSound || needsMusic;
 
-  const workBufferEnd = needsEnlargePattern ? 0x7028 : 0x7020;
+  const usesFixedEnlargeBuffer = needsEnlargePattern && !needsSound;
+  const workBufferEnd = usesFixedEnlargeBuffer ? 0x7028 : 0x7020;
   const reserved = [
-    { start: 0x7000, endExclusive: workBufferEnd, label: needsEnlargePattern ? "OS7 ENLARGE work buffer (40 bytes)" : "_buffer32" }
+    { start: 0x7000, endExclusive: workBufferEnd, label: usesFixedEnlargeBuffer ? "OS7 ENLARGE work buffer (40 bytes)" : "_buffer32" }
   ];
   const addresses = {
-    buffer32: 0x7000
+    buffer32: 0x7000,
+    os7_work_buffer: 0x7000
   };
   let current = workBufferEnd;
 
@@ -218,6 +217,16 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     current += 11;
   }
 
+  // OS7 ENLARGE uses 40 bytes through the cartridge-header work-buffer
+  // pointer. SOUND_INIT owns $7020-$702A, so move only this conflicting
+  // combination into compiler-managed RAM instead of rejecting it or
+  // corrupting the fixed BIOS sound state.
+  if (needsEnlargePattern && needsSound) {
+    addresses.os7_work_buffer = current;
+    reserved.push({ start: current, endExclusive: current + 40, label: "OS7 ENLARGE work buffer (40 bytes)" });
+    current += 40;
+  }
+
   if (needsSpriteFlicker) {
     addresses.sprite_flicker_enabled = current;
     addresses.sprite_flicker_phase = current + 1;
@@ -289,7 +298,8 @@ export function getRamLayout(profileId, capabilities = null) {
   if (profileId === "colecovision_legacy_sdcc"
     || profileId === "colecovision-cartridge"
     || profileId === "colecovision-megacart"
-    || profileId === "colecovision-fujinet") {
+    || profileId === "colecovision-fujinet"
+    || profileId === "colecovision-fujinet-appbank") {
     return buildColecoLegacyLayout(capabilities);
   }
   if (profileId === "adam-eos-application") {

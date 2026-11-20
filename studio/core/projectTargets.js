@@ -18,9 +18,20 @@ export const AMY_TARGETS = Object.freeze({
     capabilities: ["cartridge", "megacart", "os7", "controller", "vdp", "psg", "rom-assets"]
   }),
   "colecovision-fujinet": Object.freeze({
-    id: "colecovision-fujinet", machine: "colecovision", artifact: "fujinet-rom", extension: ".rom",
+    id: "colecovision-fujinet",
+    machine: "colecovision",
+    artifact: "fujinet-rom",
+    extension: ".rom",
     memoryProfile: "colecovision-fujinet",
     capabilities: ["cartridge", "fujinet", "network", "os7", "controller", "vdp", "psg", "rom-assets"]
+  }),
+  "colecovision-fujinet-appbank": Object.freeze({
+    id: "colecovision-fujinet-appbank",
+    machine: "colecovision",
+    artifact: "fujinet-appbank-rom",
+    extension: ".rom",
+    memoryProfile: "colecovision-fujinet-appbank",
+    capabilities: ["cartridge", "fujinet", "fujinet-appbank", "banked-rom", "network", "os7", "controller", "vdp", "psg", "rom-assets"]
   }),
   "adam-native-program": Object.freeze({
     id: "adam-native-program",
@@ -70,11 +81,28 @@ export const AMY_MEMORY_MAPS = Object.freeze({
     ])
   }),
   "colecovision-fujinet": Object.freeze({
-    id: "colecovision-fujinet", addressSpace: 0x10000, programEndExclusive: 0xF800,
+    id: "colecovision-fujinet",
+    addressSpace: 0x10000,
+    programEndExclusive: 0xF800,
     regions: Object.freeze([
       { name: "hardware-and-os7", start: 0x0000, endExclusive: 0x6000, access: "mapped" },
       { name: "console-ram-mirrors", start: 0x6000, endExclusive: 0x8000, access: "ram" },
       { name: "cartridge-program", start: 0x8000, endExclusive: 0xF800, access: "rom" },
+      { name: "fujinet-reply", start: 0xF800, endExclusive: 0xFC00, access: "mailbox-reply" },
+      { name: "fujinet-status", start: 0xFC00, endExclusive: 0xFD00, access: "mailbox-status" },
+      { name: "fujinet-hotspots", start: 0xFD00, endExclusive: 0x10000, access: "mailbox-hotspot" }
+    ])
+  }),
+  "colecovision-fujinet-appbank": Object.freeze({
+    id: "colecovision-fujinet-appbank",
+    addressSpace: 0x10000,
+    programEndExclusive: 0xF800,
+    regions: Object.freeze([
+      { name: "hardware-and-os7", start: 0x0000, endExclusive: 0x6000, access: "mapped" },
+      { name: "console-ram-mirrors", start: 0x6000, endExclusive: 0x8000, access: "ram" },
+      { name: "resident-rom", start: 0x8000, endExclusive: 0xC000, access: "rom" },
+      { name: "switchable-8k-page", start: 0xC000, endExclusive: 0xE000, access: "banked-rom" },
+      { name: "resident-rom-upper", start: 0xE000, endExclusive: 0xF800, access: "rom" },
       { name: "fujinet-reply", start: 0xF800, endExclusive: 0xFC00, access: "mailbox-reply" },
       { name: "fujinet-status", start: 0xFC00, endExclusive: 0xFD00, access: "mailbox-status" },
       { name: "fujinet-hotspots", start: 0xFD00, endExclusive: 0x10000, access: "mailbox-hotspot" }
@@ -173,7 +201,7 @@ export function decodeAdamMioc(value, { eosSelected = true } = {}) {
 }
 
 const SOURCE_KINDS = new Set(["amy", "asm", "asset"]);
-const OUTPUT_KINDS = new Set(["boot", "program", "overlay", "data", "fixed-bank", "switchable-bank"]);
+const OUTPUT_KINDS = new Set(["boot", "program", "overlay", "data", "fixed-bank", "switchable-bank", "appbank-window", "appbank-page"]);
 
 export function getAmyTarget(id) {
   return AMY_TARGETS[id] || null;
@@ -187,7 +215,7 @@ export function getTargetOptimizationPolicy(targetId) {
   const target = getAmyTarget(targetId);
   if (!target) return null;
   const cartridge = targetHasCapability(targetId, "cartridge");
-  const banked = targetHasCapability(targetId, "megacart");
+  const banked = targetHasCapability(targetId, "megacart") || targetHasCapability(targetId, "fujinet-appbank");
   return {
     z80Peephole: true,
     controlFlow: true,
@@ -286,6 +314,7 @@ export function getBuildContextDefines(context) {
   if (capabilities.has("eos")) defines.push("AMY_HAS_EOS");
   if (capabilities.has("megacart")) defines.push("AMY_HAS_MEGACART");
   if (capabilities.has("fujinet")) defines.push("AMY_HAS_FUJINET");
+  if (capabilities.has("fujinet-appbank")) defines.push("AMY_HAS_FUJINET_APPBANK");
   if (capabilities.has("adamnet")) defines.push("AMY_HAS_ADAMNET");
   if (capabilities.has("file-io")) defines.push("AMY_HAS_FILE_IO");
   if (capabilities.has("sgm")) defines.push("AMY_HAS_SGM");
@@ -307,7 +336,7 @@ export function validateAmyBuildProject(project) {
   if (targetHasCapability(target.id, "multiple-outputs")) {
     if (!outputs.length) errors.push(`${target.id} requires at least one output.`);
     if (!outputs.some((output) => output.type === "boot")) errors.push(`${target.id} requires one boot output.`);
-  } else if (target.id !== "colecovision-megacart" && outputs.length > 1) {
+  } else if (target.id !== "colecovision-megacart" && target.id !== "colecovision-fujinet-appbank" && outputs.length > 1) {
     errors.push(`${target.id} produces one program image, not multiple media files.`);
   }
 
@@ -345,12 +374,24 @@ export function validateAmyBuildProject(project) {
       } else banks.add(bank);
     }
   }
+  if (target.id === "colecovision-fujinet-appbank") {
+    const windows = outputs.filter((output) => output?.type === "appbank-window");
+    if (windows.length !== 1) errors.push("FujiNet APPBANK requires exactly one appbank-window output.");
+    const pages = new Set();
+    for (const output of outputs.filter((entry) => entry?.type === "appbank-page")) {
+      const page = Number(output.page);
+      if (!Number.isInteger(page) || page < 1 || page > 11) {
+        errors.push(`FujiNet APPBANK output '${output.name || ""}' page must be between 1 and 11.`);
+      } else if (pages.has(page)) errors.push(`Duplicate FujiNet APPBANK page ${page}.`);
+      else pages.add(page);
+    }
+  }
 
   const sizeKb = Number(project?.target?.romSizeKb);
   if (target.id === "colecovision-megacart" && ![64, 128, 256, 512, 1024].includes(sizeKb)) {
     errors.push("MegaCart romSizeKb must be 64, 128, 256, 512, or 1024.");
   }
-  if (target.id !== "colecovision-megacart" && Number.isFinite(sizeKb)) {
+  if (target.id !== "colecovision-megacart" && target.id !== "colecovision-fujinet-appbank" && Number.isFinite(sizeKb)) {
     warnings.push(`romSizeKb is ignored by ${target.id}.`);
   }
 
@@ -368,6 +409,7 @@ export function estimateTargetCapacity(targetId, options = {}) {
   if (targetId === "colecovision-cartridge") return Number(options.romSizeKb || 32) * KB;
   if (targetId === "colecovision-megacart") return Number(options.romSizeKb || 128) * KB;
   if (targetId === "colecovision-fujinet") return 30 * KB;
+  if (targetId === "colecovision-fujinet-appbank") return 128 * KB;
   if (targetId === "adam-disk") return Number(options.blockCount || 160) * KB;
   if (targetId === "adam-data-pack") return Number(options.blockCount || 256) * KB;
   return AMY_MEMORY_MAPS["adam-eos-application"].programEndExclusive - AMY_MEMORY_MAPS["adam-eos-application"].programStart;

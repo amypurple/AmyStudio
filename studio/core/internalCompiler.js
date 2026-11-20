@@ -1,6 +1,6 @@
 import { assembleAmysCVAssembly } from "../vendor/amyscvassembly/compilerCore.js?v=20260731-source-marker-alignment";
 import { alexisLibrarySources } from "./alexisLibrarySources.generated.js?v=20260802-crt-safe-pause";
-import { buildFujiNetImage } from "./fujiNetImage.js";
+import { buildFujiNetAppBankImage, buildFujiNetImage } from "./fujiNetImage.js";
 
 const textEncoder = new TextEncoder();
 
@@ -81,6 +81,13 @@ function enforceTargetBinaryCapacity(result, options = {}) {
   if (target === "colecovision-fujinet") {
     try {
       return { ...result, binary: buildFujiNetImage(result.binary) };
+    } catch (error) {
+      return { ...result, ok: false, log: `${result.log || ""}\n[error] ${error.message || error}`.trim() };
+    }
+  }
+  if (target === "colecovision-fujinet-appbank") {
+    try {
+      return { ...result, binary: buildFujiNetAppBankImage(result.binary) };
     } catch (error) {
       return { ...result, ok: false, log: `${result.log || ""}\n[error] ${error.message || error}`.trim() };
     }

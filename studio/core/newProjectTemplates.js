@@ -20,18 +20,61 @@ const TEMPLATES = Object.freeze({
     memoryProfile: "colecovision_legacy_sdcc",
     medium: "rom",
     experimental: true,
-    source: ["' MegaCart project: fixed code safely consumes exported bank data.", "bank rom 128", "u8 BankBuffer[8]", "text screen", "call bank 2, Bank2Setup", "copy Bank2Data from bank 2 count 8 to vram.name + 328", "decompress mdkrle Bank2Compressed from bank 2 to vram.name + 360", "copy Bank2Data from bank 2 count 8 to BankBuffer", "print at 7,9, \"MEGACART PROJECT\"", "screen on"].join("\n")
+    source: [
+      "' MegaCart project: fixed code safely consumes exported bank data.",
+      "bank rom 128",
+      "u8 BankBuffer[8]",
+      "text screen",
+      "call bank 2, Bank2Setup",
+      "copy Bank2Data from bank 2 count 8 to vram.name + 328",
+      "decompress mdkrle Bank2Compressed from bank 2 to vram.name + 360",
+      "copy Bank2Data from bank 2 count 8 to BankBuffer",
+      "print at 7,9, \"MEGACART PROJECT\"",
+      "screen on"
+    ].join("\n")
   },
   fujinet: {
-    label: "ColecoVision FujiNet", platform: "colecovision-fujinet", memoryProfile: "colecovision-fujinet",
-    medium: "rom", experimental: true,
+    label: "ColecoVision FujiNet",
+    platform: "colecovision-fujinet",
+    memoryProfile: "colecovision-fujinet",
+    medium: "rom",
+    experimental: true,
     source: [
       "' FujiNet mailbox prototype. The build reserves $F800-$FFFF.",
-      "memory \"colecovision-fujinet\"", "u8 FujiPresent = 0", "text screen", "asm {",
-      "  call FN_PRESENT", "  jr nz,FujiAbsent", "  ld a,1", "  ld (amy(FujiPresent)),a", "FujiAbsent:", "}",
-      "if FujiPresent = 1 then", "  print at 7,10, \"FUJINET DETECTED\"", "else",
-      "  print at 5,10, \"FUJINET NOT DETECTED\"", "end if",
-      "print at 3,12, \"MAILBOX PROTOTYPE TARGET\"", "screen on", "include \"include/fujinet_mailbox.inc\""
+      "memory \"colecovision-fujinet\"",
+      "u8 FujiPresent = 0",
+      "text screen",
+      "asm {",
+      "  call FN_PRESENT",
+      "  jr nz,FujiAbsent",
+      "  ld a,1",
+      "  ld (amy(FujiPresent)),a",
+      "FujiAbsent:",
+      "}",
+      "if FujiPresent = 1 then",
+      "  print at 7,10, \"FUJINET DETECTED\"",
+      "else",
+      "  print at 5,10, \"FUJINET NOT DETECTED\"",
+      "end if",
+      "print at 3,12, \"MAILBOX PROTOTYPE TARGET\"",
+      "screen on",
+      "include \"include/fujinet_mailbox.inc\""
+    ].join("\n")
+  },
+  "fujinet-appbank": {
+    label: "ColecoVision FujiNet APPBANK",
+    platform: "colecovision-fujinet-appbank",
+    memoryProfile: "colecovision-fujinet-appbank",
+    medium: "rom",
+    experimental: true,
+    source: [
+      "' FujiNet APPBANK: resident program plus switchable 8K pages.",
+      "memory \"colecovision-fujinet-appbank\"",
+      "text screen",
+      "print at 4,9, \"FUJINET APPBANK PROJECT\"",
+      "print at 4,11, \"PAGE 0 IS RESIDENT\"",
+      "screen on",
+      "include \"include/fujinet_mailbox.inc\""
     ].join("\n")
   },
   "adam-eos": {
@@ -98,6 +141,19 @@ export function createProjectFromTemplate(baseProject, { templateId = "cartridge
     project.projectFiles.push(textProjectFile("project.amy.json", JSON.stringify(manifest, null, 2), "json"));
     project.projectFiles.push(textProjectFile("banks/bank1.asm", "; Logical BANK 1 is visible at $C000 after BANK SELECT 1\norg $C000\nBank1Data: db \"BANK ONE\"", "asm-source"));
     project.projectFiles.push(textProjectFile("banks/bank2.amy", "' Bank-local Amy files contain procedures and ROM data only.\nsub Bank2Setup:\n  return\nend sub\n\ndata Bank2Data bytes = 66,65,78,75,32,84,87,79\n\n' MDK-RLE raw block: length byte 7 means 8 following bytes, then $FF ends.\ndata Bank2Compressed bytes = 7,67,79,77,80,82,69,83,83,$FF", "amy-source"));
+  } else if (templateId === "fujinet-appbank") {
+    const manifest = {
+      version: 2,
+      projectName: name,
+      target,
+      memoryProfile: template.memoryProfile,
+      outputs: [
+        { name: "WINDOW", type: "appbank-window", sources: [{ path: "main.amy", kind: "amy" }] },
+        { name: "PAGE1", type: "appbank-page", page: 1, sources: [{ path: "pages/page1.asm", kind: "asm" }] }
+      ]
+    };
+    project.projectFiles.push(textProjectFile("project.amy.json", JSON.stringify(manifest, null, 2), "json"));
+    project.projectFiles.push(textProjectFile("pages/page1.asm", "; APPBANK page 1 is visible at $C000-$DFFF\norg $C000\nPage1Data: db \"FUJINET PAGE ONE\"", "asm-source"));
   } else if (target.platform.startsWith("adam-")) {
     const manifest = {
       version: 2,

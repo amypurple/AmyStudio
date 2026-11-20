@@ -1,0 +1,195 @@
+diff --git a/src/Cartridge.cpp b/src/Cartridge.cpp
+index 0aecd8b..fa80bb7 100644
+--- a/src/Cartridge.cpp
++++ b/src/Cartridge.cpp
+@@ -182,6 +182,10 @@ void Cartridge::ForceConfig(Cartridge::ForceConfiguration config)
+             m_Type = config.type;
+             Log("Forcing Mapper: OCM");
+             break;
++        case Cartridge::CartridgeFujiNet:
++            m_Type = config.type;
++            Log("Forcing Mapper: FujiNet APPBANK");
++            break;
+         default:
+             break;
+     }
+@@ -532,7 +536,16 @@ bool Cartridge::GatherMetadata(u32 crc)
+         Log("Cartridge is a Colec Adam expansion ROM. Header: %X", header);
+     }
+ 
+-    if (m_bValidROM && (m_iROMSize <= 0x8000))
++    const bool fujinet = m_bValidROM && m_iROMSize >= 0x8000
++        && m_pROM[0x7CFC] == 'F' && m_pROM[0x7CFD] == 'U'
++        && m_pROM[0x7CFE] == 'J' && m_pROM[0x7CFF] == 'I';
++
++    if (fujinet)
++    {
++        m_Type = Cartridge::CartridgeFujiNet;
++        Log("Cartridge is FujiNet APPBANK. ROM size: %d bytes.", m_iROMSize);
++    }
++    else if (m_bValidROM && (m_iROMSize <= 0x8000))
+     {
+         m_Type = Cartridge::CartridgeColecoVision;
+         Log("Cartridge is Colecovision. ROM size: %d bytes.", m_iROMSize);
+@@ -576,6 +589,9 @@ bool Cartridge::GatherMetadata(u32 crc)
+         case Cartridge::CartridgeOCM:
+             Log("OCM mapper found");
+             break;
++        case Cartridge::CartridgeFujiNet:
++            Log("FujiNet APPBANK mapper found");
++            break;
+         case Cartridge::CartridgeNotSupported:
+             Log("Cartridge not supported!!");
+             break;
+diff --git a/src/Cartridge.h b/src/Cartridge.h
+index fb4753f..1b3ad93 100644
+--- a/src/Cartridge.h
++++ b/src/Cartridge.h
+@@ -33,6 +33,7 @@ public:
+         CartridgeMegaCart,
+         CartridgeActivisionCart,
+         CartridgeOCM,
++        CartridgeFujiNet,
+         CartridgeNotSupported
+     };
+ 
+diff --git a/src/Memory.cpp b/src/Memory.cpp
+index 7a26c6b..3b7a9f8 100644
+--- a/src/Memory.cpp
++++ b/src/Memory.cpp
+@@ -28,6 +28,7 @@
+ #include "MegaCartMapper.h"
+ #include "ActivisionMapper.h"
+ #include "OCMMapper.h"
++#include "FujiNetMapper.h"
+ #include "random.h"
+ 
+ #include "Memory.h"
+@@ -196,6 +197,9 @@ void Memory::SetupMapper()
+         case Cartridge::CartridgeOCM:
+             m_pMapper = new OCMMapper(m_pCartridge, this);
+             break;
++        case Cartridge::CartridgeFujiNet:
++            m_pMapper = new FujiNetMapper(m_pCartridge);
++            break;
+         default:
+             m_pStandardMapper = new StandardMapper(m_pCartridge);
+             m_pMapper = m_pStandardMapper;
+@@ -765,6 +769,13 @@ u32 Memory::GetCartridgeROMOffset(u16 address)
+             else
+                 return (u32)((address - 0xE000) + (m_pMapper->GetBankReg(2) * 0x2000));
+         }
++        case Cartridge::CartridgeFujiNet:
++        {
++            const u8 bank = GetRomBank();
++            if (address >= 0xC000 && address < 0xE000 && bank > 0)
++                return 0x8000 + (u32)(bank - 1) * 0x2000 + (address - 0xC000);
++            return (u32)(address - 0x8000);
++        }
+         default:
+             return (u32)(address - 0x8000);
+     }
+@@ -808,6 +819,8 @@ u8 Memory::GetBank(u16 address)
+             else
+                 return (u8)m_pMapper->GetBankReg(2);
+         }
++        case Cartridge::CartridgeFujiNet:
++            return (address >= 0xC000 && address < 0xE000) ? GetRomBank() : 0;
+         default:
+             return 0;
+     }
+diff --git a/src/Memory_inline.h b/src/Memory_inline.h
+index 4c74bad..c53ff90 100644
+--- a/src/Memory_inline.h
++++ b/src/Memory_inline.h
+@@ -202,6 +202,13 @@ inline u32 Memory::GetTracePhysicalAddress(u16 address, u8 bank)
+             physical_address = (u32)(0x2000 * bank) + (address & 0x1FFF);
+             break;
+         }
++        case Cartridge::CartridgeFujiNet:
++        {
++            if (address >= 0xC000 && address < 0xE000 && bank > 0)
++                physical_address = 0x8000 + (u32)(bank - 1) * 0x2000 + (address - 0xC000);
++            else physical_address = address - 0x8000;
++            break;
++        }
+         default:
+         {
+             if (bank != 0)
+diff --git a/src/FujiNetMapper.h b/src/FujiNetMapper.h
+new file mode 100644
+--- /dev/null
++++ b/src/FujiNetMapper.h
+@@ -0,0 +1,71 @@
++#ifndef FUJINETMAPPER_H
++#define FUJINETMAPPER_H
++
++#include "Mapper.h"
++#include "Cartridge.h"
++#include <cstring>
++
++class FujiNetMapper final : public Mapper
++{
++public:
++    FujiNetMapper(Cartridge* cartridge) : Mapper(cartridge) { Reset(); }
++    void Reset() override
++    {
++        m_Page = 0; m_Register = 0; m_TxLength = 0;
++        memset(m_Status, 0, sizeof(m_Status)); memset(m_Reply, 0, sizeof(m_Reply));
++        m_Status[9] = 'F'; m_Status[10] = 'N'; m_Status[11] = 1;
++    }
++    u8 Read(u16 address) override
++    {
++        u8* rom = m_pCartridge->GetROM(); const int size = m_pCartridge->GetROMSize();
++        if (address < 0xC000) return rom[address - 0x8000];
++        if (address < 0xE000) {
++            const int offset = m_Page == 0 ? address - 0x8000 : 0x8000 + (m_Page - 1) * 0x2000 + (address - 0xC000);
++            return offset < size ? rom[offset] : 0;
++        }
++        if (address < 0xF800) return rom[address - 0x8000];
++        if (address < 0xFC00) return m_Reply[address - 0xF800];
++        if (address < 0xFD00) return m_Status[address - 0xFC00];
++        if (address >= 0xFD80 && address <= 0xFD8C) { m_Page = address - 0xFD80; return 0; }
++        if (address < 0xFE00) { m_Register = address & 0xFF; return 0; }
++        if (address < 0xFF00) { WriteRegister(address & 0xFF); return 0; }
++        if (m_TxLength < sizeof(m_Tx)) m_Tx[m_TxLength++] = address & 0xFF;
++        return 0;
++    }
++    u8 Peek(u16 address) override { return address >= 0xFD00 ? 0 : Read(address); }
++    void Write(u16, u8) override { }
++    void SaveState(std::ostream& stream) override
++    {
++        stream.write(reinterpret_cast<const char*>(&m_Page), sizeof(m_Page));
++        stream.write(reinterpret_cast<const char*>(&m_Register), sizeof(m_Register));
++        stream.write(reinterpret_cast<const char*>(m_Status), sizeof(m_Status));
++        stream.write(reinterpret_cast<const char*>(m_Reply), sizeof(m_Reply));
++        stream.write(reinterpret_cast<const char*>(&m_TxLength), sizeof(m_TxLength));
++        stream.write(reinterpret_cast<const char*>(m_Tx), sizeof(m_Tx));
++    }
++    void LoadState(std::istream& stream) override
++    {
++        stream.read(reinterpret_cast<char*>(&m_Page), sizeof(m_Page));
++        stream.read(reinterpret_cast<char*>(&m_Register), sizeof(m_Register));
++        stream.read(reinterpret_cast<char*>(m_Status), sizeof(m_Status));
++        stream.read(reinterpret_cast<char*>(m_Reply), sizeof(m_Reply));
++        stream.read(reinterpret_cast<char*>(&m_TxLength), sizeof(m_TxLength));
++        stream.read(reinterpret_cast<char*>(m_Tx), sizeof(m_Tx));
++    }
++    u8 GetRomBank() override { return m_Page; }
++    u32 GetRomBankAddress() override { return m_Page ? 0x8000 + (m_Page - 1) * 0x2000 : 0x4000; }
++
++private:
++    void WriteRegister(u8 value)
++    {
++        if (m_Register == 5) m_TxLength = 0;
++        if (m_Register == 0x10) {
++            m_Status[0] = value; m_Status[2] = 1; m_Status[3] = 0x15;
++            m_Status[4] = m_Status[5] = 0;
++        }
++    }
++    u8 m_Page, m_Register, m_Status[0x100], m_Reply[0x400], m_Tx[0x400];
++    u16 m_TxLength;
++};
++
++#endif
+

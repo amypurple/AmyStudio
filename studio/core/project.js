@@ -10,6 +10,7 @@ function isColecoOs7MemoryProfile(memoryProfile) {
     || memoryProfile === "colecovision-cartridge"
     || memoryProfile === "colecovision-megacart"
     || memoryProfile === "colecovision-fujinet"
+    || memoryProfile === "colecovision-fujinet-appbank"
     || memoryProfile === "adam-os7-eos-drivers";
 }
 
@@ -1431,6 +1432,9 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
   const needsExomizer = /\b(?:exomizer_decompress|AMY_EXOMIZER_TABLE)\b/.test(asmBody)
     || /\b(?:decompress\s+exomizer|codec\s+exomizer)\b/i.test(sourceText);
   const needsVoiceQueue = sourceMemoryCaps.needsVoiceQueue || /\bAMY_VOICE_(?:START|UPDATE|STOP|SPEAKING)\b/.test(asmBody);
+  const needsEnlargePattern = sourceMemoryCaps.needsEnlargePattern ||
+    /\bAMY_ENLARGE_PATTERN\b/.test(asmBody) ||
+    /\bcall\s+(?:\$1F73\b|ENLARGE_PATTERN\b)/i.test(`${sourceText}\n${asmBody}`);
   const soundAreaCount = inferSoundAreaCount(sourceText);
   const needsNmi = usesScreenOnNmi || usesHalt || needs120c || needsControllers || needsSpinner || needsSound || needsFrameCounter || needsNmiFlagShadow || needsVdpStatusShadow || needsVoiceQueue;
   if (controllerBackend?.controllerBackend === "bios_cont_scan_compact" &&
@@ -1459,6 +1463,7 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
     needsSleepState,
     needsExomizer,
     needsVoiceQueue,
+    needsEnlargePattern,
     soundAreaCount,
     needsNmiAckOnly,
     usesJoypad1,
@@ -1587,6 +1592,7 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   lines.push("");
   lines.push("_buffer32           EQU $7000   ; lib4ksa/getput11 legacy scratch buffer");
   lines.push("AMY_BUFFER32        EQU _buffer32");
+  lines.push(`OS7_WORK_BUFFER     EQU ${hex16(addr.os7_work_buffer)}`);
   if (caps.needsSound) {
     lines.push("snd_addr            EQU $7020");
     lines.push("snd_areas           EQU $702B");
@@ -2538,7 +2544,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     else lines.push("        db $55,$AA        ; no default ColecoVision title screen");
     lines.push("        dw 0              ; no sprite table copy");
     lines.push("        dw 0              ; unused");
-    lines.push("        dw $7000          ; legacy SDCC work buffer (_buffer32)");
+    lines.push("        dw OS7_WORK_BUFFER ; OS7 graphics-transform work buffer");
     lines.push("        dw 0              ; unused");
     lines.push("        dw Start          ; cartridge entry point");
     lines.push("        db $C9,0,0        ; RST $08");

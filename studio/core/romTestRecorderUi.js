@@ -452,6 +452,7 @@ function buildDialog() {
           <label>Keys<select data-field="keyboardTarget" title="Route the computer keyboard to the ADAM keyboard or a joystick port"><option value="adam" selected>ADAM</option><option value="joy1">JOY P1</option><option value="joy2">JOY P2</option></select></label>
           <label>Video chip<select data-field="videoChip"><option value="auto" selected>Auto</option><option value="tms9918a">TMS9918A</option><option value="f18a">F18A v1.9</option></select></label>
           <label>VDP timing<select data-field="vdpTiming" title="Model real TMS9918A VRAM access slots and expose unsafe transfers"><option value="compatible" selected>Compatible</option><option value="realistic">Realistic TMS9918A</option></select></label>
+          <label>FujiNet<select data-field="fujinet" title="Enable the deterministic FujiNet mailbox and APPBANK test device. Internet servers still require hardware or an external bridge."><option value="off" selected>Off</option><option value="test">Test device</option></select></label>
           <label>Voice module<select data-field="voiceModule"><option value="lundy" selected>Lundy</option><option value="eve">EVE SS-CC</option><option value="absent">Absent</option></select></label>
           <label>ADAM sound<select data-field="adamSound"><option value="none" selected>None</option><option value="enhancer">Sound Enhancer</option><option value="sgm">Opcode SGM</option></select></label>
           <label>ADAM serial<select data-field="adamSerial"><option value="none" selected>None</option><option value="adamlink-offline">AdamLink offline</option><option value="adamlink-loopback">AdamLink loopback</option><option value="adamlink-hayes">AdamLink Hayes modem</option><option value="eve-offline">Eve/Orphanware offline</option><option value="eve-loopback">Eve/Orphanware loopback</option><option value="eve-hayes">Eve Hayes modem</option><option value="micro-offline">MicroInnovations offline</option><option value="micro-loopback">MicroInnovations loopback</option><option value="micro-hayes">MicroInnovations Hayes modem</option></select></label>
@@ -603,7 +604,7 @@ export function createRomTestRecorderUi({
         <div class="rom-recorder__card"><strong>Program counter</strong>${formatBankAddress(pc, currentLogicalBank(pc))} · ${findNearestSymbol(pc, symbols, currentLogicalBank(pc)) || "no symbol"}</div>
         <div class="rom-recorder__card"><strong>VDP mode</strong>${vdp.mode} · screen ${vdp.displayEnabled ? "on" : "off"} · NMI ${vdp.nmiEnabled ? "on" : "off"}</div>
         <div class="rom-recorder__card"><strong>Sprites</strong>${vdp.sprites16 ? "16×16" : "8×8"}${vdp.spritesMagnified ? " magnified" : ""} · backdrop ${vdp.backdrop}</div>
-        <div class="rom-recorder__card"><strong>External hardware</strong>SP0256 ${field("voiceModule").value} · ADAM sound ${field("adamSound").value} · serial ${field("adamSerial").value}</div>
+        <div class="rom-recorder__card"><strong>External hardware</strong>FujiNet ${field("fujinet").value} · SP0256 ${field("voiceModule").value} · ADAM sound ${field("adamSound").value} · serial ${field("adamSerial").value}</div>
         <div class="rom-recorder__card"><strong>Name / pattern / color</strong>${formatHex(vdp.nameTable)} / ${formatHex(vdp.patternTable)} / ${formatHex(vdp.colorTable)}</div>
         <div class="rom-recorder__card"><strong>Sprite attributes / patterns</strong>${formatHex(vdp.spriteAttributeTable)} / ${formatHex(vdp.spritePatternTable)}</div>
       </div>
@@ -984,6 +985,7 @@ export function createRomTestRecorderUi({
         videoChip: field("videoChip").value,
         vdpTiming: field("vdpTiming").value,
         audioOutput: field("audioOutput").value,
+        fujinet: field("fujinet").value,
         voiceModule: field("voiceModule").value,
         adamSound: field("adamSound").value,
         adamSerial: field("adamSerial").value
@@ -1778,6 +1780,7 @@ export function createRomTestRecorderUi({
     core.setVideoChip(field("videoChip").value);
     core.setAccurateVdpTiming(field("vdpTiming").value === "realistic");
     core.setAudioOutputProfile(field("audioOutput").value);
+    core.setFujiNetEnabled(field("fujinet").value === "test");
     const serialSetting = field("adamSerial").value;
     core.setAdamSoundExpansion(field("adamSound").value);
     const serialProfile = serialSetting.split("-")[0];
@@ -2116,6 +2119,14 @@ export function createRomTestRecorderUi({
       } catch (error) {
         setRecorderStatus(error.message || String(error));
       }
+    });
+    field("fujinet").addEventListener("change", async () => {
+      const profile = field("fujinet").selectedOptions[0]?.textContent || field("fujinet").value;
+      setRecorderStatus(`Restarting with FujiNet: ${profile}...`);
+      try {
+        await startCore();
+        setRecorderStatus(`FujiNet is ${profile}; recording restarted.`);
+      } catch (error) { setRecorderStatus(error.message || String(error)); }
     });
     field("audioOutput").addEventListener("change", async () => {
       const profile = field("audioOutput").selectedOptions[0]?.textContent || field("audioOutput").value;
@@ -2477,6 +2488,7 @@ export function createRomTestRecorderUi({
         loadedRom = rom;
         core.setVideoChip(testCase.environment?.videoChip || field("videoChip").value);
         core.setAccurateVdpTiming((testCase.environment?.vdpTiming || field("vdpTiming").value) === "realistic");
+        core.setFujiNetEnabled((testCase.environment?.fujinet || field("fujinet").value) === "test");
         core.setAudioOutputProfile(testCase.environment?.audioOutput || field("audioOutput").value);
         core.loadBios(bios);
         const replayRegion = testCase.environment?.region === "pal" ? GEARCOLECO_TEST_REGION.PAL : GEARCOLECO_TEST_REGION.NTSC;

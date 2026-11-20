@@ -35,6 +35,7 @@ namespace
     s16 g_audio_buffer[GC_AUDIO_BUFFER_SIZE];
     int g_audio_sample_count = 0;
     int g_last_step_interrupt = 0;
+    int g_fujinet_mode = 1;
 
     struct ProfileInterrupt
     {
@@ -424,6 +425,14 @@ extern "C"
         if (!g_core->LoadROMFromBuffer(buffer, static_cast<int>(size)))
             return 0;
 
+        if (g_core->GetCartridge()->GetType() == Cartridge::CartridgeFujiNet && g_fujinet_mode == 0)
+        {
+            Cartridge::ForceConfiguration disabled;
+            disabled.type = Cartridge::CartridgeColecoVision;
+            disabled.region = region == Region_PAL ? Cartridge::CartridgePAL : Cartridge::CartridgeNTSC;
+            g_core->ResetROM(&disabled);
+        }
+
         if (region == Region_NTSC || region == Region_PAL)
         {
             Cartridge::ForceConfiguration config;
@@ -438,6 +447,18 @@ extern "C"
 
         ResetControllerMasks();
         return 1;
+    }
+
+    GCW_EXPORT int gcw_set_fujinet_mode(int mode)
+    {
+        if (mode < 0 || mode > 1) return 0;
+        g_fujinet_mode = mode;
+        return 1;
+    }
+
+    GCW_EXPORT int gcw_get_fujinet_mode()
+    {
+        return g_fujinet_mode;
     }
 
     GCW_EXPORT int gcw_reset(int preserve_ram)

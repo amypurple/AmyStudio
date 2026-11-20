@@ -290,6 +290,12 @@ Current debugging tools include:
 - named development checkpoints, recorded routes, and fast replay after recompilation;
 - recorded controller scenarios and replayable `.amy-rom-test.json` files.
 
+Under **Hardware & compatibility**, **FujiNet: Test device** enables the
+deterministic cartridge mailbox and APPBANK mapper. Use it to test presence,
+page selection, framed command writes, NAK/error handling and timeout paths.
+It is deliberately offline: real HTTP/TCP servers require physical FujiNet or
+a compatible external bridge.
+
 Changing only a breakpoint does not modify ROM bytes. Changing source or project files makes the existing source map and compiled ROM stale and requires a rebuild.
 
 Repository-wide automated ROM tests remain a CLI maintainer feature. See [Automated ColecoVision ROM Testing](rom-runtime-testing.md).

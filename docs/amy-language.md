@@ -66,22 +66,38 @@ screen on
 ### Experimental FujiNet cartridge target
 
 Select `--target colecovision-fujinet` in the CLI, or start a **ColecoVision
-FujiNet** project in Studio. The resulting exact 32 KiB ROM reserves
-`$F800-$FFFF` for the cartridge mailbox, leaving 30 KiB for Amy code and data.
-The packager writes the required `FUJI` claim at `$FCFC` automatically.
+FujiNet** project in Studio. This produces an exact 32 KiB ROM while reserving
+`$F800-$FFFF` for the cartridge mailbox, so Amy code and data are limited to
+30 KiB. The packager writes the required `FUJI` claim at `$FCFC` automatically.
+
+Low-level, non-blocking mailbox primitives are available through:
 
 ```basic
 memory "colecovision-fujinet"
 include "include/fujinet_mailbox.inc"
 ```
 
-The included low-level routines are non-blocking so NMI-driven sound and input
-can continue while a program polls a transaction. FujiBus parameters are
-size-prefixed: use `FN_PARAM8` or `FN_PARAM16`; reserve `FN_TX_BYTE` for raw
-payload bytes. Programs must impose a timeout and must never access `$F800` or
-above from an NMI handler. GearColeco does not yet emulate FujiNet; use the
-FujiNet MAME device with `fujinet-pc` or physical hardware for runtime
-validation.
+`FN_PRESENT`, `FN_BEGIN`, `FN_TX_BYTE`, `FN_PARAM8`, `FN_PARAM16`,
+`FN_COMMIT_BEGIN`, `FN_POLL` and `FN_REPLY_LENGTH` expose the transport without
+freezing NMI-driven sound or controller updates. FujiBus parameters are
+size-prefixed: use `FN_PARAM8` or `FN_PARAM16`; reserve raw `FN_TX_BYTE` for
+payload bytes. `FN_APPKEY_OPEN_BEGIN` prepares the exact six-byte appkey open
+payload, including the reserved byte required by firmware. The program must
+post it with `FN_COMMIT_BEGIN`, poll on later frames, impose its own timeout and
+never access `$F800` or above from an NMI handler.
+
+For larger projects, choose **ColecoVision FujiNet APPBANK** or use
+`memory "colecovision-fujinet-appbank"`. An APPBANK project has one resident
+`appbank-window` output and up to eleven `appbank-page` outputs of 8 KiB each.
+Page zero occupies `$C000-$DFFF` in the 32 KiB window; reading `$FD80+n`
+selects page `n`. `FN_SELECT_APPBANK_PAGE` performs that read. Call it only
+from resident code at `$8000-$BFFF` or `$E000-$F7FF`, never from code that is
+about to map itself out.
+
+ROM Test & Debug offers **FujiNet: Test device**. It validates detection,
+APPBANK mapping, command framing, NAK handling and timeouts deterministically.
+It does not open Internet connections. End-to-end server validation still
+requires physical FujiNet or a compatible external emulator/bridge.
 
 ---
 
@@ -1626,8 +1642,6 @@ and floating-point values are not currently accepted.
 - `if Score > StartScore goto Label` accepts a named `const` on the right side
 - `Score += Bonus` and `Score -= Delta` accept `u8` or `i8` sources
 - `Score += OtherScore` and `Score -= OtherScore` accept same-size BCD sources
-- `Score += WordValue` and `Score -= WordValue` accept bounded `u16` values;
-  subtraction saturates at zero
 - `bcd digits 5 Credits` stores 5 displayed decimal digits in packed BCD
 - `bcd digits 8 Score8` gives an 8-digit BCD value
 - current implementation range is `bcd digits 1` .. `bcd digits 12`
@@ -1945,6 +1959,11 @@ callbacks therefore pause rather than catching up afterward. Keep such regions
 short, split long rendering across frames, or explicitly poll and count VBlank
 status in a documented hardware-specific ASM engine.
 
+If at least one VBlank is pending when `nmi on`, `screen on`, or a managed VRAM
+batch restores interrupts, Amy leaves the status latch intact. The VDP can then
+deliver one immediate NMI. Amy never reads the status register after enabling
+the VDP interrupt because that race could silently discard the pending frame.
+
 ```basic
 nmi off
 copy PatternData count 768 to vram.pattern
@@ -2024,7 +2043,7 @@ VDP side-effect contract:
 |---|---|---|---|---|
 | `screen on/off` | changes | changes | R1 shadow/write | no upload |
 | `display on/off` | changes | unchanged | R1 shadow/write | no upload |
-| `nmi on/off` | unchanged | changes | R1 shadow/write; `nmi on` acknowledges VDP status | no upload |
+| `nmi on/off` | unchanged | changes | R1 shadow/write; pending VBlank is preserved | no upload |
 | `graphics mode ...` | usually blanks | mode default | mode registers/table shadows | mode-specific setup |
 | `text screen` | blanks until `screen on` | mode default | standard 32x24 text setup | font, 32 color groups, cls |
 | `show picture Name` | blanks, then shows | unchanged unless mode helper changes it | bitmap setup | uploads picture |
@@ -2082,6 +2101,21 @@ ASCII, duplicate pattern thirds, duplicate color thirds, fill colors, or clear
 the name table. Use this for Dacman-style screens where tiles are placed through
 the NAME table, but different screen thirds may need independent color tables
 (for example bronze/silver/gold medal colors sharing the same patterns).
+
+For a slow custom Mode 2 setup, stop frame service and keep the display blank
+immediately after selecting the mode, before uploading or drawing tables:
+
+```basic
+mode 2 screen
+nmi off
+display off
+' upload PATTERN, COLOR, NAME, and sprite tables here
+nmi on
+display on
+```
+
+Do not arm title/menu input before a multi-frame setup is complete. Input read
+during a long draw can be consumed before the finished screen becomes usable.
 
 ### Temporal 120-color pictures
 
@@ -2288,6 +2322,24 @@ Source and destination address expressions use 16-bit arithmetic. For example,
 without wrapping the computed offset at 255; no temporary `u16` is required.
 The same rule applies to declared RAM arrays: `copy RowBuffer count RowSize to
 Board + DestinationOffset` adds the byte offset to `Board` with 16-bit arithmetic.
+
+Amy checks a constant count and constant source offset against the declared source
+extent. `copy Tiles + 8 count 8 ...` is valid for a 16-byte table; a count that
+continues past byte 16 is rejected. A scalar source also requires a constant count
+that fits its declared width. Use an array, record, or DATA block when the count is
+runtime-dependent.
+
+When adjacent declarations intentionally form one raw binary stream, make that
+low-level contract explicit with `copy bytes`:
+
+```basic
+copy bytes Frame0 count 192 to vram.pattern
+```
+
+This form permits a transfer to continue beyond `Frame0` into immediately following
+ROM data. It does not add padding or bounds checking, so reserve it for generated or
+verified layouts. It is distinct from `copy bytes of Value to Buffer`, which exposes
+the in-memory bytes of one numeric scalar for debugging.
 
 `decompress` accepts an offset VRAM destination when a codec must unpack into a hidden workspace. `copy VRAM count N to VRAM` accepts a constant count from 1 to 32 and uses Amy's internal 32-byte scratch buffer. This supports row-sized transfers such as placing a compact level rectangle in a larger NAME table without overwriting its HUD.
 
@@ -3087,7 +3139,11 @@ if chars in box TileX - 1,TileY - 1 size 3,3 contain $20 goto Blocked
 
 ```
 
-`if any collision` checks the VDP coincidence bit.  
+`if any collision` checks the VDP coincidence bit captured in `VDP_STATUS` by
+the NMI handler. It therefore requires NMI to be enabled and a completed frame;
+it is not a valid collision query inside a programmer-owned `nmi off` batch.
+Use sprite hitboxes or logical box collision when collision checks must continue
+while NMI is disabled.
 `hitbox Name = X,Y size W,H` declares a local rectangle inside a sprite.  
 `if sprite A hitbox HitA collides with sprite B hitbox HitB` is the preferred
 gameplay collision form because each object can have its own logical hitbox.  
@@ -3469,6 +3525,18 @@ Rules:
   block; do not assume Amy preserves values across arbitrary statements.
 - Prefer putting inline ASM in a small `sub` with an explicit `return`, mirroring
   the Z80 rule that every callable block must end in `ret` or an intentional jump.
+- Write macros as `macro Name parameters` ... `endm`. The alternate
+  `Name macro parameters` spelling is rejected at its source line.
+- Conditional assembly accepts both Amy-style `ifdef Name` / `#else` /
+  `end ifdef` and assembler-style `ifdef Name` / `else` / `endif` inside the
+  ASM block. Symbols supplied with CLI `--define Name` select either form.
+
+Assembler `EQU` expressions may refer forward to labels or other `EQU` symbols.
+`$` means the address of that `EQU` line, not the final program counter. Numeric
+literals such as `$FACE`, `&H20`, and `0FFh` are values, not dependencies on symbols
+named `FACE`, `H20`, or `FF`. If an included legacy source defines the same `EQU`
+name more than once, the last definition wins; avoid relying on that compatibility
+rule in new code.
 
 Use inline ASM only after checking:
 1. Does a direct Amy statement already exist for this?
@@ -3519,6 +3587,16 @@ u8 Buffer[32]
 
 BufferAddress = address of Buffer
 call asm FillBuffer with hl = BufferAddress
+```
+
+An inline conditional accepts `if Condition then call asm Label` without
+register arguments. When a bridge needs a `with` register list, use a block so
+the register ABI remains unambiguous:
+
+```basic
+if Ready then
+  call asm DrawObject with a = Kind, hl = address of Object
+end if
 ```
 
 The assignment form accepts addressable global data, arrays, records, and variables. Its target
@@ -3625,10 +3703,11 @@ ThingData:
 }
 ```
 
-The optimizer treats user ASM as an opaque timing and side-effect barrier. Labels remain callable
-with `call asm DrawThing`; detached data remains addressable by its raw assembler label. Amy keeps
-the programmer's selected Z80 instructions and lengths intact, except that a `jr` whose final
-target is outside the signed-byte range must be legalized to `jp` so the program can assemble.
+The optimizer treats user ASM as an opaque timing and side-effect barrier, including blocks that
+are detached with their data. It preserves the instruction forms you selected, such as `sub 1`,
+`ld a,0`, and `jp nz,Loop`. The sole layout exception is mandatory expansion of an out-of-range
+`jr` to `jp`, without which the final program could not assemble. Labels remain callable with
+`call asm DrawThing`; detached data remains addressable by its raw assembler label.
 
 Use `asm relax {` only when instruction timing is not part of the routine's contract. Its initial
 whitelist permits an in-range `jp` to become `jr` at optimization levels that enable branch
@@ -3652,12 +3731,6 @@ Ready:
 The markers cannot nest and are valid only in `asm relax`. To inspect opportunities without
 changing ordinary opaque blocks, compile with `--report-jr-candidates`; the CLI lists each eligible
 user-ASM `jp`, its one-byte gain, and whether it was applied, protected, or left for the programmer.
-
-Assembler macros use the Amy CV Assembly form `macro Name parameters`, followed by the macro body
-and `endm`. The name-first form `Name macro parameters` is rejected with a source-line diagnostic.
-Inside `asm {}`, conditional assembly accepts either `#ifdef`/`#else`/`#endif` or
-`ifdef`/`else`/`endif`. Bare `else` and `endif` are treated as assembler directives only while
-lexically inside the ASM block, so they cannot consume an Amy-language conditional accidentally.
 
 ---
 

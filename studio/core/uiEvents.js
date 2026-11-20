@@ -5,6 +5,7 @@ import { buildAdamBootDataPack, buildAdamBootDisk, buildAdamExpansionDataPack, b
 import { projectFileBytes } from "./utils/projectFiles.js";
 import { buildMegaCartProject, projectFileContentFingerprint } from "./megaCartProjectBuild.js?v=20261007-incremental-bank1";
 import { buildMegaCartImportTrampolines } from "./megaCartTrampolines.js?v=20261006-bank-imports1";
+import { buildFujiNetAppBankProject } from "./fujiNetAppBankProjectBuild.js";
 import { formatMegaCartDebuggerSymbols } from "./megaCartLinkMap.js?v=20261007-bank-debug-symbols1";
 import { resolveAmyBuildContext } from "./projectTargets.js";
 
@@ -264,7 +265,9 @@ export function bindTopUiEvents(ctx) {
       : target === "megacart"
         ? "Experimental bank-switched cartridge target."
         : target === "fujinet"
-          ? "Experimental 30 KB FujiNet cartridge target. Runtime testing requires the FujiNet MAME device or hardware."
+          ? "Experimental 30 KB FujiNet cartridge target with mailbox testing in ROM Test & Debug."
+        : target === "fujinet-appbank"
+          ? "FujiNet APPBANK project with a resident window and switchable 8 KB pages."
         : target === "sgm"
           ? "Experimental Super Game Module target with AY-3-8910 sound and expanded RAM capabilities."
           : "Creates a regular ColecoVision cartridge project.";
@@ -370,7 +373,6 @@ export function bindStudioRuntimeEvents(ctx) {
     exportProject,
     downloadText,
     transpileSource,
-    transpileAmy,
     STUDIO_SOURCE_LANG,
     analyzeLibraryResolution,
     setLastLibResolution,
@@ -922,6 +924,7 @@ export function bindStudioRuntimeEvents(ctx) {
       };
       const buildManifest = projectBuildManifest(project);
       const isMegaCartBuild = buildManifest?.target?.platform === "colecovision-megacart";
+      const isFujiNetAppBankBuild = buildManifest?.target?.platform === "colecovision-fujinet-appbank";
       let result = null;
       let megaCartBuild = null;
       const compileFixed = async ({ linkMap } = {}) => {
@@ -936,7 +939,7 @@ export function bindStudioRuntimeEvents(ctx) {
         result = await compileGeneratedAsm(
           `${asmForCompile}${trampolines}`,
           `${project.projectName || "main"}.asm`,
-          fixedCompileOptions
+          isFujiNetAppBankBuild ? { ...fixedCompileOptions, amyTarget: "colecovision-cartridge" } : fixedCompileOptions
         );
         if (!result.ok) throw new Error(result.log);
         return {
@@ -978,6 +981,29 @@ export function bindStudioRuntimeEvents(ctx) {
             return { bytes: assembled.binary, symbols: assembled.symbols, sourceDebugMap: assembled.sourceDebugMap };
           }
         });
+      } else if (isFujiNetAppBankBuild) {
+        const window = await compileFixed();
+        megaCartBuild = await buildFujiNetAppBankProject({
+          project,
+          manifest: buildManifest,
+          windowProgram: window.bytes,
+          compileAmyPage: async (source, filename, pageInfo) => {
+            const pageContext = {
+              platform: "colecovision-fujinet-appbank-page",
+              memoryProfile: buildContext.memoryProfile,
+              capabilities: ["os7", "fujinet", "fujinet-appbank", "bank-local"],
+              page: pageInfo.page
+            };
+            const transpiled = transpileAmy(source, { buildContext: pageContext });
+            if (!transpiled.ok) throw new Error(`${filename} failed:\n${transpiled.log}`);
+            return `org $C000\n${transpiled.asmBody}`;
+          },
+          compileAsm: async (source, filename) => {
+            const assembled = await compileGeneratedAsm(source, filename, { optimizerEnabled: false, optimizerConfig: null, projectFiles: project.projectFiles || [] });
+            if (!assembled.ok) throw new Error(`${filename} failed:\n${assembled.log}`);
+            return { bytes: assembled.binary };
+          }
+        });
       } else {
         try {
           await compileFixed();
@@ -992,12 +1018,12 @@ export function bindStudioRuntimeEvents(ctx) {
       }
       let compiledRom = megaCartBuild?.image || result.binary;
       const compiledMemoryMap = result.memoryMap || "";
-      const compiledSymbols = megaCartBuild
+      const compiledSymbols = megaCartBuild?.linkMap
         ? formatMegaCartDebuggerSymbols(result.symbolsText || "", megaCartBuild.linkMap)
         : result.symbolsText || "";
       const compiledListing = result.listing || "";
       let megaCartNote = "";
-      if (megaCartBuild) {
+      if (megaCartBuild?.linkMap) {
         compiledRom = megaCartBuild.image;
         const buildSignature = `megacart-bank-v1:${buildContext.memoryProfile || ""}`;
         project.incrementalBuildState = {
@@ -1013,6 +1039,8 @@ export function bindStudioRuntimeEvents(ctx) {
         const reused = megaCartBuild.incremental?.reusedOutputs || [];
         const cacheNote = reused.length ? ` Reused: ${reused.join(", ")}.` : "";
         megaCartNote = ` MegaCart ready: ${megaCartBuild.layout.sizeKb} KB, ${megaCartBuild.layout.bankCount} banks.${cacheNote}`;
+      } else if (isFujiNetAppBankBuild) {
+        megaCartNote = ` FujiNet APPBANK ready: ${megaCartBuild.layout.imageBytes} bytes, ${megaCartBuild.layout.pageCount} pages.`;
       }
       const nativeEosBuild = buildContext.platform === "adam-native-program";
       const compiledColecoHeaderInfo = nativeEosBuild ? null : inspectColecoBinary(compiledRom);
@@ -1075,6 +1103,8 @@ export function bindStudioRuntimeEvents(ctx) {
         const buildMedia = dataPackTarget ? buildAdamExpansionDataPack : buildAdamExpansionDisk;
         const builtDisk = await buildMedia({
           rom: compiledRom,
+          volume: diskManifest.target?.volume || project.projectName || "WHERE EARTH",
+          bootFileName: diskManifest.target?.bootFileName || "BOOT-WOE",
           packs,
           bootSource: new TextDecoder().decode(projectFileBytes(bootFile)),
           loaderSource: new TextDecoder().decode(projectFileBytes(loaderFile)),

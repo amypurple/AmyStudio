@@ -136,6 +136,21 @@ export class GearcolecoTestCore {
     });
   }
 
+  setFujiNetEnabled(enabled) {
+    this.assertAlive();
+    if (typeof this.module._gcw_set_fujinet_mode !== "function") {
+      if (enabled) throw new Error("This GearColeco core does not include FujiNet test-device support.");
+      return false;
+    }
+    if (this.module._gcw_set_fujinet_mode(enabled ? 1 : 0) !== 1) throw new Error("GearColeco could not configure FujiNet.");
+    return true;
+  }
+
+  getFujiNetEnabled() {
+    this.assertAlive();
+    return typeof this.module._gcw_get_fujinet_mode === "function" && this.module._gcw_get_fujinet_mode() === 1;
+  }
+
   getRegion() {
     this.assertAlive();
     this.region = this.module._gcw_get_region() | 0;
