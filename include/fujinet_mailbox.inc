@@ -41,6 +41,25 @@ FN_TX_BYTE:
     ld a,(hl)
     ret
 
+; A = one-byte parameter value. FujiBus parameters are size-prefixed.
+FN_PARAM8:
+    ld b,a
+    ld a,1
+    call FN_TX_BYTE
+    ld a,b
+    jp FN_TX_BYTE
+
+; HL = one-word parameter value, little endian.
+FN_PARAM16:
+    push hl
+    ld a,2
+    call FN_TX_BYTE
+    pop hl
+    ld a,l
+    call FN_TX_BYTE
+    ld a,h
+    jp FN_TX_BYTE
+
 FN_BEGIN:
     xor a
     ld c,FNR_DATA_RESET

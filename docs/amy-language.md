@@ -76,10 +76,12 @@ include "include/fujinet_mailbox.inc"
 ```
 
 The included low-level routines are non-blocking so NMI-driven sound and input
-can continue while a program polls a transaction. Programs must impose a
-timeout and must never access `$F800` or above from an NMI handler. GearColeco
-does not yet emulate FujiNet; use the FujiNet MAME device with `fujinet-pc` or
-physical hardware for runtime validation.
+can continue while a program polls a transaction. FujiBus parameters are
+size-prefixed: use `FN_PARAM8` or `FN_PARAM16`; reserve `FN_TX_BYTE` for raw
+payload bytes. Programs must impose a timeout and must never access `$F800` or
+above from an NMI handler. GearColeco does not yet emulate FujiNet; use the
+FujiNet MAME device with `fujinet-pc` or physical hardware for runtime
+validation.
 
 ---
 
