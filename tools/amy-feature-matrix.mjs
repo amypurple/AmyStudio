@@ -33,6 +33,7 @@ const tests = [
   { file: "test-user-asm-optimizer-opacity.mjs", area: "inline-asm-optimizer-opacity", evidence: "compile+assemble", suite: "language" },
   { file: "test-user-asm-relax.mjs", area: "inline-asm-opt-in-branch-relaxation", evidence: "compile+assemble", suite: "language" },
   { file: "test-user-asm-jr-final-legalization.mjs", area: "inline-asm-final-jr-legalization", evidence: "compile+assemble", suite: "language" },
+  { file: "test-cli-documentation.mjs", area: "compiler-cli-documentation-parity", evidence: "documentation", suite: "language" },
   { file: "test-asm-comment-capability-inference.mjs", area: "inline-asm-comment-capabilities", evidence: "compile+assemble", suite: "language" },
   { file: "test-inline-asm-cli-diagnostic.mjs", area: "inline-asm-source-diagnostics", evidence: "compile+assemble", suite: "language" },
   { file: "test-tiny-sound-once.mjs", area: "tiny-sound-one-shot", evidence: "rom", suite: "audio" },

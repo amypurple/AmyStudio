@@ -65,6 +65,7 @@ const quickTests = [
   "test-user-asm-optimizer-opacity.mjs",
   "test-user-asm-relax.mjs",
   "test-user-asm-jr-final-legalization.mjs",
+  "test-cli-documentation.mjs",
   "test-asm-comment-capability-inference.mjs",
   "test-inline-asm-cli-diagnostic.mjs",
   "test-megacart-cli-runtime.mjs",
