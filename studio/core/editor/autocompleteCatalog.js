@@ -190,7 +190,7 @@ export const AMY_AUTOCOMPLETE = [
   ["display on", "Advanced: toggle only the display bit and keep NMI state unchanged"],
   ["text screen", "Standard 32x24 ColecoVision text bootstrap with ASCII font, 32 color groups, and cls"],
   ["display off quiet", "Blank the display and immediately silence every active PSG sound area"],
-  ["tile screen", "Graphics II tile bootstrap with duplicated patterns and 8 color bytes per tile"],
+  ["tile screen", "Graphics II tile bootstrap with duplicated patterns and one shared 2 KB color table (R3=$9F)"],
   ["bitmap screen", "Set up the drawable bitmap screen used by pset, line, and circle; default color is $F0"],
   ["bitmap screen color $F0", "Set up the drawable bitmap screen with an explicit full color-table byte"],
   ["picture screen", "Set up the raw Graphics II picture/table screen for uploading pattern and color assets"],

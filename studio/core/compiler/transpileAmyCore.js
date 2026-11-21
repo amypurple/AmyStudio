@@ -2177,25 +2177,40 @@ export function transpileAmyCore(sourceText, deps) {
     return RESERVED_AMY_IDENTIFIERS.has(lowerName(name));
   }
 
+  function findInsensitiveName(collection, name) {
+    const probe = lowerName(name);
+    const names = collection instanceof Map ? collection.keys() : collection.values();
+    for (const candidate of names) {
+      if (lowerName(candidate) === probe) return candidate;
+    }
+    return null;
+  }
+
   function describeGlobalNameCollision(name) {
     if (isReservedAmyIdentifier(name)) return "reserved Amy keyword or builtin";
-    if (mapHasInsensitive(recordTypes, name)) return "record type";
-    if (mapHasInsensitive(tileTypes, name)) return "tile type";
-    if (mapHasInsensitive(hitboxes, name)) return "hitbox";
-    if (mapHasInsensitive(amyTimers, name)) return "timer";
-    if (setHasInsensitive(symbols, name)) return "constant";
-    if (mapHasInsensitive(runtimeVars, name)) return "variable";
-    if (mapHasInsensitive(dataBlocks, name) || mapHasInsensitive(dataLengths, name)) return "data block";
-    if (mapHasInsensitive(assetAsmSymbols, name)) return "asset";
-    if (mapHasInsensitive(procAsmSymbols, name) || mapHasInsensitive(procSignatures, name) || mapHasInsensitive(functionReturnTypes, name)) return "subroutine/function";
-    if (mapHasInsensitive(labelAsmSymbols, name)) return "label";
-    return null;
+    const collision = (kind, collection) => {
+      const original = findInsensitiveName(collection, name);
+      return original === null ? null : `${kind} '${original}'`;
+    };
+    return collision("record type", recordTypes)
+      || collision("tile type", tileTypes)
+      || collision("hitbox", hitboxes)
+      || collision("timer", amyTimers)
+      || collision("constant", symbols)
+      || collision("variable", runtimeVars)
+      || collision("data block", dataBlocks)
+      || collision("data block", dataLengths)
+      || collision("asset", assetAsmSymbols)
+      || collision("subroutine/function", procAsmSymbols)
+      || collision("subroutine/function", procSignatures)
+      || collision("subroutine/function", functionReturnTypes)
+      || collision("label", labelAsmSymbols);
   }
 
   function validateGlobalUserName(name, role, rawLine) {
     if (!isValidSymbolName(name)) return `Invalid ${role} name: ${rawLine}`;
     const collision = describeGlobalNameCollision(name);
-    if (collision) return `${role} name '${name}' collides with existing ${collision}: ${rawLine}`;
+    if (collision) return `${role} name '${name}' collides with existing ${collision}; Amy names are case-insensitive: ${rawLine}`;
     return null;
   }
 

@@ -2218,7 +2218,10 @@ pattern thirds.
 Use `tile screen` when you want Graphics II pattern thirds with tile-style
 8-byte-per-character colors and ordinary text/tile setup. PATTERN data is
 duplicated across the three screen thirds; COLOR is initialized for the first
-256-tile third ($0800 bytes). Use `mode 2 screen` when the program must control
+256-tile third ($0800 bytes). Its compact text-oriented setup uses VDP R3=`$9F`,
+so all three screen thirds share that same 2 KB COLOR table. Writes to
+`vram.color + 2048` and above are not displayed in this mode. Use
+`mode 2 screen` (R3=`$FF`) when the program must control
 which PATTERN and COLOR thirds are duplicated or left independent.
 
 Explicit Mode 2 table helpers:

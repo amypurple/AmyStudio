@@ -16471,5 +16471,157 @@ export const exampleManifest = [
     ],
     "originKind": "original",
     "originLabel": "Original"
+  },
+  {
+    "id": "chien-de-berger",
+    "label": "Chien de Berger (1984)",
+    "detail": "Jean-Francois Sehan's Oric game from L'Oric a l'affiche, reimagined for ColecoVision with Amy Studio.",
+    "projectName": "Chien de Berger",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "oric",
+      "book",
+      "reimagined-adaptation",
+      "game"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "moon-landing",
+    "label": "Moon Landing (1983)",
+    "detail": "Czes Kosniowski's Oric game from Games to Play on Your Oric-1, reimagined for ColecoVision with Amy Studio.",
+    "projectName": "Moon Landing",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "oric",
+      "book",
+      "reimagined-adaptation",
+      "game"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "bird-and-caterpillar",
+    "label": "Bird and Caterpillar (1983)",
+    "detail": "Czes Kosniowski's Oric game from Games to Play on Your Oric-1, reimagined for ColecoVision with Amy Studio.",
+    "projectName": "Bird and Caterpillar",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "oric",
+      "book",
+      "reimagined-adaptation",
+      "game"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "canadair",
+    "label": "Canadair (1984)",
+    "detail": "Jean-Francois Sehan's Oric game from L'Oric a l'affiche, reimagined for ColecoVision with Amy Studio.",
+    "projectName": "Canadair",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "oric",
+      "book",
+      "reimagined-adaptation",
+      "game"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "grenouille",
+    "label": "Grenouille (1984)",
+    "detail": "Jean-Francois Sehan's Oric game from L'Oric a l'affiche, reimagined for ColecoVision with Amy Studio.",
+    "projectName": "Grenouille",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "oric",
+      "book",
+      "reimagined-adaptation",
+      "game"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "incendie",
+    "label": "Incendie (1984)",
+    "detail": "Jean-Francois Sehan's Oric game from L'Oric a l'affiche, reimagined for ColecoVision with Amy Studio.",
+    "projectName": "Incendie",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "oric",
+      "book",
+      "reimagined-adaptation",
+      "game"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "piranhas",
+    "label": "Piranhas (1984)",
+    "detail": "Jean-Francois Sehan's Oric game from L'Oric a l'affiche, reimagined for ColecoVision with Amy Studio.",
+    "projectName": "Piranhas",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "oric",
+      "book",
+      "reimagined-adaptation",
+      "game"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
+  },
+  {
+    "id": "dont-cry-wolf",
+    "label": "Don't Cry Wolf (1983)",
+    "detail": "Czes Kosniowski's Oric game from Games to Play on Your Oric-1, reimagined for ColecoVision with Amy Studio.",
+    "projectName": "Don't Cry Wolf",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "oric",
+      "book",
+      "reimagined-adaptation",
+      "game"
+    ],
+    "originKind": "reimagined-adaptation",
+    "originLabel": "Reimagined adaptation"
   }
 ];
