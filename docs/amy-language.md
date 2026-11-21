@@ -2055,6 +2055,15 @@ VDP side-effect contract:
 
 Use `display off` / `display on` when you only want to hide VRAM changes from
 the player. Use `screen on` when you also want the normal NMI-enabled frame loop.
+These commands preserve every unrelated R1 bit: `display` changes only bit 6,
+`nmi` changes only bit 5, and `screen` changes only bits 5 and 6. On OS7 the
+authoritative shadow is `$73C4`; the equivalent target-owned shadow is used on
+other firmware targets. `wait` does not rewrite R1.
+
+Use `display off quiet` for a scene switch that must also stop all PSG output.
+It performs the same display-only blanking as `display off`, but first calls
+`AMY_MUTE_ALL`. Ordinary `display off` deliberately leaves music and effects
+running.
 
 ### Graphics modes
 
@@ -3567,6 +3576,11 @@ call asm AMY_PLAY_SOUND with b = 6
 call asm AMY_COPY_BYTES_TO_VRAM with hl = address of PictureData, de = vram.pattern, bc = 768
 call asm AMY_PUT_CHAR_AT with a = Tile, d = Y, e = X
 ```
+
+`AMY_PLAY_SOUND` expects the one-based sound-table slot in `B`. Install the
+table first with the ordinary Amy `set sound table ...` statement; the wrapper
+preserves IX/IY around the OS7 sound call. From a fully handwritten ASM routine,
+the equivalent sequence is `ld b,slot` followed by `call AMY_PLAY_SOUND`.
 
 `call asm` has an explicit register ABI rather than a fixed parameter order. A scalar expression
 passes its value. A ROM data block, array, or asset name passes its address when a word register

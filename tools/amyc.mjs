@@ -689,7 +689,22 @@ async function main() {
       const failedInstruction = err.match(/\bLine\s+\d+:\s*(.+?)\s+-\s+[^|]+/i)?.[1]?.trim();
       const normalizeAsm = (line) => String(line || "").replace(/;.*/, "").replace(/\s+/g, "").toLowerCase();
       const failedNormalized = normalizeAsm(failedInstruction);
-      let matchingLines = failedNormalized
+      const duplicateLabel = err.match(/Duplicate label '([^']+)'/i)?.[1];
+      const escapedDuplicateLabel = duplicateLabel?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const duplicateLines = escapedDuplicateLabel
+        ? asmLines.map((line, index) => new RegExp(`^\\s*${escapedDuplicateLabel}\\s*:`, "i").test(String(line || "").replace(/;.*/, "")) ? index : -1).filter(index => index >= 0)
+        : [];
+      const sourceMarkerAfter = labelIndex => {
+        for (let index = labelIndex + 1; index < Math.min(asmLines.length, labelIndex + 8); index += 1) {
+          if (/^\s*[A-Za-z_.$][A-Za-z0-9_.$]*\s*:\s*$/.test(asmLines[index])) break;
+          if (/^\s*;\s*@amy-source-line\s+\d+\s*$/i.test(asmLines[index])) return index;
+        }
+        return -1;
+      };
+      const duplicateMarkerLines = duplicateLines.map(sourceMarkerAfter);
+      let matchingLines = duplicateLines.length >= 2
+        ? [duplicateMarkerLines.at(-1) >= 0 ? duplicateMarkerLines.at(-1) : duplicateLines.at(-1)]
+        : failedNormalized
         ? asmLines.map((line, index) => normalizeAsm(line) === failedNormalized ? index : -1).filter((index) => index >= 0)
         : [];
       if (matchingLines.length !== 1) {
@@ -710,10 +725,17 @@ async function main() {
         if (!marker) continue;
         const amyLine = Number.parseInt(marker[1], 10);
         const sourceLine = sourceText.split(/\r?\n/)[amyLine - 1]?.trim() || "";
+        let firstDefinition = "";
+        if (duplicateLines.length >= 2) {
+          const firstMarker = duplicateMarkerLines[0] >= 0
+            ? asmLines[duplicateMarkerLines[0]].match(/^\s*;\s*@amy-source-line\s+(\d+)\s*$/i)
+            : null;
+          if (firstMarker) firstDefinition = ` First defined at Amy line ${Number.parseInt(firstMarker[1], 10)}.`;
+        }
         const symbolHint = /(?:unknown|undefined)\s+(?:name|symbol)|invalid expression/i.test(err)
           ? " Check the symbol spelling; use amy(Name) when referring to an Amy variable or constant."
           : "";
-        err = `Amy line ${amyLine} (inline ASM): ${err}.${symbolHint}${sourceLine ? ` Source: ${sourceLine}` : ""}`;
+        err = `Amy line ${amyLine} (inline ASM): ${err}.${firstDefinition}${symbolHint}${sourceLine ? ` Source: ${sourceLine}` : ""}`;
         break;
       }
     }

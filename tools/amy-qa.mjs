@@ -68,6 +68,8 @@ const quickTests = [
   "test-user-asm-jr-final-legalization.mjs",
   "test-asm-comment-capability-inference.mjs",
   "test-inline-asm-cli-diagnostic.mjs",
+  "test-inline-asm-duplicate-label-diagnostic.mjs",
+  "test-display-off-quiet-codegen.mjs",
   "test-megacart-cli-runtime.mjs",
   "test-megacart-cli-project-runtime.mjs",
   "test-megacart-cli-diagnostic.mjs",

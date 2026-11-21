@@ -56,11 +56,15 @@ export function handleDisplayGraphicsSpriteStatement({
     return { ok: true, handled: true, lines: ["    call AMY_SCREEN_OFF_NO_NMI"] };
   }
 
-  if (/^display\s+off$/i.test(line)) {
+  if (/^display\s+off(?:\s+quiet)?$/i.test(line)) {
+    const quiet = /\s+quiet$/i.test(line);
     return {
       ok: true,
       handled: true,
-      lines: ["    ld a,(VDP_R1_SHADOW)", "    and $BF", "    ld (VDP_R1_SHADOW),a", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"]
+      lines: [
+        ...(quiet ? ["    call AMY_MUTE_ALL"] : []),
+        "    ld a,(VDP_R1_SHADOW)", "    and $BF", "    ld (VDP_R1_SHADOW),a", "    ld c,a", "    ld b,1", "    call WRITE_REGISTER"
+      ]
     };
   }
 

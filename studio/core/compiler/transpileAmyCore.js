@@ -2023,7 +2023,7 @@ export function transpileAmyCore(sourceText, deps) {
     if (/^screen\s+on$/i.test(line)) {
       return { kind: "modifier", label: "screen on", category: "screen_nmi" };
     }
-    if (/^display\s+off$/i.test(line)) {
+    if (/^display\s+off(?:\s+quiet)?$/i.test(line)) {
       return { kind: "modifier", label: "display off", category: "display" };
     }
     if (/^display\s+on$/i.test(line)) {

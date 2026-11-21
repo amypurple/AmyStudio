@@ -189,6 +189,7 @@ export const AMY_AUTOCOMPLETE = [
   ["display off", "Advanced: toggle only the display bit and keep NMI state unchanged"],
   ["display on", "Advanced: toggle only the display bit and keep NMI state unchanged"],
   ["text screen", "Standard 32x24 ColecoVision text bootstrap with ASCII font, 32 color groups, and cls"],
+  ["display off quiet", "Blank the display and immediately silence every active PSG sound area"],
   ["tile screen", "Graphics II tile bootstrap with duplicated patterns and 8 color bytes per tile"],
   ["bitmap screen", "Set up the drawable bitmap screen used by pset, line, and circle; default color is $F0"],
   ["bitmap screen color $F0", "Set up the drawable bitmap screen with an explicit full color-table byte"],

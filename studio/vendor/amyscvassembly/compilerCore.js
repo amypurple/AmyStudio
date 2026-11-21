@@ -1797,7 +1797,11 @@ function isIxIyDisplacementOperandText(value) {
 
                             const isConstantRedefinition = token instanceof Directive && ['EQU', 'EVAL', 'CONSTANT'].includes(token.name);
                             if (this.symbolTable[processedLabel] !== undefined && !isConstantRedefinition) {
-                                throw new Error(`Duplicate label '${processedLabel}' at line ${this.currentLine}`);
+                                const firstLine = this.symbolInfo[processedLabel]?.lineNumber;
+                                const firstDefinition = Number.isInteger(firstLine) && firstLine > 0
+                                    ? `; first defined at line ${firstLine}`
+                                    : '';
+                                throw new Error(`Duplicate label '${processedLabel}' at line ${this.currentLine}${firstDefinition}`);
                             }
                             if (this.symbolTable[processedLabel] !== undefined) {
                                log(`Warning: Redefining label '${processedLabel}' at line ${this.currentLine}`, 'warn');

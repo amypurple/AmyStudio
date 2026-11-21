@@ -1,5 +1,5 @@
 export const AMY_FIXED_PHRASES = Object.freeze([
-  ["text screen","vdp"],["tile screen","vdp"],["bitmap screen","vdp"],["multicolor screen","vdp"],["picture screen","vdp"],
+  ["text screen","vdp"],["tile screen","vdp"],["bitmap screen","vdp"],["multicolor screen","vdp"],["picture screen","vdp"],["display off quiet","vdp"],
   ["screen on","vdp"],["screen off","vdp"],["display on","vdp"],["display off","vdp"],["nmi on","vdp"],["nmi off","vdp"],
   ["swap screens","vdp"],["sprites simple","vdp"],["sprites double","vdp"],["sprites magnified","vdp"],
   ["sprites flicker on","vdp"],["sprites flicker off","vdp"],["sprites stable","vdp"],
