@@ -1945,6 +1945,35 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   deferred until castling, en-passant, repetition, clocks, and cached engine
   state are mapped.
 
+## 2026-11-20: Quirkafleeg has a validated start-position UCI transport
+
+- `tools/quirkafleeg-uci.mjs` drives BETA5 through a persistent VICE text-monitor
+  session and the program's own move-validation/search paths. The live board is
+  the 8x16 mailbox at `$0880-$08FF`; `$7F40-$7F7F` is only the initial template.
+- Both original modes are exposed: 15 seconds and 60 seconds per move. The
+  adapter plays either color, validates each returned mailbox position against
+  the legal-move oracle, and reports VICE's emulated C64 stopwatch cycles.
+- The labels are estimates backed by internal search budgets, not hard time
+  cutoffs. `1.e4 Nf6` can exceed the nominal duration by a wide margin, so Elo
+  runs use a one-hour per-search safety ceiling and one VICE instance at a time.
+- The transport intentionally accepts `startpos` replay only. The tournament
+  runner suppresses forced opening prefixes whenever QUIRKAFLEEG participates.
+- Evidence: `tools/test-quirkafleeg-uci.mjs` checks 15S as Black, 60S as White,
+  and a second incremental 60S reply without assuming a deterministic book move.
+
+## 2026-11-20: Quirkafleeg Elo uses bounded native tournament profiles
+
+- The original adapter changed menu byte `$EF` but left both native cutoff fields
+  `$8900-$8903` and `$8904-$8907` at zero. Positions such as `1.e4 Nf6` therefore
+  entered an effectively unbounded deeper iteration and eventually returned `0000`.
+- VICE disassembly confirmed the original `$6B34` calculation and both cutoff paths.
+  Reproducible tournament profiles now preserve native limits of 100,000 (15S label)
+  and 500,000 (60S label) timer counts across monitor resumes. They are explicitly
+  bounded evaluation profiles, not claims about the historical wall-clock labels.
+- Warp-mode UI return is brief: 100 ms polling can miss it. A 25 ms interval plus a
+  30-second monitor-break allowance passes the exact `1.e4 Nf6` regression and a
+  two-game UCI tournament smoke test. SIGINT/SIGTERM now close the VICE child.
+
 ## 2026-11-19: Declared suffix-H symbols take precedence over hex literals
 
 - An identifier such as `CaH` is ambiguous with Intel-style hexadecimal `$CA`.
@@ -2020,4 +2049,94 @@ Add an entry only when it prevents repeated investigation or changes the recomme
 - Preserved GearColeco save-state size. Pending browser-serviced requests are
   cleared on raw core-state restore; deterministic scenario replay should
   restart from boot rather than rewind across a network transaction.
+
+## 2026-11-20: SUBLEVEL 9 feedback triage
+
+- Duplicate labels in inline ASM are source diagnostics, not downstream
+  instruction errors. The CLI reports the duplicate label's Amy line and the
+  first definition's Amy line; both are covered by a focused regression test.
+- `display off quiet` is an explicit opt-in command. Historical `display off`
+  remains unchanged; the quiet form calls the existing PSG mute routine before
+  blanking the display.
+- Keep `text 40 screen` reserved until every coordinate-based text operation
+  uses 40-column address math. Enabling only the VDP mode would silently leave
+  `print`, `put`, `get`, `fill`, centering, and counted reads on `y*32+x`.
+- SUBLEVEL 9's fixed-bank free-space discrepancy is in its custom `build.py`:
+  it subtracts the last symbol's start address rather than using a linked
+  section high-water mark, so trailing unlabeled sound data is omitted.
+- The VDP checker report must identify its access policy, minimum spacing, mode
+  slot tables, and CPU-port timing rather than presenting violations without
+  the timing model that produced them.
+
+## 2026-11-20: Parenthesized LD expressions remain indirect
+
+- In Z80 `LD`, parentheses covering the complete operand request an indirect
+  memory form even when the address contains `*`, `/`, shifts, or bitwise
+  operators. `ld hl,(vX+2*KK)` must therefore emit opcode `$2A`, not immediate
+  opcode `$21`.
+- Parenthesized directive expressions remain grouping expressions; the focused
+  regression verifies `dw (2*3)` still emits 6 alongside word loads, stores,
+  and byte loads through calculated addresses.
+- Evidence: `tools/test-assembler-parenthesized-ld-expression.mjs` and
+  `amy-qa quick`.
+
+## 2026-11-20: Summer Signal music v2 is a long-score library candidate
+
+- The supplied Amy test ROM rebuilds byte-identically with the current compiler:
+  6,538 occupied bytes for the driver, seven tunes, tables, effects, and harness.
+- The driver is about 1,270 ROM bytes and needs 80 live RAM bytes. It is not
+  inherently smaller than calling OS7's ROM-resident sound manager. Its value is
+  the compact motif bytecode for long structured scores plus envelopes, vibrato,
+  arpeggios, periodic-noise bass, drums, and SFX channel arbitration.
+- Treat it as an opt-in project library after isolating RAM allocation and the
+  VBlank hook. Do not replace OS7 or Tiny Sound globally. Compare complete
+  driver-plus-data size on the same score before selecting it.
+
+## 2026-11-21: Amy Music Driver v1 validates the reusable-library direction
+
+- Claude's package turns the Summer Signal engine into a relocatable 128-byte
+  library with four logical voices, prioritized SFX, master attenuation,
+  quiet/resume, tracker and phrase encoders, and a field-exact reference model.
+- For the same 121 seconds of supplied music, the recommended precomputed
+  profile costs 3,391 ROM bytes and averages 2,210 T per field; its OS7 export
+  costs 15,375 ROM bytes and averages 5,114 T. This proves the approach for
+  long structured scores, not for short jingles where OS7 remains ROM-resident.
+- Prefer the precomputed profile. The calculated profile saves only 36 bytes
+  overall while adding code and roughly 3 percent CPU; retain it as an opt-in
+  ROM-tight variant rather than the default.
+- Integration still needs a native Amy update hook and build support. The
+  package's NMI demonstration patches the linked ROM, and a custom driver must
+  use its own quiet/resume API rather than `display off quiet`.
+- The package's parenthesized `LD` finding was against r12.11 and is already
+  covered by the r12.12 assembler regression.
+
+## 2026-11-21: Oric book ports confirm Mode 2 documentation and current compiler stability
+
+- Eight standalone adaptations from Oric books were imported with explicit
+  `oric`, `book`, and `reimagined-adaptation` provenance: Chien de Berger,
+  Moon Landing, Bird and Caterpillar, Canadair, Grenouille v2, Incendie,
+  Piranhas, and Don't Cry Wolf v3.
+- All eight compile in balanced mode with the current compiler. Grenouille v2
+  occupies 31,903 bytes, Piranhas 16,214, and Don't Cry Wolf v3 16,935.
+- Claude's parenthesized `LD` report targeted r12.11 and is already fixed by
+  r12.12. The remaining concrete documentation issue was real: `tile screen`
+  uses R3=`$9F`, so its three thirds share one 2 KB COLOR table. The language
+  guide and autocomplete now say that writes above `vram.color + 2047` are not
+  displayed; independent thirds require `mode 2 screen` (R3=`$FF`).
+- Case-insensitive global collisions now identify both spellings and state the
+  language rule. Evidence: `tools/test-case-insensitive-collision-diagnostics.mjs`,
+  `tools/test-mode2-screen-register-runtime.mjs`, direct ROM builds, and
+  `node tools/amy-qa.mjs quick`.
+
+## 2026-11-21: Chessmaster 2000 has a viable direct-memory UCI path
+
+- The protected C64 loader can be run headlessly in VICE, after which complete
+  RAM and rendered-display snapshots are available through the binary monitor.
+- The initial board is a contiguous 64-byte array at `$7A8C`. Piece bytes use
+  color in the high nibble (`$1x` white, `$2x` black) and type in the low nibble
+  (`1` king, `2` knight, `3` rook, `4` bishop, `5` queen, `0` pawn).
+- This removes image recognition from the bridge. Remaining work is to map
+  side-to-move, castling/en-passant state, the search entry/exit, and the
+  selected move. Keep loader/menu automation separate from the engine adapter
+  so later snapshots can start directly at the engine-ready state.
 

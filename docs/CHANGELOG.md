@@ -1,3 +1,18 @@
+## 2026-11-21 - Calculated indirect LD addresses and Oric adaptations
+
+- Fixed a silent assembler defect in calculated parenthesized `LD` operands.
+  Forms such as `ld hl,(vX+2*KK)` now retain indirect-memory semantics and emit
+  `$2A`, rather than silently becoming an immediate `$21` load. Byte stores
+  through calculated parenthesized addresses are fixed as well. Projects built
+  with r12.11 or older that use this pattern should be rebuilt.
+- Improved case-insensitive name-collision diagnostics by naming both source
+  spellings and stating the language rule explicitly.
+- Documented that `tile screen` uses R3=`$9F` and one shared 2 KB COLOR table;
+  independent color thirds require `mode 2 screen` (R3=`$FF`).
+- Added eight attributed Oric book adaptations, including **Piranhas**,
+  **Don't Cry Wolf v3** and **Grenouille v2**.
+- Updated the VS Code extension to **0.1.28** with the same validated compiler.
+
 ## 2026-11-08 - Bounded BCD word adjustment and divided array indexes
 
 - `BCD += u16` and `BCD -= u16` now use a bounded five-digit decimal

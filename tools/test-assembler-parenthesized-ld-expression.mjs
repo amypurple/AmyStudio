@@ -27,4 +27,23 @@ KK equ 3
   0x06, 0x00,
 ]);
 
+// Exact silent/error reproductions supplied with AMY-MUSIC-DRIVER-v1.
+assert.deepEqual(await assemble(`
+vX equ $7100
+KK equ 15
+Main:
+  ld hl,(vX+2*KK)
+  ret
+`), [0x2a, 0x1e, 0x71, 0xc9]);
+
+assert.deepEqual(await assemble(`
+vX equ $7100
+KK equ 15
+Main:
+  ld (vX+2*KK+1),a
+  ld hl,1
+  ld (vX+4),hl
+  ret
+`), [0x32, 0x1f, 0x71, 0x21, 0x01, 0x00, 0x22, 0x04, 0x71, 0xc9]);
+
 console.log("Assembler parenthesized LD expression: PASS");

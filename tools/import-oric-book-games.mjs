@@ -23,6 +23,7 @@ const projects = [
     zip: "BIRDCAT-cv.zip", member: "04-bird-and-caterpillar/build/birdcat.alexis",
     id: "bird-and-caterpillar", title: "Bird and Caterpillar", author: "Czes Kosniowski",
     publication: "Games to Play on Your Oric-1", year: 1983,
+    replacements: [["game by Chris\n' (Czes) Kosniowski", "game by Czes\n' Kosniowski"]],
   },
   {
     zip: "CANADAIR-cv.zip", member: "sehan-canadair/canadair.alexis",
@@ -30,7 +31,7 @@ const projects = [
     publication: "L'Oric a l'affiche", year: 1984,
   },
   {
-    zip: "GRENOUILLE-cv.zip", member: "sehan-grenouille/grenouille.alexis",
+    zip: "GRENOUILLE-cv-v2.zip", member: "sehan-grenouille/grenouille.alexis",
     id: "grenouille", title: "Grenouille", author: "Jean-Francois Sehan",
     publication: "L'Oric a l'affiche", year: 1984,
   },
@@ -53,7 +54,8 @@ const projects = [
 
 const index = JSON.parse(readFileSync(indexPath, "utf8"));
 for (const project of projects) {
-  const source = execFileSync("tar", ["-xOf", join(downloads, project.zip), project.member]);
+  let source = execFileSync("tar", ["-xOf", join(downloads, project.zip), project.member]).toString("utf8");
+  for (const [before, after] of project.replacements || []) source = source.replace(before, after);
   writeFileSync(join(examples, `${project.id}.alexis`), source);
   let entry = index.find(candidate => candidate.id === project.id);
   const metadata = {
