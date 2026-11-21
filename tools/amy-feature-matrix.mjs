@@ -31,6 +31,7 @@ const tests = [
   { file: "test-data-byte-u16-index-runtime.mjs", area: "rom-byte-table-u16-index", evidence: "rom", suite: "language" },
   { file: "test-inline-asm-symbol-codegen.mjs", area: "inline-asm-symbol-boundaries", evidence: "compile+assemble", suite: "language" },
   { file: "test-assembler-suffix-h-symbols.mjs", area: "suffix-h-symbol-precedence", evidence: "assemble", suite: "language" },
+  { file: "test-assembler-parenthesized-ld-expression.mjs", area: "parenthesized-ld-address-expressions", evidence: "assemble", suite: "language" },
   { file: "test-user-asm-optimizer-opacity.mjs", area: "inline-asm-optimizer-opacity", evidence: "compile+assemble", suite: "language" },
   { file: "test-user-asm-relax.mjs", area: "inline-asm-opt-in-branch-relaxation", evidence: "compile+assemble", suite: "language" },
   { file: "test-user-asm-jr-final-legalization.mjs", area: "inline-asm-final-jr-legalization", evidence: "compile+assemble", suite: "language" },

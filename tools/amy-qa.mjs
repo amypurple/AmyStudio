@@ -48,6 +48,7 @@ const quickTests = [
   "test-nmi-enable-preserves-pending-vblank.mjs",
   "test-assembler-backward-org.mjs",
   "test-assembler-suffix-h-symbols.mjs",
+  "test-assembler-parenthesized-ld-expression.mjs",
   "test-vdp-guard-release-race.mjs",
   "test-sprite-update-nmi-guard.mjs",
   "test-expression-fail-closed.mjs",

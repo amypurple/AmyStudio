@@ -140,7 +140,7 @@ export class Lexer {
         };
     }
 
-    parse_operands(operands_str) {
+    parse_operands(operands_str, mnemonic = '') {
         const operands = [];
         if (!operands_str) return operands;
 
@@ -279,7 +279,8 @@ export class Lexer {
                 // IMPORTANT: Check this BEFORE parseNumber, because parseNumber might parse partial expression
                 const hasExpressionOps = /[\&\|\^\*\/\%\<\>]|<<|>>|==|!=|>=|<=/.test(innerContent);
 
-                if (hasExpressionOps) {
+                const memoryExpressionIsRequired = String(mnemonic).toUpperCase() === 'LD';
+                if (hasExpressionOps && !memoryExpressionIsRequired) {
                     // This is a parenthesized expression like (str_buffer & 0xff) or ($8000 >= $8000), not memory access
                     // Strip parentheses and treat as symbol expression
                     operands.push(new Operand('symbol', innerContent));
@@ -394,7 +395,7 @@ export class Lexer {
                 finalOperandsStr = operandParts.join(' ');
             }
 
-            const operands = this.parse_operands(finalOperandsStr);
+            const operands = this.parse_operands(finalOperandsStr, mnemonic_upper);
 
             if (this.directives.includes(mnemonic_upper)) {
                 this.tokens.push(new Directive(label, mnemonic_upper, operands, lineNum + 1, line));
