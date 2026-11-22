@@ -68,8 +68,12 @@ smallest runtime-valid result per sample rather than one arbitrary global node b
 were smaller but changed VRAM, framebuffer, state, animation, or ABI behavior were rejected. The
 PVColLib and NewColeco controller fixtures set transparent glyph backgrounds (`$F0`) so the same
 changing VDP backdrop remains visible; this presentation-only source normalization changes neither
-controller logic nor occupied size. ugBASIC's `DEFINE BIOS ALLOWED` remains separately documented
-but unranked until the same current compiler can build and pass both variants locally.
+controller logic nor occupied size. Official ugBASIC 1.18.2 and `DEFINE BIOS ALLOWED` were rebuilt
+locally from the same six sources. The portable build occupies 22,997 bytes and the BIOS-assisted
+build 22,000 bytes; the latter also fails the metasprite timing and coherent tile-frame oracles.
+Neither replaces the validated 19,610-byte ranked row. The upstream 18,966-byte announcement is
+retained as a non-ranked result because its source formulations and runtime proofs were not supplied
+and do not match this behavior-equivalent corpus.
 
 ugBASIC source settings were re-audited with current `main` commit `2db87ebd`. All six programs use
 `DEFINE DEFAULT TYPE BYTE`; text fixtures use `PRINT RAW`; Controller tests its byte-valued keypad
