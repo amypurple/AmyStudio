@@ -69,11 +69,16 @@ were smaller but changed VRAM, framebuffer, state, animation, or ABI behavior we
 PVColLib and NewColeco controller fixtures set transparent glyph backgrounds (`$F0`) so the same
 changing VDP backdrop remains visible; this presentation-only source normalization changes neither
 controller logic nor occupied size. Official ugBASIC 1.18.2 and `DEFINE BIOS ALLOWED` were rebuilt
-locally from the same six sources. The portable build occupies 22,997 bytes and the BIOS-assisted
-build 22,000 bytes; the latter also fails the metasprite timing and coherent tile-frame oracles.
-Neither replaces the validated 19,610-byte ranked row. The upstream 18,966-byte announcement is
-retained as a non-ranked result because its source formulations and runtime proofs were not supplied
-and do not match this behavior-equivalent corpus.
+locally from the same six sources. The portable Windows build occupies 22,997 bytes. After fixing
+the BIOS VDP wrapper and joystick-direction backend, the BIOS-assisted Windows build occupies
+22,014 bytes; its 4,402-byte metasprite passes animation, movement, bounds, color, priority, and
+coherent-layer checks. The earlier ship-frame failure was a fixed-time sample of a non-atomic
+six-ship redraw that also occurs in portable mode, not BIOS VRAM corruption. A Linux-hosted compiler
+built from the same source emits a passing 2,343-byte metasprite and a 16,311-byte total, revealing
+an unresolved host-dependent generation difference. Neither candidate replaces the validated
+19,610-byte ranked row until all six exact-source runtime proofs and that discrepancy are resolved.
+The upstream 18,966-byte announcement remains non-ranked because its exact sources and runtime
+evidence still do not match this behavior-equivalent corpus.
 
 ugBASIC source settings were re-audited with current `main` commit `2db87ebd`. All six programs use
 `DEFINE DEFAULT TYPE BYTE`; text fixtures use `PRINT RAW`; Controller tests its byte-valued keypad
