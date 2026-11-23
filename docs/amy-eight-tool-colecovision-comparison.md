@@ -53,7 +53,7 @@ the bitmap, controller, metasprite, and deterministic state-update oracles.
 | Amy Studio | Experimental | All six runtime oracles pass; current sizes include VDP-safe NMI deferral |
 | CVBasic `main` `e84bf978` (2026-11-05) | Normal compiler; TMSColor `-z -p2` for Bitmap | All six rebuilt and runtime-validated; Pletter is used for its bitmap |
 | z88dk nightly `27053-e39d151a79-20261115` | zsdcc size profile; direct `cputs`; classic backend + ZX0 for Bitmap | All six rebuilt; five sizes are stable and State Update saves 5 bytes while retaining checksum 1478 |
-| ugBASIC `main` `2db87ebd` (2026-11-01) | Default maximum of 16 peephole passes; `DEFINE DEFAULT TYPE BYTE`; `PRINT RAW`; MSC1 bitmap compression | Latest source reduces all six samples; bitmap, controller, sprite, state and tile-animation oracles pass |
+| ugBASIC validated per-sample builds | Smallest retained runtime-valid result per sample; `DEFINE BIOS ALLOWED` where beneficial; `PRINT RAW`; MSC1 bitmap compression | Equivalent BASIC formulations and compiler revisions may differ by sample; every ranked ROM passes its dedicated oracle |
 | devkitSMS `561bc2cb` (2026-11-07) / SDCC 4.6 | `--opt-code-size`; best validated per-sample node budget from 100,000 or 500,000 | All six rebuilt with the corrected SGlib sprite-Y behavior; the metasprite source adds one to Y to preserve the shared visual contract |
 | PVColLib 1.6.0 / bundled SDCC | `--opt-code-size`; best validated per-sample node budget from 5,000 through 500,000 | Official ABI retained; linked only referenced library modules |
 | NewColeco / SDCC 2.9.0 | `--std-c99`; original prebuilt libraries plus historical DAN2 | Historical stack ABI required; the exact DAN2 bitmap is 626 bytes smaller than its GETPUT MDKRLE baseline |
@@ -75,8 +75,8 @@ the BIOS VDP wrapper and joystick-direction backend, the BIOS-assisted Windows b
 coherent-layer checks. The earlier ship-frame failure was a fixed-time sample of a non-atomic
 six-ship redraw that also occurs in portable mode, not BIOS VRAM corruption. A Linux-hosted compiler
 built from the same source emits a passing 2,343-byte metasprite and a 16,311-byte total, revealing
-an unresolved host-dependent generation difference. Neither candidate replaces the validated
-19,610-byte ranked row until all six exact-source runtime proofs and that discrepancy are resolved.
+an unresolved host-dependent generation difference. Only retained, reproducible ROMs with dedicated
+runtime proof enter the per-sample ranking.
 The author's subsequent `04ce31b21` package supplies six BASIC sources, listings, and ROMs totaling
 18,426 occupied bytes. Warrior is pixel-exact and State Update returns checksum 1478, but the package
 is not behavior-equivalent: Controller tests FIRE bit 16 instead of ColecoVision bit 64; the
@@ -93,32 +93,31 @@ Windows- and Linux-hosted compiler builds from the same source also emit materia
 sizes. Separately, the supplied fixtures should test FIRE bit 64, use coherent `CSPRITE` groups,
 and make the multi-ship Name Table update atomic or safely VBlank-bounded.
 
-ugBASIC source settings were re-audited with current `main` commit `2db87ebd`. All six programs use
-`DEFINE DEFAULT TYPE BYTE`; text fixtures use `PRINT RAW`; Controller tests its byte-valued keypad
-result directly with `IF k`; Warrior uses native `EXACT COMPRESSED` MSC1 data. The selected build
-occupied 20,022 bytes on the original six fixtures, but the corrected metasprite oracle rejected
-that revision's 3,295-byte ROM for incoherent frame updates. Replacing six independently managed
-sprites with ugBASIC's native `CSPRITE` grouping makes every rendered frame coherent and reduces
-the row to 2,883 bytes. The corrected six-sample total is 19,610 bytes.
+ugBASIC now follows the same best-valid principle used for SDCC allocator searches. Hello and
+Warrior use the compact upstream `04ce31b21` builds; Controller uses a corrected portable 1.18.2
+build; Metasprite retains the smaller proven `2db87ebd` build; State Update and Tile Animation use the corrected 1.18.2 BIOS build.
+Tile Animation batches its Name Table writes after VBlank with paced VDP output so no mixed ship
+frame becomes visible. A complete controller audit also corrected ugBASIC's Coleco direction-bit
+order. The corrected best-valid six-sample total is 18,055 bytes.
 All published ROMs are retained in the evidence archive with SHA-256 hashes.
 
 ### Real occupied size, excluding cartridge padding
 
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | CVBasic | devkitSMS | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 816 | 1,397 | 1,980 | 1,340 |
-| Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,682 | 4,525 | 4,313 | 4,676 | 4,976 | 7,580 |
-| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,086 | 1,399 | 2,272 | 1,917 |
+| Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 816 | 1,397 | 1,980 | 781 |
+| Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,682 | 4,525 | 4,313 | 4,676 | 4,976 | 7,040 |
+| Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,086 | 1,399 | 2,272 | 1,905 |
 | Sprite Metasprite | **482** | 797 | 1,166 | 1,413 | 1,201 | 1,261 | 1,652 | 2,492 | 2,883 |
-| Gameplay State Update* | **508** | 1,141 | 1,253 | 1,225 | 1,229 | 1,890 | 2,039 | 2,667 | 3,931 |
-| Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,516 | 2,332 | 1,834 | 2,729 | 1,959 |
-| **Six-sample total*** | **5,265** | **7,244** | **9,165** | **10,760** | **10,771** | **11,698** | **12,997** | **17,116** | **19,610** |
+| Gameplay State Update* | **508** | 1,141 | 1,253 | 1,225 | 1,229 | 1,890 | 2,039 | 2,667 | 3,683 |
+| Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,516 | 2,332 | 1,834 | 2,729 | 1,763 |
+| **Six-sample total*** | **5,265** | **7,244** | **9,165** | **10,760** | **10,771** | **11,698** | **12,997** | **17,116** | **18,055** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
 Measured bitmap baselines: z88dk RAW 14,293 bytes, MDKRLE 5,911, ZX7 5,115, and ZX0 4,976;
 NewColeco GETPUT/MDKRLE 4,269 and DAN2 3,643. All reproduce both VRAM tables and 49,152 pixels.
-The 7,580-byte ugBASIC Warrior uses native `BITMAP ENABLE(16)`, `CLS BLACK`,
+The 7,040-byte ugBASIC Warrior uses native `BITMAP ENABLE(16)`, `CLS BLACK`,
 `LOAD IMAGE ... EXACT COMPRESSED`, and `PUT IMAGE`. The oracle finds 450 Pattern-byte and 1,322
 Color-byte differences caused by equivalent foreground/background encodings, while all 49,152
 rendered pixels match. The MSC1 direct-to-VRAM result is pixel-exact.
@@ -130,9 +129,9 @@ DAN3 saves six payload bytes before decoder cost, while DAN2 is validated end to
 assembled length (Amy), `ROM_END-$8000` (CVBasic), unpadded binary (z88dk), generated `code_user`
 ROM section (ugBASIC), Intel HEX span above `$8000` (devkitSMS/PVColLib), and complete linked binary (NewColeco).
 
-ugBASIC `main` `2db87ebd` (2026-11-01) is the measured revision for all six samples. Its original
+ugBASIC selects the smallest retained runtime-valid build per sample. Its independently managed
 metasprite ROM fails the corrected dynamic oracle because sprite layers can come from different
-frames. The revised source uses native `CSPRITE` groups and occupies 2,883 bytes; the oracle compares
+frames. The ranked source uses native `CSPRITE` groups and occupies 2,883 bytes; the oracle compares
 final rendered pixels so equivalent covered-mask removal is accepted without weakening the coherent-
 frame requirement. Occupied size uses the linker's exclusive `__code_user_tail` where available;
 reserved RAM and cartridge padding remain excluded.
@@ -143,7 +142,7 @@ reserved RAM and cartridge padding remain excluded.
 |---|---|---|
 | Hello World | Nine ROMs complete 180 GearColeco frames | Stable startup |
 | Warrior bitmap | Nine pipelines reproduce the 256x192 image | All ranked framebuffers are pixel-exact; equivalent PATTERN/COLOR encodings are allowed |
-| Controller Visual | Nine pass injected neutral, keypad, UP, FIRE, and release states | ugBASIC uses Coleco direction bits `$01/$02/$04/$08` and FIRE bit `$40` |
+| Controller Visual | Nine pass injected neutral, keypad, FIRE, four-direction, and release states | ugBASIC's `JOY(0)` order is UP `$01`, RIGHT `$02`, DOWN `$04`, LEFT `$08`, FIRE `$40` |
 | Sprite Metasprite | Nine pass the same controller-driven dynamic oracle; ugBASIC uses native `CSPRITE` groups | Movement, bounds, animation, and coherent rendered layers, colors, and priority |
 | Gameplay State Update | Nine match world state 1, 13 collisions, score 425, checksum 1478 | Exact deterministic oracle |
 | Tile Animation | Nine continuously animate shared patterns and six 3x2 Name Table frames | Exact VRAM tables, no stray ship tiles, animation continues after 100 frames |
