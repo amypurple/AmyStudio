@@ -77,8 +77,21 @@ six-ship redraw that also occurs in portable mode, not BIOS VRAM corruption. A L
 built from the same source emits a passing 2,343-byte metasprite and a 16,311-byte total, revealing
 an unresolved host-dependent generation difference. Neither candidate replaces the validated
 19,610-byte ranked row until all six exact-source runtime proofs and that discrepancy are resolved.
-The upstream 18,966-byte announcement remains non-ranked because its exact sources and runtime
-evidence still do not match this behavior-equivalent corpus.
+The author's subsequent `04ce31b21` package supplies six BASIC sources, listings, and ROMs totaling
+18,426 occupied bytes. Warrior is pixel-exact and State Update returns checksum 1478, but the package
+is not behavior-equivalent: Controller tests FIRE bit 16 instead of ColecoVision bit 64; the
+2,682-byte metasprite exposes partial zero-, one-, and two-layer frames; and the 1,519-byte tile
+sample exposes mixed ship frames. Its referenced PNG/BMP assets are also absent, so the delivered
+ROMs can be audited but the package cannot independently reproduce them. It remains a measured,
+non-ranked upstream candidate.
+
+The remaining **ugBASIC defects to fix** are distinct from the benchmark-source defects. Upstream
+commit `04ce31b21` correctly preserves `BC` around BIOS `VDPOUTCHAR`, but BIOS
+`JLEFT/JRIGHT/JUP/JDOWN` still use dynamic OS7 offsets 4/8 instead of 3/10, return true when the
+requested direction bit is clear, and fail to store the computed boolean in the BASIC temporary.
+Windows- and Linux-hosted compiler builds from the same source also emit materially different ROM
+sizes. Separately, the supplied fixtures should test FIRE bit 64, use coherent `CSPRITE` groups,
+and make the multi-ship Name Table update atomic or safely VBlank-bounded.
 
 ugBASIC source settings were re-audited with current `main` commit `2db87ebd`. All six programs use
 `DEFINE DEFAULT TYPE BYTE`; text fixtures use `PRINT RAW`; Controller tests its byte-valued keypad
