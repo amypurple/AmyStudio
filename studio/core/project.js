@@ -1258,6 +1258,29 @@ function splitHeaderAndCodeIncludes(paths) {
   return { headerIncludes, codeIncludes };
 }
 
+function stripAsmCommentsAndStrings(sourceText) {
+  return String(sourceText || "").split(/\r?\n/).map((line) => {
+    let out = "";
+    let quote = "";
+    for (let i = 0; i < line.length; i += 1) {
+      const ch = line[i];
+      if (quote) {
+        if (ch === quote && line[i - 1] !== "\\") quote = "";
+        out += " ";
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        out += " ";
+        continue;
+      }
+      if (ch === ";") break;
+      out += ch;
+    }
+    return out;
+  }).join("\n");
+}
+
 function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
   const codecToInclude = {
     zx0: "src/compression/zx0_vram.asm",
@@ -1322,9 +1345,13 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
     bitbuster_decompress: "bitbuster",
     nibble_decompress: "nibble"
   };
+  // Inline-ASM callers may reference a decoder directly. Comments and string
+  // literals are not executable references and must not pull code into ROM.
+  const executableText = stripAsmCommentsAndStrings(sourceText);
   for (const [symbol, codec] of Object.entries(symbolToCodec)) {
     const symbolPattern = new RegExp("\\b" + symbol + "\\b", "i");
-    if (symbolPattern.test(sourceText)) {
+    const userDefinitionPattern = new RegExp("^\\s*" + symbol + "\\s*:", "im");
+    if (symbolPattern.test(executableText) && !userDefinitionPattern.test(executableText)) {
       found.add(codecToInclude[codec]);
     }
   }
