@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { decompressBytes } from "../studio/core/compression.js";
 import { colecoBitmapTablesToImageData } from "../studio/core/pictureConvert.js";
 import { loadCodec, CODEC_CONFIG } from "../studio/vendor/retrocompress-lite/js/codecConfig.js";
+import { fitGroupAMYZ, decompressTable as decompressAMYZTable } from "../studio/vendor/retrocompress-lite/js/codecs/amyz.js";
 import { fourTwentyOneProjectFiles, dacmanProjectFiles, dacman2ProjectFiles } from "../studio/examples-games-assets.js";
 import { chateauDragonProjectFiles } from "../studio/examples-chateau-assets.js";
 
@@ -131,6 +132,16 @@ function ratio(size) {
 }
 
 const pictures = await loadPictures();
+const shardArg = process.argv.find((value) => value.startsWith("--shard="));
+const shardMatch = shardArg?.slice("--shard=".length).match(/^(\d+)\/(\d+)$/);
+if (shardArg && (!shardMatch || Number(shardMatch[1]) >= Number(shardMatch[2]) || Number(shardMatch[2]) < 1)) {
+  throw new Error("--shard requires zero-based INDEX/COUNT, for example --shard=0/8");
+}
+const shardIndex = shardMatch ? Number(shardMatch[1]) : null;
+const shardCount = shardMatch ? Number(shardMatch[2]) : null;
+const selectedPictures = shardMatch
+  ? pictures.filter((_, index) => index % shardCount === shardIndex)
+  : pictures;
 const exportRawArg = process.argv.indexOf("--export-raw");
 if (exportRawArg >= 0) {
   const exportRoot = path.resolve(process.argv[exportRawArg + 1] || "");
@@ -147,9 +158,24 @@ if (exportRawArg >= 0) {
   process.exit(0);
 }
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "amy-bitmap-codecs-"));
-const progressPath = path.join(output, "bitmap-codec-progress.json");
+const progressPath = path.join(output, shardMatch ? `bitmap-codec-progress-${shardIndex}-of-${shardCount}.json` : "bitmap-codec-progress.json");
 const reportOnly = process.argv.includes("--report-only");
 const existingReportPath = path.join(output, "bitmap-codec-ratios.json");
+const mergeArg = process.argv.find((value) => value.startsWith("--merge-shards="));
+if (mergeArg) {
+  const count = Number(mergeArg.slice("--merge-shards=".length));
+  if (!Number.isInteger(count) || count < 1) throw new Error("--merge-shards requires a positive count");
+  const report = JSON.parse(fs.readFileSync(existingReportPath, "utf8"));
+  const byId = new Map(report.rows.map((row) => [row.id, row]));
+  for (let index = 0; index < count; index++) {
+    const shardPath = path.join(output, `bitmap-codec-progress-${index}-of-${count}.json`);
+    const shard = JSON.parse(fs.readFileSync(shardPath, "utf8"));
+    for (const row of shard.rows || []) byId.set(row.id, row);
+  }
+  report.rows = pictures.map((picture) => byId.get(picture.id));
+  if (report.rows.some((row) => !row)) throw new Error("Merged shards do not cover the complete corpus");
+  fs.writeFileSync(existingReportPath, JSON.stringify(report, null, 2));
+}
 const resumableRows = fs.existsSync(progressPath)
   ? JSON.parse(fs.readFileSync(progressPath, "utf8")).rows || []
   : fs.existsSync(existingReportPath)
@@ -158,10 +184,10 @@ const resumableRows = fs.existsSync(progressPath)
 const rows = reportOnly && fs.existsSync(existingReportPath)
   ? JSON.parse(fs.readFileSync(existingReportPath, "utf8")).rows || []
   : process.argv.includes("--resume")
-    ? resumableRows.filter((row) => pictures.some((picture) => picture.id === row.id))
+    ? resumableRows.filter((row) => selectedPictures.some((picture) => picture.id === row.id))
     : [];
 try {
-  for (const picture of reportOnly ? [] : pictures) {
+  for (const picture of reportOnly ? [] : selectedPictures) {
     const resumed = rows.find((row) => row.id === picture.id);
     const missingCodecs = resumed ? codecs.filter((codecId) => !Number.isInteger(resumed.sizes?.[codecId])) : codecs;
     if (resumed && missingCodecs.length === 0) {
@@ -175,6 +201,14 @@ try {
     for (const codecId of missingCodecs) {
       const startedAt = performance.now();
       process.stdout.write(`${picture.label}/${codecId} ... `);
+      if (codecId === "amyz") {
+        const fitted = fitGroupAMYZ([picture.pattern, picture.color]);
+        assert.deepEqual(Buffer.from(decompressAMYZTable(fitted.streams[0], fitted.table)), picture.pattern, `${picture.id}/amyz pattern round-trip`);
+        assert.deepEqual(Buffer.from(decompressAMYZTable(fitted.streams[1], fitted.table)), picture.color, `${picture.id}/amyz color round-trip`);
+        sizes.amyz = fitted.table.length + fitted.streams[0].length + fitted.streams[1].length;
+        console.log(`${sizes.amyz} bytes, ${Math.round(performance.now() - startedAt)} ms`);
+        continue;
+      }
       const codec = await loadCodec(codecId);
       const packedPattern = Buffer.from(await codec.compress(picture.pattern));
       const packedColor = Buffer.from(await codec.compress(picture.color));
@@ -196,6 +230,11 @@ try {
   fs.rmSync(temp, { recursive: true, force: true });
 }
 
+if (shardMatch) {
+  console.log(`Shard ${shardIndex}/${shardCount} complete: ${rows.length} pictures`);
+  process.exit(0);
+}
+
 rows.sort((left, right) => pictures.findIndex((picture) => picture.id === left.id) - pictures.findIndex((picture) => picture.id === right.id));
 for (const row of rows) {
   const metadata = pictureMetadata[row.id];
@@ -213,12 +252,13 @@ const columns = ["raw", ...codecs];
 const names = {
   raw: "RAW", zx0classic: "ZX0 v1", mdkrle: "MDK-RLE", nibble: "Nibble", lzf: "LZF",
   dan1: "DAN1", dan2: "DAN2", dan3: "DAN3", pletter: "Pletter", bitbuster12: "BitBuster",
-  zx7: "ZX7", zx0: "ZX0", zx1: "ZX1", zx2: "ZX2", aplib: "aPLib Compact", megalz: "MegaLZ", exomizer: "Exomizer 2", msc1: "MSC1",
+  zx7: "ZX7", zx0: "ZX0", zx1: "ZX1", zx2: "ZX2", amyz: "AMYZ", upkr: "UPKR",
+  aplib: "aPLib Compact", megalz: "MegaLZ", exomizer: "Exomizer 2", msc1: "MSC1",
 };
 const decoderBytes = {
   zx0: 136, zx1: 127, zx2: 115, zx7: 136, aplib: 244, megalz: 162, pletter: 212,
   bitbuster12: 166, lzf: 117, dan1: 205, dan2: 212, dan3: 205,
-  nibble: 115, mdkrle: 46, exomizer: 226, msc1: 68,
+  nibble: 115, mdkrle: 46, exomizer: 226, msc1: 68, amyz: 182, upkr: null,
 };
 
 const measuredCodecs = codecs.filter((id) => id !== "zx0classic");
@@ -226,7 +266,7 @@ const aggregate = measuredCodecs.map((id) => {
   const ratios = rows.map((row) => row.ratios[id]).sort((left, right) => left - right);
   const places = [0, 0, 0, 0, 0];
   for (const row of rows) {
-    const podium = [...measuredCodecs].sort((left, right) =>
+    const podium = [...measuredCodecs].filter((codec) => Number.isInteger(decoderBytes[codec])).sort((left, right) =>
       (row.sizes[left] + decoderBytes[left]) - (row.sizes[right] + decoderBytes[right]) || left.localeCompare(right)
     ).slice(0, 5);
     const place = podium.indexOf(id);
@@ -292,8 +332,9 @@ fs.writeFileSync(path.join(output, "bitmap-codec-representatives.json"), JSON.st
 }, null, 2) + "\n");
 
 const familyTables = [
-  ["LZ-family ratios", ["zx0", "zx1", "zx2", "zx7", "aplib", "megalz", "exomizer", "msc1", "pletter", "bitbuster12", "lzf"]],
+  ["LZ-family ratios", ["amyz", "zx0", "zx1", "zx2", "zx7", "aplib", "megalz", "exomizer", "msc1", "pletter", "bitbuster12", "lzf"]],
   ["DAN and RLE-family ratios", ["dan1", "dan2", "dan3", "nibble", "mdkrle"]],
+  ["Payload-only experimental ratios", ["upkr"]],
 ];
 const ratioTableName = (id) => names[id];
 const markdown = [
@@ -318,7 +359,7 @@ for (const [title, ids] of familyTables) {
 const representativePictures = ["commando", "warrior", "dacman-title"];
 const firstUseCsv = [
   ["Codec", "Routine bytes", ...representativePictures.map((id) => `${rows.find((row) => row.id === id).picture} payload + routine`)],
-  ...familyTables.flatMap(([, ids]) => ids).map((id) => [
+  ...familyTables.flatMap(([, ids]) => ids).filter((id) => Number.isInteger(decoderBytes[id])).map((id) => [
     names[id],
     decoderBytes[id],
     ...representativePictures.map((pictureId) => rows.find((row) => row.id === pictureId).sizes[id] + decoderBytes[id]),
@@ -332,7 +373,9 @@ markdown.push(
   "",
   "| Codec | Routine bytes |",
   "|---|---:|",
-  ...familyTables.flatMap(([, ids]) => ids).map((id) => `| ${names[id]} | ${decoderBytes[id]} |`),
+  ...familyTables.flatMap(([, ids]) => ids).filter((id) => Number.isInteger(decoderBytes[id])).map((id) => `| ${names[id]} | ${decoderBytes[id]} |`),
+  "",
+  "UPKR is measured for payload only. It is excluded from first-use rankings because Amy Studio has no accepted stock-ColecoVision runtime decoder: the current design needs about 322 bytes of aligned probability/work RAM.",
   "",
   "### Representative first-use totals",
   "",
@@ -342,6 +385,7 @@ markdown.push(
 for (const [title, ids] of familyTables) {
   markdown.push(`### ${title.replace("ratios", "first-use bytes")}`, "", `| Codec | ${representativePictures.map((id) => rows.find((row) => row.id === id).picture).join(" | ")} |`, `|---|${representativePictures.map(() => "---:").join("|")}|`);
   for (const id of ids) {
+    if (!Number.isInteger(decoderBytes[id])) continue;
     markdown.push(`| ${names[id]} | ${representativePictures.map((pictureId) => rows.find((row) => row.id === pictureId).sizes[id] + decoderBytes[id]).join(" | ")} |`);
   }
   markdown.push("");

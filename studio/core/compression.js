@@ -15,10 +15,12 @@ const CODEC_CATALOG = {
   megalz: { name: "MegaLZ", extension: ".mlz", category: "lz77" },
   exomizer: { name: "Exomizer 2", extension: ".exo", category: "lz77" },
   msc1: { name: "MSC1", extension: ".msc1", category: "lz77" },
+  amyz: { name: "AMYZ", extension: ".amyz", category: "lz77" },
+  upkr: { name: "UPKR", extension: ".upkr", category: "arithmetic" },
   raw: { name: "RAW", extension: ".raw", category: "raw" }
 };
 
-const CODEC_ORDER = ["zx0", "zx1", "zx2", "aplib", "megalz", "exomizer", "msc1", "dan3", "dan2", "dan1", "zx7", "pletter", "bitbuster12", "nibble", "lzf", "mdkrle", "raw"];
+const CODEC_ORDER = ["amyz", "zx0", "zx1", "zx2", "aplib", "megalz", "exomizer", "upkr", "msc1", "dan3", "dan2", "dan1", "zx7", "pletter", "bitbuster12", "nibble", "lzf", "mdkrle", "raw"];
 const CODEC_EXTENSIONS = {
   ".nibble": "nibble",
   ".mdk": "mdkrle",
@@ -37,6 +39,8 @@ const CODEC_EXTENSIONS = {
   ".mlz": "megalz",
   ".exo": "exomizer",
   ".msc1": "msc1",
+  ".amyz": "amyz",
+  ".upkr": "upkr",
   ".raw": "raw"
 };
 

@@ -116,6 +116,30 @@ export const CODEC_CONFIG = {
             enabled: true,
             category: 'lz77'
         },
+        amyz: {
+            name: 'AMYZ',
+            author: 'Amy (AmyPurple), with Claude',
+            year: '2026',
+            description: 'Table-fitted LZ77 codec descended from Amy DAN codecs, with ZX0-style grammar and Exomizer-inspired offset buckets.',
+            extensions: ['.amyz'],
+            module: './codecs/amyz.js',
+            className: 'AMYZCodec',
+            enabled: true,
+            category: 'lz77',
+            notes: 'Standalone streams carry their 15-byte table. Amy project builds may instead share one fitted table across assets.'
+        },
+        upkr: {
+            name: 'UPKR',
+            author: 'Dennis Ranke; Z80 stream by Peter Helcmanovsky; Amy Studio JavaScript port',
+            year: '2021-2026',
+            description: 'Very high-ratio rANS/LZ codec for one-off loads where decompression time and work RAM are available.',
+            extensions: ['.upkr'],
+            module: './codecs/upkr.js',
+            className: 'UpkrCodec',
+            enabled: true,
+            category: 'arithmetic',
+            notes: 'Unlicense. ColecoVision decoding needs a 322-byte probability/work area and should not run in a frame loop.'
+        },
         msc1: {
             name: 'MSC1',
             author: 'Marco Spedaletti; independent Amy Studio browser encoder',
@@ -196,7 +220,7 @@ export const CODEC_CONFIG = {
     settings: {
         maxFileSize: 256 * 1024, // 256KB
         enableDebugMode: false,
-        defaultCompressionOrder: ['zx0', 'zx1', 'zx2', 'aplib', 'megalz', 'exomizer', 'msc1', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
+        defaultCompressionOrder: ['amyz', 'zx0', 'zx1', 'zx2', 'aplib', 'megalz', 'exomizer', 'upkr', 'msc1', 'dan3', 'dan2', 'dan1', 'zx7', 'pletter', 'bitbuster12', 'nibble', 'lzf', 'mdkrle']
     }
 };
 

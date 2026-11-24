@@ -88,7 +88,7 @@ for (const markdownPath of markdownPaths) {
 }
 
 const aggregate = parseCsv(fs.readFileSync(path.join(root, "competition/benchmarks/compression/bitmap-codec-aggregate.csv"), "utf8"));
-if (aggregate.length !== 16) throw new Error(`Expected 16 measured codecs, found ${aggregate.length}`);
+if (aggregate.length !== 18) throw new Error(`Expected 18 measured codecs, found ${aggregate.length}`);
 
 if (publicRoot) {
   const htmlPath = path.join(publicRoot, "comparison.html");
@@ -99,7 +99,8 @@ if (publicRoot) {
   for (const codec of aggregate) {
     requireText(html, `<td>${codec.Codec}</td>`, `${htmlPath} codec/${codec.Codec}`);
     requireText(html, `<td>${display(codec["Total bytes"])}</td>`, `${htmlPath} codec total/${codec.Codec}`);
-    requireText(html, `<td>${display(codec["Decoder bytes"])}</td>`, `${htmlPath} decoder/${codec.Codec}`);
+    const decoder = codec["Decoder bytes"] === "null" ? "n/a" : display(codec["Decoder bytes"]);
+    requireText(html, `<td>${decoder}</td>`, `${htmlPath} decoder/${codec.Codec}`);
   }
   rejectText(html, /all 48 ROMs[^.]*passed|\b1,?387\b|\b7,?917\b|ZX0 (?:Classic|Modern)|DAN3 Best/i, htmlPath);
   requireText(html, "All nine principal controller ROMs pass, including Pure ASM and ugBASIC", htmlPath);
