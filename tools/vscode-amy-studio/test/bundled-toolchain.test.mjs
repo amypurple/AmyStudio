@@ -15,9 +15,11 @@ const version = JSON.parse(readFileSync(resolve(root, "toolchain", "VERSION.json
 assert.match(version.version || "", /^\d+\.\d+\.\d+$/, "Staged toolchain must carry its package version");
 assert.equal(version.label, `amy-studio-vscode-${version.version}`, "Staged toolchain label must identify its version");
 const zx0Module = resolve(root, "toolchain", "studio", "vendor", "retrocompress-lite", "js", "codecs", "zx0.js");
+const amyzModule = resolve(root, "toolchain", "studio", "vendor", "retrocompress-lite", "js", "codecs", "amyz.js");
 const compressionModule = resolve(root, "toolchain", "studio", "core", "compression.js");
 const soundNotesModule = resolve(root, "toolchain", "studio", "core", "colecoSoundNotes.js");
 assert.ok(existsSync(zx0Module), `Missing staged host-side ZX0 compressor: ${zx0Module}`);
+assert.ok(existsSync(amyzModule), `Missing staged host-side AMYZ compressor: ${amyzModule}`);
 assert.ok(existsSync(compressionModule), `Missing staged build-side compression module: ${compressionModule}`);
 assert.ok(existsSync(soundNotesModule), `Missing staged build-side sound module: ${soundNotesModule}`);
 assert.ok(existsSync(resolve(root, "toolchain", "include", "fujinet_mailbox.inc")), "Missing staged FujiNet mailbox include");
@@ -26,6 +28,11 @@ const zx0 = new ZX0Codec();
 const zx0Input = Uint8Array.from({ length: 320 }, (_, index) => (index >> 3) & 0x0F);
 const zx0Packed = await zx0.compress(zx0Input);
 assert.deepEqual([...await zx0.decompress(zx0Packed)], [...zx0Input], "Staged ZX0 compressor round trip");
+const { AMYZCodec } = await import(pathToFileURL(amyzModule).href);
+const amyz = new AMYZCodec();
+const amyzInput = Uint8Array.from({ length: 768 }, (_, index) => ((index >> 4) ^ index) & 0x3F);
+const amyzPacked = await amyz.compress(amyzInput);
+assert.deepEqual([...await amyz.decompress(amyzPacked)], [...amyzInput], "Staged AMYZ compressor round trip");
 
 function compile(name, source, expected = {}) {
   const directory = mkdtempSync(resolve(tmpdir(), "amy-vscode-test-"));

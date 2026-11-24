@@ -1,3 +1,14 @@
+## 2026-11-24 - AMYZ compression and VS Code 0.1.29
+
+- Integrated AMYZ as a native Amy compression option, including standalone,
+  shared-table, tiny-table and fast decoder variants with exact VRAM tests.
+- Updated the Graphics II compression corpus, direct-to-VRAM measurements,
+  comparison webpage, PDF and reproducible benchmark evidence.
+- Fixed codec names in comments activating unused decompression libraries and
+  corrected semicolon parsing inside quoted inline-ASM data.
+- Rebuilt the VS Code extension as **0.1.29**. Its bundled-toolchain gate now
+  verifies AMYZ and ZX0 round trips in addition to compiler regressions.
+
 ## 2026-11-21 - Calculated indirect LD addresses and Oric adaptations
 
 - Fixed a silent assembler defect in calculated parenthesized `LD` operands.
