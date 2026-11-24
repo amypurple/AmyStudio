@@ -103,6 +103,7 @@ styles.add(ParagraphStyle(name="H3x", parent=styles["Heading3"], fontName="Helve
 styles.add(ParagraphStyle(name="Bodyx", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.7, leading=12, textColor=INK, spaceAfter=5))
 styles.add(ParagraphStyle(name="Bulletx", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.5, leading=11.5, leftIndent=13, firstLineIndent=-8, bulletIndent=2, textColor=INK, spaceAfter=3))
 styles.add(ParagraphStyle(name="Cell", parent=styles["BodyText"], fontName="Helvetica", fontSize=6.6, leading=8.2, textColor=INK))
+styles.add(ParagraphStyle(name="GalleryCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=6.0, leading=7.1, textColor=INK))
 styles.add(ParagraphStyle(name="CellHead", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=6.5, leading=8, textColor=colors.white))
 styles.add(ParagraphStyle(name="CodeX", parent=styles["Code"], fontName="Courier", fontSize=6.8, leading=8.5, leftIndent=8, rightIndent=8, backColor=colors.HexColor("#E8EEF0"), borderPadding=5, spaceAfter=6))
 styles.add(ParagraphStyle(name="SampleCode", parent=styles["Code"], fontName="Courier", fontSize=7.2, leading=8.6, backColor=colors.HexColor("#EDF5F7"), textColor=colors.HexColor("#10262E"), borderColor=colors.HexColor("#A8C6D0"), borderWidth=0.5, borderPadding=7, spaceAfter=7))
@@ -513,26 +514,26 @@ def compression_corpus_pages():
         Paragraph("Graphics II compression corpus", styles["H1x"]),
         Paragraph(
             f"All {len(rows)} unique 12,288-byte pictures passed exact round-trip checks with every codec. "
-            "The gallery shows the actual TMS9918 output, the three smallest payloads, and Pletter's rank when it falls outside the top three. "
+            "The gallery shows the actual TMS9918 output and the five smallest payloads for every picture. "
             "UPKR is charged its independently validated 221-byte small VRAM decoder; Amy compiler integration remains pending. "
-            "Exomizer also needs a 226-byte ROM decoder and 156 bytes of CPU RAM. Amy Studio reserves "
-            "that workspace at a 256-byte boundary; its generated address varies and must not overlap other RAM.",
+            "An asterisk marks the two codecs needing a large temporary decode buffer: UPKR needs about 322 aligned bytes and "
+            "Exomizer 2 needs 156 aligned bytes. The other ranked codecs do not require an equivalent buffer.",
             styles["Bodyx"],
         ),
     ]
     aggregate_rows = [
-        ["Rank", "Codec", "Payload total", "Decoder", "First-use places (pictures)", "", "", "", ""],
-        ["", "", "", "", "1st", "2nd", "3rd", "4th", "5th"],
+        ["Rank", "Codec", "Payload total", "Decoder", "First-use places (pictures)", "", "", "", "", ""],
+        ["", "", "", "", "1st", "2nd", "3rd", "4th", "5th", "6th"],
     ]
     for rank, item in enumerate(report["aggregate"], 1):
         aggregate_rows.append([
             str(rank), item["codec"], f'{item["totalBytes"]:,}',
             str(item["decoderBytes"]) if item["decoderBytes"] is not None else "n/a", str(item["firstPlaces"]),
             str(item["secondPlaces"]), str(item["thirdPlaces"]),
-            str(item["fourthPlaces"]), str(item["fifthPlaces"]),
+            str(item["fourthPlaces"]), str(item["fifthPlaces"]), str(item["sixthPlaces"]),
         ])
     table_width = PAGE[0] - 2 * MARGIN
-    weights = [0.55, 1.45, 1.2, 0.8, 0.55, 0.55, 0.55, 0.55, 0.55]
+    weights = [0.55, 1.4, 1.15, 0.75, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
     total_weight = sum(weights)
     aggregate_cells = [
         [Paragraph(inline(cell), styles["CellHead"] if row_index < 2 else styles["Cell"]) for cell in row]
@@ -551,8 +552,8 @@ def compression_corpus_pages():
         ("SPAN", (1, 0), (1, 1)),
         ("SPAN", (2, 0), (2, 1)),
         ("SPAN", (3, 0), (3, 1)),
-        ("SPAN", (4, 0), (8, 0)),
-        ("ALIGN", (4, 0), (8, 1), "CENTER"),
+        ("SPAN", (4, 0), (9, 0)),
+        ("ALIGN", (4, 0), (9, 1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
@@ -574,20 +575,16 @@ def compression_corpus_pages():
             if label not in unique or candidate[0] < unique[label][0]:
                 unique[label] = candidate
         ranked = sorted(unique.values(), key=lambda item: (item[0], item[1]))
-        top_three = ranked[:3]
+        top_five = ranked[:5]
         ranking = "<br/>".join(
             f"{rank}. {inline(label)}: {size:,} bytes"
-            for rank, (size, label) in enumerate(top_three, 1)
+            for rank, (size, label) in enumerate(top_five, 1)
         )
-        pletter_rank = next((rank for rank, (_, label) in enumerate(ranked, 1) if label == "Pletter"), None)
-        if pletter_rank and pletter_rank > 3:
-            pletter_size, _ = ranked[pletter_rank - 1]
-            ranking += f"<br/><b>... {pletter_rank}. Pletter: {pletter_size:,} bytes</b>"
         details = Paragraph(
             f'<b>{inline(row["picture"])}</b>'
             + (f'<br/><font color="#53636D">{inline(row["author"])}</font>' if row.get("author") else "")
             + f'<br/>{ranking}',
-            styles["Cell"],
+            styles["GalleryCell"],
         )
         if row.get("portrait"):
             portrait_files = {"newcoleco": "newcoleco.jfif", "mermaid": "mermaid.jpg", "alekmaul": "alekmaul.png"}
@@ -603,7 +600,7 @@ def compression_corpus_pages():
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
             ]))
         card = Table([
-            [Image(str(preview), width=2.08 * inch, height=1.56 * inch)],
+            [Image(str(preview), width=1.92 * inch, height=1.44 * inch)],
             [details],
         ], colWidths=[2.32 * inch])
         card.setStyle(TableStyle([
@@ -611,10 +608,10 @@ def compression_corpus_pages():
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#091318")),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, 0), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 9),
-            ("TOPPADDING", (0, 1), (-1, 1), 8),
-            ("BOTTOMPADDING", (0, 1), (-1, 1), 6),
+            ("TOPPADDING", (0, 0), (-1, 0), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+            ("TOPPADDING", (0, 1), (-1, 1), 5),
+            ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
         ]))
         cards.append(card)
 

@@ -264,17 +264,17 @@ const decoderBytes = {
 const measuredCodecs = codecs.filter((id) => id !== "zx0classic");
 const aggregate = measuredCodecs.map((id) => {
   const ratios = rows.map((row) => row.ratios[id]).sort((left, right) => left - right);
-  const places = [0, 0, 0, 0, 0];
+  const places = [0, 0, 0, 0, 0, 0];
   for (const row of rows) {
     const podium = [...measuredCodecs].filter((codec) => Number.isInteger(decoderBytes[codec])).sort((left, right) =>
       (row.sizes[left] + decoderBytes[left]) - (row.sizes[right] + decoderBytes[right]) || left.localeCompare(right)
-    ).slice(0, 5);
+    ).slice(0, 6);
     const place = podium.indexOf(id);
     if (place >= 0) places[place] += 1;
   }
   return {
     id,
-    codec: names[id],
+    codec: `${names[id]}${id === "upkr" || id === "exomizer" ? "*" : ""}`,
     totalBytes: rows.reduce((sum, row) => sum + row.sizes[id], 0),
     averageRatio: Number((ratios.reduce((sum, value) => sum + value, 0) / ratios.length).toFixed(2)),
     medianRatio: ratios.length % 2
@@ -285,6 +285,7 @@ const aggregate = measuredCodecs.map((id) => {
     thirdPlaces: places[2],
     fourthPlaces: places[3],
     fifthPlaces: places[4],
+    sixthPlaces: places[5],
     decoderBytes: decoderBytes[id]
   };
 }).sort((left, right) => left.totalBytes - right.totalBytes);
@@ -297,8 +298,8 @@ const csv = [
 fs.writeFileSync(path.join(output, "bitmap-codec-ratios.csv"), csv);
 fs.writeFileSync(path.join(output, "bitmap-codec-ratios.json"), JSON.stringify({ rawBytes, columns, names, decoderBytes, aggregate, rows }, null, 2));
 fs.writeFileSync(path.join(output, "bitmap-codec-aggregate.csv"), [
-  ["Rank", "Codec", "Total bytes", "Average ratio", "Median ratio", "First-use 1st", "First-use 2nd", "First-use 3rd", "First-use 4th", "First-use 5th", "Decoder bytes"],
-  ...aggregate.map((row, index) => [index + 1, row.codec, row.totalBytes, `${row.averageRatio.toFixed(2)}%`, `${row.medianRatio.toFixed(2)}%`, row.firstPlaces, row.secondPlaces, row.thirdPlaces, row.fourthPlaces, row.fifthPlaces, row.decoderBytes])
+  ["Rank", "Codec", "Total bytes", "Average ratio", "Median ratio", "First-use 1st", "First-use 2nd", "First-use 3rd", "First-use 4th", "First-use 5th", "First-use 6th", "Decoder bytes"],
+  ...aggregate.map((row, index) => [index + 1, row.codec, row.totalBytes, `${row.averageRatio.toFixed(2)}%`, `${row.medianRatio.toFixed(2)}%`, row.firstPlaces, row.secondPlaces, row.thirdPlaces, row.fourthPlaces, row.fifthPlaces, row.sixthPlaces, row.decoderBytes])
 ].map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n") + "\n");
 
 const previewDir = path.join(output, "corpus-previews");
@@ -346,9 +347,9 @@ const markdown = [
   "",
   "This ranking sums every compressed Pattern + Color payload in the corpus. Podium counts rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate.",
   "",
-  "| Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th |",
-  "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
-  ...aggregate.map((row, index) => `| ${index + 1} | ${row.codec} | ${row.totalBytes.toLocaleString("en-US")} | ${row.averageRatio.toFixed(2)}% | ${row.medianRatio.toFixed(2)}% | ${row.firstPlaces} | ${row.secondPlaces} | ${row.thirdPlaces} | ${row.fourthPlaces} | ${row.fifthPlaces} |`),
+  "| Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th | 6th |",
+  "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  ...aggregate.map((row, index) => `| ${index + 1} | ${row.codec} | ${row.totalBytes.toLocaleString("en-US")} | ${row.averageRatio.toFixed(2)}% | ${row.medianRatio.toFixed(2)}% | ${row.firstPlaces} | ${row.secondPlaces} | ${row.thirdPlaces} | ${row.fourthPlaces} | ${row.fifthPlaces} | ${row.sixthPlaces} |`),
   "",
 ];
 for (const [title, ids] of familyTables) {
@@ -375,7 +376,7 @@ markdown.push(
   "|---|---:|",
   ...familyTables.flatMap(([, ids]) => ids).filter((id) => Number.isInteger(decoderBytes[id])).map((id) => `| ${names[id]} | ${decoderBytes[id]} |`),
   "",
-  "UPKR is measured for payload only. It is excluded from first-use rankings because Amy Studio has no accepted stock-ColecoVision runtime decoder: the current design needs about 322 bytes of aligned probability/work RAM.",
+  "* UPKR needs about 322 bytes of aligned probability/work RAM while decoding. Exomizer 2 needs 156 bytes of aligned CPU RAM. The other ranked codecs do not require an equivalent large temporary decode buffer.",
   "",
   "### Representative first-use totals",
   "",

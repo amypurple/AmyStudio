@@ -197,28 +197,28 @@ full-screen Warrior framebuffer is pixel-exact even though the internal tables u
 
 The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 756 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
 
-The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR uses Claude's independently validated 221-byte small VRAM decoder for this ranking; Amy compiler integration remains pending.
+The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR uses Claude's independently validated 221-byte small VRAM decoder for this ranking; Amy compiler integration remains pending. An asterisk marks UPKR (about 322 aligned temporary RAM bytes) and Exomizer 2 (156 aligned temporary RAM bytes); the other ranked codecs do not require an equivalent large decode buffer.
 
-| Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th |
-|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | UPKR | 147,150 | 28.51% | 20.98% | 42 | 0 | 0 | 0 | 0 |
-| 2 | Exomizer 2 | 161,374 | 31.27% | 23.43% | 0 | 10 | 11 | 12 | 2 |
-| 3 | AMYZ | 161,778 | 31.35% | 22.97% | 0 | 26 | 16 | 0 | 0 |
-| 4 | ZX0 | 166,556 | 32.27% | 23.63% | 0 | 6 | 15 | 18 | 1 |
-| 5 | DAN2 | 166,923 | 32.34% | 23.99% | 0 | 0 | 0 | 0 | 7 |
-| 6 | DAN3 | 167,186 | 32.39% | 23.99% | 0 | 0 | 0 | 0 | 16 |
-| 7 | DAN1 | 167,240 | 32.41% | 24.04% | 0 | 0 | 0 | 3 | 4 |
-| 8 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 | 0 | 0 | 0 | 1 |
-| 9 | aPLib Compact | 171,484 | 33.23% | 24.52% | 0 | 0 | 0 | 0 | 0 |
-| 10 | Pletter | 171,751 | 33.28% | 24.80% | 0 | 0 | 0 | 0 | 0 |
-| 11 | ZX7 | 171,788 | 33.29% | 24.77% | 0 | 0 | 0 | 0 | 2 |
-| 12 | BitBuster | 172,941 | 33.51% | 24.94% | 0 | 0 | 0 | 0 | 0 |
-| 13 | ZX1 | 176,562 | 34.21% | 24.98% | 0 | 0 | 0 | 4 | 5 |
-| 14 | ZX2 | 177,582 | 34.41% | 25.40% | 0 | 0 | 0 | 5 | 4 |
-| 15 | LZF | 193,412 | 37.48% | 28.36% | 0 | 0 | 0 | 0 | 0 |
-| 16 | Nibble | 214,555 | 41.57% | 35.48% | 0 | 0 | 0 | 0 | 0 |
-| 17 | MDK-RLE | 253,859 | 49.19% | 42.52% | 0 | 0 | 0 | 0 | 0 |
-| 18 | MSC1 | 259,023 | 50.19% | 45.63% | 0 | 0 | 0 | 0 | 0 |
+| Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th | 6th |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | UPKR* | 147,150 | 28.51% | 20.98% | 42 | 0 | 0 | 0 | 0 | 0 |
+| 2 | Exomizer 2* | 161,374 | 31.27% | 23.43% | 0 | 10 | 11 | 12 | 2 | 3 |
+| 3 | AMYZ | 161,778 | 31.35% | 22.97% | 0 | 26 | 16 | 0 | 0 | 0 |
+| 4 | ZX0 | 166,556 | 32.27% | 23.63% | 0 | 6 | 15 | 18 | 1 | 2 |
+| 5 | DAN2 | 166,923 | 32.34% | 23.99% | 0 | 0 | 0 | 0 | 7 | 13 |
+| 6 | DAN3 | 167,186 | 32.39% | 23.99% | 0 | 0 | 0 | 0 | 16 | 5 |
+| 7 | DAN1 | 167,240 | 32.41% | 24.04% | 0 | 0 | 0 | 3 | 4 | 9 |
+| 8 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 | 0 | 0 | 0 | 1 | 1 |
+| 9 | aPLib Compact | 171,484 | 33.23% | 24.52% | 0 | 0 | 0 | 0 | 0 | 0 |
+| 10 | Pletter | 171,751 | 33.28% | 24.80% | 0 | 0 | 0 | 0 | 0 | 0 |
+| 11 | ZX7 | 171,788 | 33.29% | 24.77% | 0 | 0 | 0 | 0 | 2 | 9 |
+| 12 | BitBuster | 172,941 | 33.51% | 24.94% | 0 | 0 | 0 | 0 | 0 | 0 |
+| 13 | ZX1 | 176,562 | 34.21% | 24.98% | 0 | 0 | 0 | 4 | 5 | 0 |
+| 14 | ZX2 | 177,582 | 34.41% | 25.40% | 0 | 0 | 0 | 5 | 4 | 0 |
+| 15 | LZF | 193,412 | 37.48% | 28.36% | 0 | 0 | 0 | 0 | 0 | 0 |
+| 16 | Nibble | 214,555 | 41.57% | 35.48% | 0 | 0 | 0 | 0 | 0 | 0 |
+| 17 | MDK-RLE | 253,859 | 49.19% | 42.52% | 0 | 0 | 0 | 0 | 0 | 0 |
+| 18 | MSC1 | 259,023 | 50.19% | 45.63% | 0 | 0 | 0 | 0 | 0 | 0 |
 
 The three website representatives are selected mechanically from each picture's best payload ratio:
 
@@ -448,7 +448,7 @@ or repeated four-byte sequences without reading VRAM. Both the JavaScript codec 
 pass exact round-trip and GearColeco VRAM checks.
 
 Across 42 Graphics II images, MSC1 totals 259,023 bytes, averages 50.19%, and has a 45.63% median.
-It ranks 16th and records no top-five first-use finish. Warrior needs 3,716 payload bytes, or 3,784
+It ranks 16th and records no top-six first-use finish. Warrior needs 3,716 payload bytes, or 3,784
 with the decoder. MSC1 favors decode speed over density; ZX0 remains Amy Studio's better default.
 
 ### aPLib integration status
@@ -506,6 +506,7 @@ is credited separately because it changes the machine available to the programme
 | F18A | PVColLib provides APIs and examples; Amy's GearColeco 1.7.0 debugger can emulate F18A video | Debug validation is available in Amy, but first-class Amy language APIs remain future work |
 | SGM / AY-3-8910-compatible sound | CVBasic and PVColLib provide explicit SGM paths; PVColLib also detects SGM RAM and ADAM | Valid expansion/clone capability; out of scope for the stock sound ranking |
 | SP0256 voice modules | Amy provides Lundy/EVE commands and debugger-selectable module emulation | Optional external hardware; excluded from the stock sound ranking |
+| FujiNet network adapter | Amy provides FujiNet project support, network commands, emulator/debug enablement, traffic inspection, and scripted peer/server simulation for multiplayer testing | Optional external network hardware; excluded from stock-ROM size and runtime rankings |
 | Coleco ADAM | Amy builds native EOS and OS7+EOS hybrid programs on DSK/DDP, with target-aware graphics, input, sound, compression, files, ADAMnet, serial, and modem services | Broad DSK/DDP runtime coverage; applications beyond the resident 6 KiB window and optional-EOS cartridge services remain architectural work |
 | Extra RAM | Available through SGM, ADAM, and compatible clones depending on the tool/runtime | Report separately; never count it as stock 1 KB RAM |
 

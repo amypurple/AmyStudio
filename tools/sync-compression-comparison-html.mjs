@@ -35,16 +35,14 @@ function portraitFilename(id) {
 }
 
 const aggregateRows = report.aggregate.map((row, index) =>
-  `            <tr><td>${index + 1}</td><td>${escapeHtml(row.codec)}</td><td>${row.totalBytes.toLocaleString("en-US")}</td><td>${Number.isInteger(row.decoderBytes) ? row.decoderBytes : "n/a"}</td><td>${row.firstPlaces}</td><td>${row.secondPlaces}</td><td>${row.thirdPlaces}</td><td>${row.fourthPlaces}</td><td>${row.fifthPlaces}</td></tr>`
+  `            <tr><td>${index + 1}</td><td>${escapeHtml(row.codec)}</td><td>${row.totalBytes.toLocaleString("en-US")}</td><td>${Number.isInteger(row.decoderBytes) ? row.decoderBytes : "n/a"}</td><td>${row.firstPlaces}</td><td>${row.secondPlaces}</td><td>${row.thirdPlaces}</td><td>${row.fourthPlaces}</td><td>${row.fifthPlaces}</td><td>${row.sixthPlaces}</td></tr>`
 ).join("\n");
 const cards = representatives.map((row) => {
   const filename = path.basename(row.preview);
   const measured = report.rows.find((item) => item.id === row.id);
   const ranked = measured ? rankedCodecs(measured) : [];
-  const topThree = ranked.slice(0, 3);
-  const pletterIndex = ranked.findIndex((entry) => entry.label === "Pletter");
-  const pletter = pletterIndex >= 3 ? `<br><strong>... ${pletterIndex + 1}. Pletter: ${ranked[pletterIndex].bytes.toLocaleString("en-US")} bytes</strong>` : "";
-  const ranking = topThree.map((entry, index) => `${index + 1}. ${entry.label}: ${entry.bytes.toLocaleString("en-US")} bytes`).join("<br>") + pletter;
+  const topFive = ranked.slice(0, 5);
+  const ranking = topFive.map((entry, index) => `${index + 1}. ${entry.label}: ${entry.bytes.toLocaleString("en-US")} bytes`).join("<br>");
   const author = measured?.author
     ? `<span class="corpus-author"><span><small>Artwork by</small>${escapeHtml(measured.author)}</span><img src="${authorAssetPrefix}/${escapeHtml(portraitFilename(measured.portrait))}" alt="${escapeHtml(measured.author)}" /></span>`
     : "";
@@ -53,11 +51,11 @@ const cards = representatives.map((row) => {
 const section = `      <section class="section">
         <p class="eyebrow">GRAPHICS II COMPRESSION CORPUS</p>
         <h2>${report.rows.length} pictures, ${report.columns.length - 1} codecs, ${streamCount} exact checks.</h2>
-        <p>Every 12,288-byte Pattern + Color picture round-tripped exactly. Podiums rank first-use ROM bytes: payload plus one linked decoder. UPKR is charged its independently validated 221-byte small VRAM decoder; Amy compiler integration remains pending. Gallery cards show the three smallest payloads and Pletter's rank when it is outside the top three.</p>
+        <p>Every 12,288-byte Pattern + Color picture round-tripped exactly. Places rank first-use ROM bytes: payload plus one linked decoder. UPKR is charged its independently validated 221-byte small VRAM decoder; Amy compiler integration remains pending. Gallery cards show the five smallest payloads.</p>
         <div class="comparison-table-wrap"><table class="comparison-table">
           <thead>
-            <tr><th rowspan="2">Rank</th><th rowspan="2">Codec</th><th rowspan="2">Payload total</th><th rowspan="2">Decoder</th><th colspan="5">First-use places (pictures)</th></tr>
-            <tr><th>1st</th><th>2nd</th><th>3rd</th><th>4th</th><th>5th</th></tr>
+            <tr><th rowspan="2">Rank</th><th rowspan="2">Codec</th><th rowspan="2">Payload total</th><th rowspan="2">Decoder</th><th colspan="6">First-use places (pictures)</th></tr>
+            <tr><th>1st</th><th>2nd</th><th>3rd</th><th>4th</th><th>5th</th><th>6th</th></tr>
           </thead>
           <tbody>
 ${aggregateRows}
@@ -67,7 +65,7 @@ ${aggregateRows}
         <div class="visual-pair compression-corpus-samples">
 ${cards}
         </div>
-        <p>Selection is mechanical. Exomizer uses a 226-byte ROM decoder plus 156 bytes of CPU RAM. Amy Studio reserves that workspace at a 256-byte boundary; its generated address varies and must not overlap other RAM. The detailed PDF contains all ${report.rows.length} converted images and per-picture evidence.</p>
+        <p><strong>* Temporary RAM:</strong> UPKR needs about 322 aligned bytes while decoding; Exomizer 2 needs 156 aligned bytes. The other ranked codecs do not require an equivalent large temporary decode buffer. Selection is mechanical. The detailed PDF contains all ${report.rows.length} converted images and per-picture evidence.</p>
       </section>`;
 
 const source = fs.readFileSync(target, "utf8");

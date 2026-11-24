@@ -14,7 +14,7 @@ const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
 const representatives = JSON.parse(fs.readFileSync(representativesPath, "utf8")).pictures;
 
 const aggregateRows = report.aggregate.map((row, index) =>
-  `| ${index + 1} | ${row.codec} | ${row.totalBytes.toLocaleString("en-US")} | ${row.averageRatio.toFixed(2)}% | ${row.medianRatio.toFixed(2)}% | ${row.firstPlaces} | ${row.secondPlaces} | ${row.thirdPlaces} | ${row.fourthPlaces} | ${row.fifthPlaces} |`
+  `| ${index + 1} | ${row.codec} | ${row.totalBytes.toLocaleString("en-US")} | ${row.averageRatio.toFixed(2)}% | ${row.medianRatio.toFixed(2)}% | ${row.firstPlaces} | ${row.secondPlaces} | ${row.thirdPlaces} | ${row.fourthPlaces} | ${row.fifthPlaces} | ${row.sixthPlaces} |`
 );
 const representativeRows = representatives.map((row) =>
   `| ${row.role.replaceAll("-", " ")} | ${row.picture} | ${row.bestRatio.toFixed(2)}% |`
@@ -24,10 +24,10 @@ const replacement = [
   "",
   `The corpus contains ${report.rows.length} unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All ${report.rows.length * (report.columns.length - 1)} measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.`,
   "",
-  "The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR uses Claude's independently validated 221-byte small VRAM decoder for this ranking; Amy compiler integration remains pending.",
+  "The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR uses Claude's independently validated 221-byte small VRAM decoder for this ranking; Amy compiler integration remains pending. An asterisk marks UPKR (about 322 aligned temporary RAM bytes) and Exomizer 2 (156 aligned temporary RAM bytes); the other ranked codecs do not require an equivalent large decode buffer.",
   "",
-  "| Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th |",
-  "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+  "| Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th | 6th |",
+  "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
   ...aggregateRows,
   "",
   "The three website representatives are selected mechanically from each picture's best payload ratio:",
