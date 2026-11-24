@@ -197,7 +197,7 @@ full-screen Warrior framebuffer is pixel-exact even though the internal tables u
 
 The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 756 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
 
-The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR uses Claude's independently validated 221-byte small VRAM decoder for this ranking; Amy compiler integration remains pending. An asterisk marks UPKR (about 322 aligned temporary RAM bytes) and Exomizer 2 (156 aligned temporary RAM bytes); the other ranked codecs do not require an equivalent large decode buffer.
+The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR uses Claude's independently validated 221-byte small VRAM decoder, now integrated in Amy Studio. An asterisk marks UPKR (322 aligned temporary RAM bytes) and Exomizer 2 (156 aligned temporary RAM bytes); the other ranked codecs do not require an equivalent large decode buffer.
 
 | Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th | 6th |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -266,7 +266,7 @@ documented separately below from their measured fixtures and inspected APIs.
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound and voice | BIOS tables, Tiny Sound, DSOUND, VoxPCM, and SP0256 Lundy/EVE modules | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
-| Compression | Eighteen measured codecs, including AMYZ and UPKR; seventeen are integrated direct-to-VRAM runtimes and UPKR has an externally validated candidate runtime | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
+| Compression | Eighteen measured codecs with integrated direct-to-VRAM runtimes, including AMYZ and UPKR | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Verified 64/128 KB MegaCart images and `bank select`; arbitrary banked Amy linking remains open | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
@@ -380,7 +380,7 @@ median, and least-compressible corpus pictures. Run `node tools/benchmark-codec-
 | 16 | Exomizer 2* | 226 | 5,443,509 | 3,379,345-8,078,323 | 91.13 | 76.28 |
 | 17 | AMYZ | 182 | 5,491,264 | 2,885,917-8,876,343 | 91.93 | 76.95 |
 
-* Exomizer 2 needs 156 bytes of aligned temporary CPU RAM. UPKR is not mixed into this like-for-like three-picture ranking because it is not yet an Amy compiler/runtime option; Claude's separate 200-file harness measured its 221-byte small decoder at 1,656.4 T per output byte with about 322 aligned temporary RAM bytes.
+* Exomizer 2 needs 156 bytes of aligned temporary CPU RAM. UPKR needs 322 aligned bytes and its 221-byte direct-VRAM decoder averaged 1,656.4 T per output byte in Claude's separate 200-file harness.
 
 Frame values are time equivalents (`59,736` cycles NTSC; `71,364` PAL), not VBlank waits.
 Speed and ROM-size rankings are separate: choose using compressed payload plus decoder size, then
@@ -389,7 +389,7 @@ input, which is why Amy Studio should present per-asset estimates rather than on
 
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
-| Amy Studio | AMYZ, UPKR (candidate), Exomizer 2, ZX0, ZX1, ZX2, aPLib, MegaLZ, MSC1, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | Seventeen accepted direct-to-VRAM runtimes including AMYZ; UPKR's external runtime evidence is accepted but compiler integration remains pending | Browser comparison/import and asset metadata; AMYZ commands are available |
+| Amy Studio | AMYZ, UPKR, Exomizer 2, ZX0, ZX1, ZX2, aPLib, MegaLZ, MSC1, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | Eighteen accepted direct-to-VRAM runtimes | Browser comparison/import and asset metadata; AMYZ and UPKR commands are available |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
 | z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | Stock decoders target RAM; ZX0* and ZX7* Coleco VRAM adaptations verified here | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
@@ -409,7 +409,7 @@ their output independently.
 | Candidate | Honest Amy name | Current evidence | Integration condition |
 |---|---|---|---|
 | AMYZ | `AMYZ` / codecs `amyz`, `amyzt`, `amyzshared`, `amyzfast` | Exact JavaScript round trips; standalone and shared-table VRAM runtime proof; published Warrior ROM is pixel-exact | Integrated; shared 15-byte table is preferred when several assets use one fitted model |
-| UPKR | `UPKR` / codec `upkr` | Byte-identical JavaScript/Rust level-9 streams on 200 files; Claude's 221-byte VRAM decoder passes the 200-file timing and RAM harness | Candidate runtime; reserve an aligned 322-byte workspace and guard NMI/display before compiler integration |
+| UPKR | `UPKR` / codec `upkr` | Byte-identical JavaScript/Rust level-9 streams on 200 files; Claude's 221-byte VRAM decoder passes the 200-file timing and RAM harness; Amy's five-profile ROM test verifies exact VRAM output | Integrated runtime; Amy conditionally reserves the aligned 322-byte workspace and manages NMI around decompression |
 | ZX0 | `ZX0` / codec `zx0` | Existing v2 browser encoder and Coleco VRAM decoder | Keep as the default |
 | ZX1 | `ZX1` / codec `zx1` | Byte-identical browser encoder; exact GearColeco VRAM and cycle proof | Integrated and measured |
 | ZX2 | `ZX2` / codec `zx2` | Exact corpus round-trip, five-profile VRAM proof, and cycle proof | Integrated and measured |

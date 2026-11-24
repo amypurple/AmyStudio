@@ -136,7 +136,7 @@ export function createProjectFileUiHelpers({
   function pictureGroupNameFromPath(path) {
     const bare = normalizeProjectFilePath(path).slice("@project/".length).replace(/\\/g, "/");
     const file = bare.split("/").pop() || "Picture";
-    const withoutCodec = file.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+    const withoutCodec = file.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
     const withoutComponent = withoutCodec.replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "");
     return assetNameFromProjectPath(withoutComponent || file);
   }
@@ -145,12 +145,12 @@ export function createProjectFileUiHelpers({
     const project = getProject();
     const pictureName = pictureGroupNameFromPath(entry.path);
     const targetPrefix = normalizeProjectFilePath(entry.path)
-      .replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
+      .replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
       .replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "")
       .toLowerCase();
     const group = (project.projectFiles || []).filter((candidate) => {
       const normalized = normalizeProjectFilePath(candidate.path).toLowerCase();
-      const withoutCodec = normalized.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+      const withoutCodec = normalized.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
       return withoutCodec.replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "") === targetPrefix;
     });
     const patternFile = group.find((candidate) => pictureComponentFromPath?.(candidate.path) === "pattern");
@@ -215,13 +215,13 @@ export function createProjectFileUiHelpers({
 
   function tileGroupPrefix(path) {
     const normalized = normalizeProjectFilePath(path).toLowerCase();
-    const withoutCodec = normalized.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+    const withoutCodec = normalized.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
     return withoutCodec.replace(/\.(pattern|pat|chr|color|col|clr|name|nam)$/i, "");
   }
 
   function pictureTableGroupPrefix(path) {
     const normalized = normalizeProjectFilePath(path).toLowerCase();
-    const withoutCodec = normalized.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+    const withoutCodec = normalized.replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
     return withoutCodec.replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "");
   }
 
@@ -393,7 +393,7 @@ export function createProjectFileUiHelpers({
       .slice("@project/".length)
       .split("/")
       .pop()
-      .replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
+      .replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
       .replace(/\.(pattern|pat|chr|color|col|clr|name|nam)$/i, "");
     return `${base || "tiles"}.dat`;
   }
@@ -404,7 +404,7 @@ export function createProjectFileUiHelpers({
       .slice("@project/".length)
       .split("/")
       .pop()
-      .replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
+      .replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "")
       .replace(/\.(pc|pattern|pat|chr|color|col|clr|name|nam)$/i, "");
     return `${base || "picture"}.pc`;
   }
@@ -1955,6 +1955,7 @@ export function createProjectFileUiHelpers({
     { codec: "aplib", label: "aPLib Compact", description: "Strong aPPack-compatible compression with a compact direct-VRAM routine.", routineBytes: 244, extension: "aplib" },
     { codec: "megalz", label: "MegaLZ", description: "DEC40-compatible compression with a compact direct-VRAM routine.", routineBytes: 162, extension: "mlz" },
     { codec: "exomizer", label: "Exomizer 2", description: "Strong compression; also uses 156 bytes of CPU RAM reserved by Amy Studio.", routineBytes: 226, extension: "exo" },
+    { codec: "upkr", label: "UPKR", description: "Very strong arithmetic compression; slow to decode and uses 322 bytes of aligned CPU RAM reserved by Amy Studio.", routineBytes: 221, extension: "upkr" },
     { codec: "msc1", label: "MSC1", description: "Fast four-byte sequence compression without VRAM back-copy reads.", routineBytes: 68, extension: "msc1" },
     { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point.", routineBytes: 136, extension: "zx7" },
     { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco table data.", routineBytes: 212, extension: "dan2" },
@@ -2500,7 +2501,7 @@ export function createProjectFileUiHelpers({
   function projectFileBaseWithoutCodec(path) {
     return normalizeProjectFilePath(path)
       .slice("@project/".length)
-      .replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
+      .replace(/\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|bitbuster|nibble)$/i, "");
   }
 
   function editorNameFromBase(base) {

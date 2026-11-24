@@ -4,7 +4,7 @@ import {
 } from "./tms9918Mode2Repacker.js?v=20261012-mode2-repacker1";
 import { TMS9918_PALETTE } from "./graphicsTms9918.js?v=20260724-compact-mode2-colors";
 
-const COMPONENT_RE = /\.(pattern|pat|chr|color|col|clr)(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|pck|bitbuster|nibble|raw))?$/i;
+const COMPONENT_RE = /\.(pattern|pat|chr|color|col|clr)(?:\.(zx0|zx1|zx2|zx7|aplib|mlz|megalz|exo|exomizer|upkr|upk|msc1|dan1|dan2|dan3|pletter|plet5|lzf|rle|mdkrle|pck|bitbuster|nibble|raw))?$/i;
 
 function normalizedPath(entry) {
   return String(entry?.path || "").replace(/^@project\//i, "").replace(/\\/g, "/");

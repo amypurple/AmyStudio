@@ -477,6 +477,7 @@ const tests = [
   { file: "test-megalz-vram-rom.mjs", area: "megalz-vram", evidence: "rom", suite: "codecs" },
   { file: "test-exomizer2-codec.mjs", area: "exomizer2-codec", evidence: "unit", suite: "codecs" },
   { file: "test-exomizer2-vram-rom.mjs", area: "exomizer2-vram", evidence: "rom", suite: "codecs" },
+  { file: "test-upkr-vram-rom.mjs", area: "upkr-vram", evidence: "rom", suite: "codecs" },
   { file: "test-state-update-benchmark.mjs", area: "state-update-benchmark", evidence: "rom", suite: "examples" },
   { file: "test-state-update-record-ix-benchmark.mjs", area: "state-update-record-ix-benchmark", evidence: "rom", suite: "examples" },
   { file: "test-display-cost-benchmark.mjs", area: "display-cost-benchmark", evidence: "rom", suite: "examples" },

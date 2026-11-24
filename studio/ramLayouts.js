@@ -77,6 +77,7 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
   // transpiler unless music conservatively reserves both Tiny Sound slots.
   const needsTinySound = !!caps.needsTinySound || !!caps.usesTinySound || needsMusic;
   const needsExomizer = !!caps.needsExomizer;
+  const needsUpkr = !!caps.needsUpkr;
   const needsVoiceQueue = !!caps.needsVoiceQueue;
   const needsEnlargePattern = !!caps.needsEnlargePattern;
   const needsRuntimeState =
@@ -263,6 +264,14 @@ export function buildColecoLegacyRuntimeMap(capabilities = null) {
     current = aligned + 156;
   }
 
+  if (needsUpkr) {
+    const aligned = (current + 0xff) & ~0xff;
+    if (aligned > current) reserved.push({ start: current, endExclusive: aligned, label: "UPKR alignment gap" });
+    addresses.upkr_probs = aligned;
+    reserved.push({ start: aligned, endExclusive: aligned + 322, label: "UPKR probability workspace" });
+    current = aligned + 322;
+  }
+
   if (needsFrameCounter) {
     addresses.frame_counter = 0x73BA;
     reserved.push({ start: 0x73BA, endExclusive: 0x73BC, label: "Amy frame counter (reusing Pascal parameter area)" });
@@ -305,15 +314,25 @@ export function getRamLayout(profileId, capabilities = null) {
   if (profileId === "adam-eos-application") {
     const layout = cloneLayout(ramLayouts[profileId]);
     const needsExomizer = !!capabilities?.needsExomizer;
+    const needsUpkr = !!capabilities?.needsUpkr;
+    let codecRam = 0x2100;
+    const runtimeAddresses = { buffer32: 0x2000 };
     if (needsExomizer) {
-      layout.reserved.push({ start: 0x2100, endExclusive: 0x219c, label: "Exomizer 2 temporary table" });
-      layout.userRamStart = 0x219c;
+      runtimeAddresses.exomizerTable = codecRam;
+      layout.reserved.push({ start: codecRam, endExclusive: codecRam + 156, label: "Exomizer 2 temporary table" });
+      codecRam += 156;
     }
+    if (needsUpkr) {
+      codecRam = (codecRam + 0xff) & ~0xff;
+      runtimeAddresses.upkrProbs = codecRam;
+      layout.reserved.push({ start: codecRam, endExclusive: codecRam + 322, label: "UPKR probability workspace" });
+      codecRam += 322;
+    }
+    if (needsExomizer || needsUpkr) layout.userRamStart = codecRam;
     return {
       ...layout,
       runtimeAddresses: {
-        buffer32: 0x2000,
-        ...(needsExomizer ? { exomizerTable: 0x2100 } : {}),
+        ...runtimeAddresses,
         vdpRegister1Shadow: 0xFD62,
         spritePatternShadow: 0xFD66,
         nameTableShadow: 0xFD68,

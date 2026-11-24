@@ -2150,3 +2150,14 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   evidence is `test-asm-semicolon-literal.mjs`,
   `test-compression-comment-inference.mjs`, and `amy-qa quick`.
 
+## 2026-11-24 - UPKR has a managed direct-to-VRAM runtime
+
+- `decompress upkr` uses the independently validated compact decoder with the Amy
+  ABI `HL=source`, `DE=VRAM destination`, entry point `upkr_decompress`.
+- Amy conditionally reserves `AMY_UPKR_PROBS` as a 256-byte-aligned 322-byte
+  workspace. User variables and other conditional codec tables are allocated after it.
+- The managed VRAM wrapper disables NMI and restores the previous R1 state; UPKR
+  remains intended for blanked transitions because arithmetic decoding is slow.
+- `test-upkr-vram-rom.mjs` proves exact 6,144-byte VRAM output, alignment
+  and RAM non-overlap under all five optimizer profiles.
+

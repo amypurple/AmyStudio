@@ -133,6 +133,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
   const usesTinySound = sourceHintsTinySound(text);
   const needsTinySound = usesTinySound;
   const needsExomizer = /\b(?:decompress\s+exomizer|exomizer_decompress|codec\s+exomizer)\b/i.test(codeText);
+  const needsUpkr = /\b(?:decompress\s+upkr|upkr_decompress|codec\s+upkr)\b/i.test(codeText);
   const needsVoiceQueue = /^\s*voice\s+(?:start|stop|speaking)\b/im.test(codeText);
   const needs120c = /^\s*120\s+colors\s+(?:on|off)\s*$/im.test(codeText) ||
     /\bAMY_120C_(?:ON|OFF|UPDATE)\b/i.test(text);
@@ -235,6 +236,7 @@ export function inferAmyMemoryCapabilities(sourceText, sourceHintsTinySound) {
     needsVdpGuardPending: needsTextVdpGuard,
     needsTinySound,
     needsExomizer,
+    needsUpkr,
     needsVoiceQueue,
     needs120c,
     needsEnlargePattern,

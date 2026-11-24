@@ -133,7 +133,7 @@ export const CODEC_CONFIG = {
             author: 'Dennis Ranke; Z80 stream by Peter Helcmanovsky; Amy Studio JavaScript port',
             year: '2021-2026',
             description: 'Very high-ratio rANS/LZ codec for one-off loads where decompression time and work RAM are available.',
-            extensions: ['.upkr'],
+            extensions: ['.upkr', '.upk'],
             module: './codecs/upkr.js',
             className: 'UpkrCodec',
             enabled: true,

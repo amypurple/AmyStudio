@@ -8,6 +8,7 @@ const PICTURE_CODEC_OPTIONS = [
   { codec: "aplib", label: "aPLib Compact", description: "Strong aPPack-compatible compression with a compact direct-VRAM routine." },
   { codec: "megalz", label: "MegaLZ", description: "DEC40-compatible compression with a compact direct-VRAM routine." },
   { codec: "exomizer", label: "Exomizer 2", description: "Strong compression; needs a 226-byte ROM decoder and 156 bytes of CPU RAM reserved by Amy Studio." },
+  { codec: "upkr", label: "UPKR", description: "Very strong arithmetic compression; needs a 221-byte decoder and 322 bytes of aligned CPU RAM reserved by Amy Studio." },
   { codec: "msc1", label: "MSC1", description: "Fast four-byte sequence compression with no VRAM back-copy reads." },
   { codec: "zx7", label: "ZX7", description: "Older LZ compressor, useful as a comparison point." },
   { codec: "dan2", label: "DAN2", description: "DAN2 LZ codec; good candidate for Coleco bitmap data." },
@@ -30,6 +31,7 @@ export const PICTURE_DECOMPRESSOR_ROUTINE_BYTES = {
   aplib: 244,
   megalz: 162,
   exomizer: 226,
+  upkr: 221,
   msc1: 68,
   zx7: 136,
   dan1: 205,
@@ -90,6 +92,11 @@ const PICTURE_Z80_RUNTIME_INFO = {
     rank: 4,
     label: "table-driven LZ VRAM back-copy",
     note: "Uses 156 bytes of CPU RAM. Amy Studio reserves the aligned workspace; its generated address must not be hard-coded or overlapped."
+  },
+  upkr: {
+    rank: 5,
+    label: "arithmetic-coded VRAM back-copy",
+    note: "Often compresses very well, but decoding is slow and uses a 322-byte aligned probability workspace reserved by Amy Studio."
   },
   msc1: {
     rank: 2,

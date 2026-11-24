@@ -41,6 +41,7 @@ const CODEC_EXTENSIONS = {
   ".msc1": "msc1",
   ".amyz": "amyz",
   ".upkr": "upkr",
+  ".upk": "upkr",
   ".raw": "raw"
 };
 

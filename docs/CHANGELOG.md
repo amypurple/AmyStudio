@@ -1,3 +1,10 @@
+## 2026-11-24 - UPKR runtime and VS Code 0.1.30
+
+- Integrated UPKR as a managed direct-to-VRAM codec with a 221-byte decoder,
+  conditional 322-byte aligned workspace, NMI-safe calls and MegaCart support.
+- Added exact 6,144-byte VRAM validation across all five optimization profiles.
+- Updated the Web Studio, CLI documentation and VS Code extension to **0.1.30**.
+
 ## 2026-11-24 - AMYZ compression and VS Code 0.1.29
 
 - Integrated AMYZ as a native Amy compression option, including standalone,

@@ -2362,6 +2362,15 @@ For declared project assets, prefer `decompress AssetName to vram.*`; Amy uses t
 
 `exomizer` reserves a 256-byte-aligned, 156-byte work table in RAM only when the project uses that codec. Its direct-VRAM decoder is 226 bytes. The generated `AMY_EXOMIZER_TABLE` address depends on the other runtime services: the reserved range is `AMY_EXOMIZER_TABLE` through `AMY_EXOMIZER_TABLE + $009B`. Never hard-code that address or overlap the range with globals, overlays, or scratch RAM; verify it in the generated ASM/RAM report. The picture compressor compares payload and decoder cost with RAW and the other codecs rather than assuming Exomizer is smaller.
 
+`upkr` uses a 221-byte arithmetic decoder and reserves a 256-byte-aligned,
+322-byte probability/work area only when the project needs it. The generated
+`AMY_UPKR_PROBS` range must not be hard-coded or overlapped. Amy accepts both
+`.upkr` and `.upk` assets and supports the ordinary `decompress upkr ... to
+vram.*`, declared-asset, picture and MegaCart bank forms. UPKR is much slower
+than the LZ codecs, so use it for loading screens or blanked transitions rather
+than frame-time animation. Amy's managed decompression wrapper disables NMI for
+the call and restores the previous VDP register-1 state afterward.
+
 `msc1` uses literal packets and references to four-byte sequences in its compressed ROM/RAM stream. Its 68-byte direct-to-VRAM decoder never reads VRAM, making it simple and fast, but its compression is specialized and usually weaker than ZX0. Let the picture compressor compare payload plus decoder cost for each asset instead of selecting MSC1 globally.
 
 `merge Source count N to Target mask M xor X` is the safe Amy form of the old

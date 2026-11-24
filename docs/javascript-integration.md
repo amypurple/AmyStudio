@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | Compression engines | `C:/Users/Amy/Documents/git/RetroCompress-Lite/js/codecs/` | `studio/vendor/retrocompress-lite/js/codecs/` | Copied and callable |
 | Compression registry | `C:/Users/Amy/Documents/git/RetroCompress-Lite/js/codecConfig.js` | `studio/vendor/retrocompress-lite/js/codecConfig.js` | Copied and callable |
+| UPKR runtime | Dennis Ranke / Peter Helcmanovsky | `src/compression/upkr_vram.asm` | 221-byte direct-VRAM decoder; Amy reserves 322 aligned work-RAM bytes and guards NMI |
 | Sound ASM codec | `C:/Users/Amy/Documents/git/AmysCVSoundStudio/asmCodec.js` | `studio/vendor/amyscvsoundstudio/asmCodec.js` | Copied, ES module export added |
 | AmysCVAssembly parser/lexer | `C:/Users/Amy/Documents/git/AmysCVAssembly/AmysCVAssemblerPro-v2.html` | `studio/vendor/amyscvassembly/parserCore.js` | Extracted from HTML, no DOM dependencies |
 | Studio adapters | New ALEXIS code | `studio/core/compression.js`, `studio/core/soundAsm.js` | Stable API over vendored code |

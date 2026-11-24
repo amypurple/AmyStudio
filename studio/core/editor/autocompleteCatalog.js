@@ -417,6 +417,7 @@ export const AMY_AUTOCOMPLETE = [
   ["decompress aplib Pattern to vram.pattern", "aPLib raw stream directly to ColecoVision VRAM"],
   ["decompress megalz Pattern to vram.pattern", "MegaLZ stream directly to ColecoVision VRAM"],
   ["decompress exomizer Pattern to vram.pattern", "Exomizer 2 stream directly to ColecoVision VRAM"],
+  ["decompress upkr Pattern to vram.pattern", "UPKR arithmetic-coded stream directly to VRAM; Amy reserves its 322-byte aligned workspace"],
   ["decompress rle Pattern to vram.pattern", "Alias for lib4ksa/getput11 mdkrle-style VRAM decompression"],
   ["show picture TitleScreen", "All-in-one bitmap picture display: set mode, upload data, then screen on"],
   ["upload picture TitleScreen", "Upload/decompress a grouped picture without changing screen state"],

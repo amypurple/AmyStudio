@@ -902,6 +902,12 @@ export function buildNativeEosPreamble(capabilities = {}) {
       ""
     );
   }
+  if (nativeRamLayout.runtimeAddresses?.upkrProbs !== undefined) {
+    lines.push(
+      `AMY_UPKR_PROBS EQU $${nativeRamLayout.runtimeAddresses.upkrProbs.toString(16).toUpperCase().padStart(4, "0")}`,
+      ""
+    );
+  }
   if (capabilities.needsBackdropShadow) {
     lines.push(
       "; Amy-owned VDP R7 shadow, outside EOS state and native user RAM.",
@@ -1273,6 +1279,7 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
     aplib: "src/compression/aplib_vram.asm",
     megalz: "src/compression/megalz_vram.asm",
     exomizer: "src/compression/exomizer_vram.asm",
+    upkr: "src/compression/upkr_vram.asm",
     msc1: "src/compression/msc1_vram.asm",
     zx7: "src/compression/zx7_vram.asm",
     dan1: "src/compression/dan1_vram.asm",
@@ -1292,12 +1299,12 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
       String(asset.name).toLowerCase(),
       String(asset.codec).toLowerCase() === "rle" ? "mdkrle" : String(asset.codec).toLowerCase()
     ]));
-  const pattern = /^\s*decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|msc1|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?\s*$/gim;
+  const pattern = /^\s*decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|upkr|msc1|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+to\s+vram\.(pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?\s*$/gim;
   let match;
   while ((match = pattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
   }
-  const bankedPattern = /^\s*decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|msc1|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+from\s+bank\s+\d+\s+to\s+(?:vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))\s*$/gim;
+  const bankedPattern = /^\s*decompress\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|upkr|msc1|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s+[A-Za-z_][A-Za-z0-9_]*\s+from\s+bank\s+\d+\s+to\s+(?:vram\.(?:pattern|color|name|spr_pat|spr_attr)(?:\s*\+\s*[^\r\n]+)?|vram\s+(?:\$[0-9A-Fa-f]+|[0-9]+))\s*$/gim;
   while ((match = bankedPattern.exec(sourceText)) !== null) {
     const codec = match[1].toLowerCase() === "rle" ? "mdkrle" : match[1].toLowerCase();
     found.add(codecToInclude[codec]);
@@ -1307,7 +1314,7 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
     const codec = assetCodecByName.get(match[1].toLowerCase());
     if (codec && codecToInclude[codec]) found.add(codecToInclude[codec]);
   }
-  const pictureComponentPattern = /^\s*(?:pattern|color|name)\s+from\s+"[^"]+"\s+codec\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|msc1|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s*$/gim;
+  const pictureComponentPattern = /^\s*(?:pattern|color|name)\s+from\s+"[^"]+"\s+codec\s+(zx0|zx1|zx2|zx7|aplib|megalz|exomizer|upkr|msc1|dan1|dan2|dan3|mdkrle|pletter|lzf|bitbuster|nibble|rle)\s*$/gim;
   while ((match = pictureComponentPattern.exec(sourceText)) !== null) {
     found.add(codecToInclude[match[1].toLowerCase()]);
   }
@@ -1318,6 +1325,7 @@ function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {
     aplib_decompress: "aplib",
     megalz_decompress: "megalz",
     exomizer_decompress: "exomizer",
+    upkr_decompress: "upkr",
     msc1_decompress: "msc1",
     zx7_decompress: "zx7",
     dan1_decompress: "dan1",
@@ -1442,6 +1450,8 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
   const needsSleepState = /\b(?:AMY_SLEEP_IDLE_TICKS|AMY_PAUSE_PRESS_RELEASE_BLANK|AMY_CHOICE_KEYPAD_RANGE_BLANK)\b/.test(asmBody);
   const needsExomizer = /\b(?:exomizer_decompress|AMY_EXOMIZER_TABLE)\b/.test(asmBody)
     || /\b(?:decompress\s+exomizer|codec\s+exomizer)\b/i.test(sourceText);
+  const needsUpkr = /\b(?:upkr_decompress|AMY_UPKR_PROBS)\b/.test(asmBody)
+    || /\b(?:decompress\s+upkr|codec\s+upkr)\b/i.test(sourceText);
   const needsVoiceQueue = sourceMemoryCaps.needsVoiceQueue || /\bAMY_VOICE_(?:START|UPDATE|STOP|SPEAKING)\b/.test(asmBody);
   const needsEnlargePattern = sourceMemoryCaps.needsEnlargePattern ||
     /\bAMY_ENLARGE_PATTERN\b/.test(asmBody) ||
@@ -1473,6 +1483,7 @@ function inferRuntimeCapabilities(project, asmBody, controllerUsageText = projec
     needsGraphicsTablePointers,
     needsSleepState,
     needsExomizer,
+    needsUpkr,
     needsVoiceQueue,
     needsEnlargePattern,
     soundAreaCount,
@@ -1640,6 +1651,9 @@ function buildLegacyGeneratedHeaders(caps, symbolText = "", options = {}) {
   }
   if (addr.exomizer_table !== undefined) {
     lines.push(`AMY_EXOMIZER_TABLE EQU ${hex16(addr.exomizer_table)}`);
+  }
+  if (addr.upkr_probs !== undefined) {
+    lines.push(`AMY_UPKR_PROBS EQU ${hex16(addr.upkr_probs)}`);
   }
   if (needsRandomSeed) {
     lines.push("");
@@ -2421,9 +2435,13 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
     .join("\n");
 
   const asmBodyBase = asmBody;
-  const megaCartRuntimeHints = (metadata?.megaCart?.imports || []).some((entry) => entry?.operation === "copy-vram")
-    ? "\nAMY_COPY_BYTES_TO_VRAM\n"
-    : "";
+  const megaCartImports = metadata?.megaCart?.imports || [];
+  const megaCartRuntimeHints = [
+    ...(megaCartImports.some((entry) => entry?.operation === "copy-vram") ? ["AMY_COPY_BYTES_TO_VRAM"] : []),
+    ...megaCartImports
+      .filter((entry) => entry?.operation === "decompress-vram" && entry?.codec)
+      .map((entry) => `${String(entry.codec).toLowerCase()}_decompress`)
+  ].map((symbol) => `\n${symbol}\n`).join("");
   const activeSourceText = metadata?.activeSourceText ?? project.sourceText ?? "";
   const projectAsmDependencyText = collectProjectAsmTextForDependencyScan(project, `${activeSourceText}\n${asmBodyBase}`);
   const asmBodyForDependencyScan = `${stripSourceMarkersForScan(asmBodyBase)}\n${projectAsmDependencyText}${megaCartRuntimeHints}`;
@@ -2512,7 +2530,7 @@ export function generateAsm(project, asmBody, assetDeclarations = [], metadata =
   // original source here would resurrect codec dependencies from disabled pictures
   // or decompress statements; the generated ASM and active asset declarations are
   // the authoritative inputs for final runtime selection.
-  const dependencyScanText = asmBodyWithRuntimeInitForDependencyScan;
+  const dependencyScanText = `${asmBodyWithRuntimeInitForDependencyScan}${megaCartRuntimeHints}`;
   const inferredCompression = inferRequiredCompressionIncludes(dependencyScanText, assetDeclarations);
   const compIncludes = [...new Set([...comps.map(normalizeAsmIncludePath), ...inferredCompression.map(normalizeAsmIncludePath)])];
 

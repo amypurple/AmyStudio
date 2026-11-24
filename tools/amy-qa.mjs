@@ -91,6 +91,7 @@ const quickTests = [
   "test-megalz-vram-rom.mjs",
   "test-exomizer2-codec.mjs",
   "test-exomizer2-vram-rom.mjs",
+  "test-upkr-vram-rom.mjs",
   "test-state-update-benchmark.mjs",
   "test-state-update-record-ix-benchmark.mjs",
   "test-internal-compiler-single-pass.mjs"

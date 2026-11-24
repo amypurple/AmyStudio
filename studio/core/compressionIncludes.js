@@ -12,6 +12,7 @@ const COMPRESSION_INCLUDE_BY_CODEC = Object.freeze({
   msc1: "src/compression/msc1_vram.asm",
   nibble: "src/compression/nibble_vram.asm",
   pletter: "src/compression/pletter_vram.asm",
+  upkr: "src/compression/upkr_vram.asm",
   rle: "src/compression/mdkrle_vram.asm",
   zx0: "src/compression/zx0_vram.asm",
   zx1: "src/compression/zx1_vram.asm",

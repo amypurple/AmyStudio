@@ -72,6 +72,18 @@ const bankDecompressAsm = generateAsm({
 }, bankDecompress.asmBody, [], bankDecompress.metadata);
 assert.match(bankDecompressAsm, /include "src\/compression\/zx0_vram\.asm"/);
 
+const bankUpkr = transpileAmy("bank rom 128\ndecompress upkr LevelPicture from bank 3 to vram.pattern");
+assert.equal(bankUpkr.ok, true, bankUpkr.log);
+assert.match(bankUpkr.asmBody, /call AMY_MEGACART_DECOMPRESS_UPKR_BANK_3_LevelPicture/);
+const bankUpkrAsm = generateAsm({
+  sourceText: "bank rom 128\ndecompress upkr LevelPicture from bank 3 to vram.pattern",
+  projectName: "MegaCart banked UPKR selftest",
+  memoryProfile: "colecovision_legacy_sdcc",
+  selectedLibs: [], selectedBundles: [], selectedCompression: [], selectedAssets: [], projectFiles: []
+}, bankUpkr.asmBody, [], bankUpkr.metadata);
+assert.match(bankUpkrAsm, /include "src\/compression\/upkr_vram\.asm"/);
+assert.match(bankUpkrAsm, /AMY_UPKR_PROBS EQU \$[0-9A-F]{4}/);
+
 const bankCopy = transpileAmy("bank rom 128\ncopy LevelMap from bank 2 count 768 to vram.name + 32");
 assert.equal(bankCopy.ok, true, bankCopy.log);
 assert.match(bankCopy.asmBody, /ld de,VRAM_NAME \+ 32/);
