@@ -2260,6 +2260,11 @@ Legacy porting signal: old C code that alternates calls like
 be ported with `set screen pages ...` plus `swap screens`, not with direct redraw
 to `vram.name`.
 
+The table names are also constant 16-bit values in numeric expressions. For
+example, `Address = vram.spr_pat + 64` assigns `$3840` to a `u16`; the same
+rule applies to `vram.pattern`, `vram.color`, `vram.name`, and
+`vram.spr_attr`.
+
 ### VRAM direct access
 
 ```basic
@@ -3712,7 +3717,11 @@ Rules:
 Amy classifies a top-level `asm {}` block by what it contains:
 
 - an executable block stays in source order; if it appears before the first Amy statement, Amy opens `Start:` first, so the block executes during startup;
-- a block containing `db`, `dw`, `ds`, `defb`, `defw`, `defs`, or `incbin` is ROM data and is detached from main-program flow;
+- a block containing only labels plus `db`, `dw`, `ds`, `defb`, `defw`,
+  `defs`, or `incbin` is ROM data and is detached from main-program flow;
+- a mixed instruction/data block stays in source order. Its instructions run
+  normally, so use an explicit jump around embedded data before execution can
+  fall through into it;
 - a block containing only `Name equ Value` definitions is also detached;
 - a block inside a `sub` or `function` remains inside that routine, including a mixed instruction/data block.
 

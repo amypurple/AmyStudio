@@ -1,3 +1,10 @@
+## 2026-11-24 - Amy compiler regressions and VS Code 0.1.31
+
+- Fixed `vram.spr_pat` and the other VRAM table constants in numeric assignments.
+- Kept mixed executable/data top-level `asm {}` blocks in source order instead of silently detaching their executable setup code.
+- Improved comparisons that reference a global declared later to report the declaration-order error directly.
+- Added five-profile runtime regression coverage and updated the VS Code extension to **0.1.31**.
+
 ## 2026-11-24 - UPKR runtime and VS Code 0.1.30
 
 - Integrated UPKR as a managed direct-to-VRAM codec with a 221-byte decoder,

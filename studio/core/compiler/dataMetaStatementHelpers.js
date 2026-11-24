@@ -112,6 +112,14 @@ export function handleDataMetaStatement({
       const emitsOnlyEqu = substantiveAsm.length > 0 && substantiveAsm.every((entry) =>
         /^\s*[A-Za-z_][A-Za-z0-9_]*\s+equ\b/i.test(String(entry || ""))
       );
+      const emitsExecutableAsm = substantiveAsm.some((entry) => {
+        const text = String(entry || "").replace(/;.*$/, "").trim();
+        if (!text || /^[A-Za-z_.$?@][\w.$?@]*:$/.test(text)) return false;
+        if (/^(?:AMY_OPTIMIZER_TIMING_|\.AMY_USER_ASM_LINE_)/i.test(text)) return false;
+        if (/^(?:\.?d(?:b|w|s)|defb|defw|defs|incbin|org|align)\b/i.test(text)) return false;
+        if (/^[A-Za-z_][A-Za-z0-9_]*\s+equ\b/i.test(text)) return false;
+        return true;
+      });
       const markerId = Number.isInteger(state.sourceLineNumber) ? state.sourceLineNumber : 0;
       const markedAsm = state.asmRelax
         ? [
@@ -126,7 +134,7 @@ export function handleDataMetaStatement({
             ...state.asmBuffer,
             `AMY_OPTIMIZER_TIMING_END_USER_ASM_${markerId}:`
           ];
-      if (!state.insideRoutine && (emitsInlineData || emitsOnlyEqu)) {
+      if (!state.insideRoutine && ((emitsInlineData && !emitsExecutableAsm) || emitsOnlyEqu)) {
         state.detachedAsmData.push(...markedAsm);
       } else {
         if (state.asmNeedsImplicitStart) state.ensureImplicitStartForExecutable?.();

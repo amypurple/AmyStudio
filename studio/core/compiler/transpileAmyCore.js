@@ -4303,6 +4303,7 @@ export function transpileAmyCore(sourceText, deps) {
   let emitConditionAstJump;
   let emitConditionalJump;
   let emitOnIndexedJump;
+  let activeSourceLineNumber = 0;
   ({
     invertOperator,
     evaluateConstantComparison,
@@ -4355,6 +4356,7 @@ export function transpileAmyCore(sourceText, deps) {
     resolveSourceJumpTarget,
     formatUnknownJumpTargetLog,
     findUnknownValueIdentifier,
+    describeGlobalDeclaredAfterUse: (text) => describeGlobalDeclaredAfterUse(text, activeSourceLineNumber),
     emitComputedCompareGoto: (...args) => emitComputedCompareGoto(...args),
     getTileTypeInfo,
     getHitboxInfo,
@@ -4968,6 +4970,7 @@ export function transpileAmyCore(sourceText, deps) {
   }
 
   for (let sourceLineNumber = 0; sourceLineNumber < lines.length; sourceLineNumber += 1) {
+    activeSourceLineNumber = sourceLineNumber;
     const overlayDefinition = overlayDefinitions.get(sourceLineNumber);
     if (overlayDefinition) {
       if (currentProc || currentFunction) {
@@ -6096,6 +6099,19 @@ export function transpileAmyCore(sourceText, deps) {
     }
 
     const formulaAssignment = parseFormulaAssignment(line);
+    if (formulaAssignment) {
+      const vramSymbols = {
+        pattern: "$0000",
+        color: "$2000",
+        name: "$1800",
+        spr_pat: "$3800",
+        spr_attr: "$1B00"
+      };
+      formulaAssignment.value = String(formulaAssignment.value).replace(
+        /\bvram\.(pattern|color|name|spr_pat|spr_attr)\b/gi,
+        (_match, name) => vramSymbols[String(name).toLowerCase()]
+      );
+    }
     const formulaShiftHandledLater = formulaAssignment
       && (formulaAssignment.op === "<<=" || formulaAssignment.op === ">>=")
       && !["int16", "u32", "i32"].includes(resolveValueType(formulaAssignment.target));
