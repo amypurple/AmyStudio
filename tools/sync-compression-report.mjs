@@ -24,7 +24,7 @@ const replacement = [
   "",
   `The corpus contains ${report.rows.length} unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All ${report.rows.length * (report.columns.length - 1)} measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.`,
   "",
-  "The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR is payload-only and excluded from those places because no accepted stock-ColecoVision runtime decoder exists.",
+  "The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR uses Claude's independently validated 221-byte small VRAM decoder for this ranking; Amy compiler integration remains pending.",
   "",
   "| Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th |",
   "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",

@@ -28,7 +28,9 @@ assert.equal(cycles.ranking.length, runtimeCodecs.length, "Cycle ranking/catalog
 assert.equal(cycles.rows.length, runtimeCodecs.length * 3, "Representative cycle suite must cover three pictures per runtime codec");
 assert.ok(cycles.rows.every((row) => row.exactVram), "Cycle evidence contains a VRAM mismatch");
 
-const confirmed = markdown.match(/^\| Amy Studio \| ([^|]+) \| ColecoVision paths,/m)?.[1] ?? "";
+const confirmed = [...markdown.matchAll(/^\| Amy Studio \| ([^|]+) \| [^|]+ \|/gm)]
+  .map((match) => match[1])
+  .find((value) => value.includes("AMYZ")) ?? "";
 for (const { name } of codecs) {
   const documented = /^DAN[123]$/.test(name)
     ? "DAN1/2/3"
@@ -36,7 +38,7 @@ for (const { name } of codecs) {
   assert.ok(confirmed.includes(documented), `Confirmed formats omits ${documented}`);
 }
 
-assert.match(markdown, /Eighteen measured codecs, including AMYZ and payload-only UPKR/);
+assert.match(markdown, /Eighteen measured codecs, including AMYZ and UPKR/);
 assert.doesNotMatch(markdown, /Thirteen active codecs|Fourteen active codecs|Fifteen active codecs|All thirteen integrated/);
 assert.doesNotMatch(markdown, /cycle suite pending|measure Coleco cycle cost|Z80 cycle measurements remain required/);
 assert.doesNotMatch(markdown, /DAN3 Best|ZX0 modern/);

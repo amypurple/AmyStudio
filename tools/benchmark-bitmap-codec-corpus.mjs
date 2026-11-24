@@ -258,7 +258,7 @@ const names = {
 const decoderBytes = {
   zx0: 136, zx1: 127, zx2: 115, zx7: 136, aplib: 244, megalz: 162, pletter: 212,
   bitbuster12: 166, lzf: 117, dan1: 205, dan2: 212, dan3: 205,
-  nibble: 115, mdkrle: 46, exomizer: 226, msc1: 68, amyz: 182, upkr: null,
+  nibble: 115, mdkrle: 46, exomizer: 226, msc1: 68, amyz: 182, upkr: 221,
 };
 
 const measuredCodecs = codecs.filter((id) => id !== "zx0classic");
@@ -334,7 +334,7 @@ fs.writeFileSync(path.join(output, "bitmap-codec-representatives.json"), JSON.st
 const familyTables = [
   ["LZ-family ratios", ["amyz", "zx0", "zx1", "zx2", "zx7", "aplib", "megalz", "exomizer", "msc1", "pletter", "bitbuster12", "lzf"]],
   ["DAN and RLE-family ratios", ["dan1", "dan2", "dan3", "nibble", "mdkrle"]],
-  ["Payload-only experimental ratios", ["upkr"]],
+  ["Arithmetic-codec ratios", ["upkr"]],
 ];
 const ratioTableName = (id) => names[id];
 const markdown = [

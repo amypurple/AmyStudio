@@ -8,20 +8,20 @@ This ranking sums every compressed Pattern + Color payload in the corpus. Podium
 
 | Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | UPKR | 147,150 | 28.51% | 20.98% | 0 | 0 | 0 | 0 | 0 |
-| 2 | Exomizer 2 | 161,374 | 31.27% | 23.43% | 10 | 11 | 12 | 2 | 3 |
-| 3 | AMYZ | 161,778 | 31.35% | 22.97% | 26 | 16 | 0 | 0 | 0 |
-| 4 | ZX0 | 166,556 | 32.27% | 23.63% | 6 | 15 | 18 | 1 | 2 |
-| 5 | DAN2 | 166,923 | 32.34% | 23.99% | 0 | 0 | 0 | 7 | 13 |
-| 6 | DAN3 | 167,186 | 32.39% | 23.99% | 0 | 0 | 0 | 16 | 5 |
-| 7 | DAN1 | 167,240 | 32.41% | 24.04% | 0 | 0 | 3 | 4 | 9 |
-| 8 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 | 0 | 0 | 1 | 1 |
+| 1 | UPKR | 147,150 | 28.51% | 20.98% | 42 | 0 | 0 | 0 | 0 |
+| 2 | Exomizer 2 | 161,374 | 31.27% | 23.43% | 0 | 10 | 11 | 12 | 2 |
+| 3 | AMYZ | 161,778 | 31.35% | 22.97% | 0 | 26 | 16 | 0 | 0 |
+| 4 | ZX0 | 166,556 | 32.27% | 23.63% | 0 | 6 | 15 | 18 | 1 |
+| 5 | DAN2 | 166,923 | 32.34% | 23.99% | 0 | 0 | 0 | 0 | 7 |
+| 6 | DAN3 | 167,186 | 32.39% | 23.99% | 0 | 0 | 0 | 0 | 16 |
+| 7 | DAN1 | 167,240 | 32.41% | 24.04% | 0 | 0 | 0 | 3 | 4 |
+| 8 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 | 0 | 0 | 0 | 1 |
 | 9 | aPLib Compact | 171,484 | 33.23% | 24.52% | 0 | 0 | 0 | 0 | 0 |
 | 10 | Pletter | 171,751 | 33.28% | 24.80% | 0 | 0 | 0 | 0 | 0 |
-| 11 | ZX7 | 171,788 | 33.29% | 24.77% | 0 | 0 | 0 | 2 | 9 |
+| 11 | ZX7 | 171,788 | 33.29% | 24.77% | 0 | 0 | 0 | 0 | 2 |
 | 12 | BitBuster | 172,941 | 33.51% | 24.94% | 0 | 0 | 0 | 0 | 0 |
-| 13 | ZX1 | 176,562 | 34.21% | 24.98% | 0 | 0 | 4 | 5 | 0 |
-| 14 | ZX2 | 177,582 | 34.41% | 25.40% | 0 | 0 | 5 | 4 | 0 |
+| 13 | ZX1 | 176,562 | 34.21% | 24.98% | 0 | 0 | 0 | 4 | 5 |
+| 14 | ZX2 | 177,582 | 34.41% | 25.40% | 0 | 0 | 0 | 5 | 4 |
 | 15 | LZF | 193,412 | 37.48% | 28.36% | 0 | 0 | 0 | 0 | 0 |
 | 16 | Nibble | 214,555 | 41.57% | 35.48% | 0 | 0 | 0 | 0 | 0 |
 | 17 | MDK-RLE | 253,859 | 49.19% | 42.52% | 0 | 0 | 0 | 0 | 0 |
@@ -121,7 +121,7 @@ This ranking sums every compressed Pattern + Color payload in the corpus. Podium
 | Xzema (Chaos Constructions 2001, 2) | 55.32% | 55.46% | 56.04% | 71.64% | 83.06% |
 | Znachok (Enlight 1996, 15) | 17.72% | 17.64% | 17.37% | 23.32% | 28.39% |
 
-### Payload-only experimental ratios
+### Arithmetic-codec ratios
 
 | Picture | UPKR |
 |---|---:|
@@ -191,6 +191,7 @@ These are assembled routine bytes, excluding compressed data and common program 
 | DAN3 | 205 |
 | Nibble | 115 |
 | MDK-RLE | 46 |
+| UPKR | 221 |
 
 UPKR is measured for payload only. It is excluded from first-use rankings because Amy Studio has no accepted stock-ColecoVision runtime decoder: the current design needs about 322 bytes of aligned probability/work RAM.
 
@@ -225,10 +226,11 @@ Each value is the complete compressed Pattern + Color payload plus one Amy direc
 | Nibble | 6410 | 3460 | 1298 |
 | MDK-RLE | 7331 | 3733 | 1436 |
 
-### Payload-only experimental first-use bytes
+### Arithmetic-codec first-use bytes
 
 | Codec | Commando | Warrior | Dacman Title |
 |---|---:|---:|---:|
+| UPKR | 5079 | 2766 | 1110 |
 
 Amy Studio's aPLib Compact routine is 244 bytes under every optimization profile, replacing the previous 348-byte unrolled routine. It preserves IX and IY, writes directly to VRAM, and keeps the same stream format and compressed payloads. MDK-RLE remains the smallest decoder at 46 bytes, but its payloads are much larger on these pictures.
 

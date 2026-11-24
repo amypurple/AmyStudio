@@ -514,7 +514,7 @@ def compression_corpus_pages():
         Paragraph(
             f"All {len(rows)} unique 12,288-byte pictures passed exact round-trip checks with every codec. "
             "The gallery shows the actual TMS9918 output, the three smallest payloads, and Pletter's rank when it falls outside the top three. "
-            "UPKR is payload-only and is excluded from first-use places because no accepted stock-ColecoVision runtime decoder exists. "
+            "UPKR is charged its independently validated 221-byte small VRAM decoder; Amy compiler integration remains pending. "
             "Exomizer also needs a 226-byte ROM decoder and 156 bytes of CPU RAM. Amy Studio reserves "
             "that workspace at a 256-byte boundary; its generated address varies and must not overlap other RAM.",
             styles["Bodyx"],

@@ -53,7 +53,7 @@ const cards = representatives.map((row) => {
 const section = `      <section class="section">
         <p class="eyebrow">GRAPHICS II COMPRESSION CORPUS</p>
         <h2>${report.rows.length} pictures, ${report.columns.length - 1} codecs, ${streamCount} exact checks.</h2>
-        <p>Every 12,288-byte Pattern + Color picture round-tripped exactly. Podiums rank first-use ROM bytes: payload plus one linked decoder. UPKR is payload-only and excluded from those places because it has no accepted stock-ColecoVision runtime decoder. Gallery cards show the three smallest payloads and Pletter's rank when it is outside the top three.</p>
+        <p>Every 12,288-byte Pattern + Color picture round-tripped exactly. Podiums rank first-use ROM bytes: payload plus one linked decoder. UPKR is charged its independently validated 221-byte small VRAM decoder; Amy compiler integration remains pending. Gallery cards show the three smallest payloads and Pletter's rank when it is outside the top three.</p>
         <div class="comparison-table-wrap"><table class="comparison-table">
           <thead>
             <tr><th rowspan="2">Rank</th><th rowspan="2">Codec</th><th rowspan="2">Payload total</th><th rowspan="2">Decoder</th><th colspan="5">First-use places (pictures)</th></tr>

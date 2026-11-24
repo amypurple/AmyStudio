@@ -96,12 +96,12 @@ All published ROMs are retained in the evidence archive with SHA-256 hashes.
 | Sample | Pure ASM* | Amy Studio | NewColeco | PkK's devkit | PVColLib | CVBasic | devkitSMS | z88dk | ugBASIC |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Hello World | **184** | 234 | 795 | 1,001 | 1,106 | 816 | 1,397 | 1,980 | 781 |
-| Warrior bitmap | **3,066** | 3,213 | 3,643 | 4,682 | 4,525 | 4,313 | 4,676 | 4,976 | 7,040 |
+| Warrior bitmap | **3,066** | 3,203 | 3,643 | 4,682 | 4,525 | 4,313 | 4,676 | 4,976 | 7,040 |
 | Controller Visual | **264** | 604 | 932 | 812 | 1,194 | 1,086 | 1,399 | 2,272 | 1,905 |
 | Sprite Metasprite | **482** | 797 | 1,166 | 1,413 | 1,201 | 1,261 | 1,652 | 2,492 | 2,883 |
 | Gameplay State Update* | **508** | 1,141 | 1,253 | 1,225 | 1,229 | 1,890 | 2,039 | 2,667 | 3,683 |
 | Tile Animation | **761** | 1,255 | 1,376 | 1,627 | 1,516 | 2,332 | 1,834 | 2,729 | 1,763 |
-| **Six-sample total*** | **5,265** | **7,244** | **9,165** | **10,760** | **10,771** | **11,698** | **12,997** | **17,116** | **18,055** |
+| **Six-sample total*** | **5,265** | **7,234** | **9,165** | **10,760** | **10,771** | **11,698** | **12,997** | **17,116** | **18,055** |
 
 `*` Pure ASM is a lower-level diagnostic baseline; its State Update omits Amy Studio's status display.
 
@@ -162,12 +162,12 @@ behavior allowed to Amy Studio, and pass their GearColeco runtime oracles.
 | Sample | Pure ASM | Amy Studio | ASM difference |
 |---|---:|---:|---:|
 | Hello World | 184 | 234 | -50 |
-| Warrior bitmap | 3,066 | 3,213 | -147 |
+| Warrior bitmap | 3,066 | 3,203 | -137 |
 | Controller Visual | 264 | 604 | -340 |
 | Sprite Metasprite | 482 | 797 | -315 |
 | Gameplay State Update | 508 | 1,141 | -633 |
 | Tile Animation | 761 | 1,255 | -494 |
-| **Six-sample total** | **5,265** | **7,244** | **-1,979** |
+| **Six-sample total** | **5,265** | **7,234** | **-1,969** |
 
 The controller fixture originally occupied 297 bytes using BIOS `CONT_SCAN`, cartridge-side
 decoding, and a 16-byte keypad table. The optimized 264-byte version calls BIOS `DECODER` once for
@@ -197,24 +197,24 @@ full-screen Warrior framebuffer is pixel-exact even though the internal tables u
 
 The corpus contains 42 unique pictures. Each is 12,288 RAW bytes (6,144 Pattern + 6,144 Color). All 756 measured codec streams round-trip exactly. Ratios exclude decoder code because one routine can serve many assets.
 
-The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR is payload-only and excluded from those places because no accepted stock-ColecoVision runtime decoder exists.
+The place columns rank each picture by first-use ROM cost: payload plus one linked decoder. RAM requirements remain separate. UPKR uses Claude's independently validated 221-byte small VRAM decoder for this ranking; Amy compiler integration remains pending.
 
 | Rank | Codec | Total bytes | Average ratio | Median ratio | 1st | 2nd | 3rd | 4th | 5th |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | UPKR | 147,150 | 28.51% | 20.98% | 0 | 0 | 0 | 0 | 0 |
-| 2 | Exomizer 2 | 161,374 | 31.27% | 23.43% | 10 | 11 | 12 | 2 | 3 |
-| 3 | AMYZ | 161,778 | 31.35% | 22.97% | 26 | 16 | 0 | 0 | 0 |
-| 4 | ZX0 | 166,556 | 32.27% | 23.63% | 6 | 15 | 18 | 1 | 2 |
-| 5 | DAN2 | 166,923 | 32.34% | 23.99% | 0 | 0 | 0 | 7 | 13 |
-| 6 | DAN3 | 167,186 | 32.39% | 23.99% | 0 | 0 | 0 | 16 | 5 |
-| 7 | DAN1 | 167,240 | 32.41% | 24.04% | 0 | 0 | 3 | 4 | 9 |
-| 8 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 | 0 | 0 | 1 | 1 |
+| 1 | UPKR | 147,150 | 28.51% | 20.98% | 42 | 0 | 0 | 0 | 0 |
+| 2 | Exomizer 2 | 161,374 | 31.27% | 23.43% | 0 | 10 | 11 | 12 | 2 |
+| 3 | AMYZ | 161,778 | 31.35% | 22.97% | 0 | 26 | 16 | 0 | 0 |
+| 4 | ZX0 | 166,556 | 32.27% | 23.63% | 0 | 6 | 15 | 18 | 1 |
+| 5 | DAN2 | 166,923 | 32.34% | 23.99% | 0 | 0 | 0 | 0 | 7 |
+| 6 | DAN3 | 167,186 | 32.39% | 23.99% | 0 | 0 | 0 | 0 | 16 |
+| 7 | DAN1 | 167,240 | 32.41% | 24.04% | 0 | 0 | 0 | 3 | 4 |
+| 8 | MegaLZ | 171,016 | 33.14% | 24.66% | 0 | 0 | 0 | 0 | 1 |
 | 9 | aPLib Compact | 171,484 | 33.23% | 24.52% | 0 | 0 | 0 | 0 | 0 |
 | 10 | Pletter | 171,751 | 33.28% | 24.80% | 0 | 0 | 0 | 0 | 0 |
-| 11 | ZX7 | 171,788 | 33.29% | 24.77% | 0 | 0 | 0 | 2 | 9 |
+| 11 | ZX7 | 171,788 | 33.29% | 24.77% | 0 | 0 | 0 | 0 | 2 |
 | 12 | BitBuster | 172,941 | 33.51% | 24.94% | 0 | 0 | 0 | 0 | 0 |
-| 13 | ZX1 | 176,562 | 34.21% | 24.98% | 0 | 0 | 4 | 5 | 0 |
-| 14 | ZX2 | 177,582 | 34.41% | 25.40% | 0 | 0 | 5 | 4 | 0 |
+| 13 | ZX1 | 176,562 | 34.21% | 24.98% | 0 | 0 | 0 | 4 | 5 |
+| 14 | ZX2 | 177,582 | 34.41% | 25.40% | 0 | 0 | 0 | 5 | 4 |
 | 15 | LZF | 193,412 | 37.48% | 28.36% | 0 | 0 | 0 | 0 | 0 |
 | 16 | Nibble | 214,555 | 41.57% | 35.48% | 0 | 0 | 0 | 0 | 0 |
 | 17 | MDK-RLE | 253,859 | 49.19% | 42.52% | 0 | 0 | 0 | 0 | 0 |
@@ -232,7 +232,7 @@ The PDF shows every converted image. Complete per-picture ratios, decoder sizes,
 ### Observations supported by this suite
 
 - Amy produces the smallest measured ROM for Hello, Controller, and this exact bitmap fixture
-  (3,213 versus CVBasic's 4,313 bytes for the bitmap).
+  (3,203 versus CVBasic's 4,313 bytes for the bitmap).
 - Portable C/BASIC runtimes add visible fixed cost, but complete games may scale differently.
 - Cartridge length includes packaging; a padded 32 KB file is not necessarily a 32 KB program.
 - Smaller results count only after runtime validation; this finite suite cannot establish a
@@ -266,7 +266,7 @@ documented separately below from their measured fixtures and inspected APIs.
 | Spinner / Roller Controller | Yes | Yes | Not confirmed | Pending | Not confirmed | Yes, both ports |
 | Held, pressed, and released input | Yes | Held; edges are manual | Manual | Manual edges over `JOY` | Yes, computed from NMI snapshots | Manual edges over NMI snapshots |
 | Coleco PSG sound and voice | BIOS tables, Tiny Sound, DSOUND, VoxPCM, and SP0256 Lundy/EVE modules | Sound/music commands | Sound libraries | Sound commands, target proof pending | PSGlib_CV | BIOS-style sound tables and sequenced music |
-| Compression | Eighteen measured codecs, including AMYZ and payload-only UPKR; sixteen have accepted direct-to-VRAM runtimes | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
+| Compression | Eighteen measured codecs, including AMYZ and UPKR; seventeen are integrated direct-to-VRAM runtimes and UPKR has an externally validated candidate runtime | Pletter | RAM APIs; ZX0*, ZX1*, ZX2*, and ZX7* benchmark VRAM ports | Resource conversion; RAM-oriented compression | ZX7 and aPLib | RLE, Pletter, DAN1/2/3 |
 | ROM banking | Verified 64/128 KB MegaCart images and `bank select`; arbitrary banked Amy linking remains open | Yes | Yes | Pending | SMS workflow has banking; CV support pending | MegaCart tools and examples |
 | Source-level Coleco debugger | Integrated | External emulator | External debugger/emulator | External or IDE-dependent | External debugger/emulator | External debugger/emulator |
 | Rewind, breakpoints, VRAM/RAM inspection | Integrated | External | External | External | External | External |
@@ -347,9 +347,11 @@ automatic modern-image conversion is substantial, while SGlib_CV offers a compac
 Compression must be scored as `compressed payload + linked decompressor`, with destination and
 cycles. Counting a host compressor without a ColecoVision decoder is invalid.
 
-All sixteen integrated Amy codecs were also compiled as separate Balanced ROMs and run for 180
-NTSC frames in GearColeco. Every ROM reproduced Warrior's 6,144 Pattern bytes and 6,144 Color
-bytes exactly in VRAM. Run `node tools/test-integrated-codec-vram-roms.mjs` to repeat this check.
+The original sixteen integrated Amy codecs were compiled as separate Balanced ROMs and run for 180
+NTSC frames in GearColeco. AMYZ adds a seventeenth accepted Amy VRAM runtime: its standalone,
+tiny-table, shared-table and fast-table forms pass `test-amyz-vram-runtime.mjs`, and the published
+Warrior ROM verifies all 6,144 Pattern bytes, 6,144 Color bytes and 49,152 pixels exactly. Run
+`test-integrated-codec-vram-roms.mjs` and `test-five-tool-bitmap-roms.mjs` to repeat these checks.
 
 ### Direct-to-VRAM speed ranking
 
@@ -384,7 +386,7 @@ input, which is why Amy Studio should present per-asset estimates rather than on
 
 | Solution | Confirmed formats | Direct VRAM status | Integrated selection |
 |---|---|---|---|
-| Amy Studio | AMYZ, UPKR (payload only), Exomizer 2, ZX0, ZX1, ZX2, aPLib, MegaLZ, MSC1, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | ColecoVision paths, accepted for 16 codecs; AMYZ runtime remains experimental and UPKR has no accepted stock-RAM runtime | Browser comparison/import and asset metadata |
+| Amy Studio | AMYZ, UPKR (candidate), Exomizer 2, ZX0, ZX1, ZX2, aPLib, MegaLZ, MSC1, ZX7, Pletter, DAN1/2/3, LZF, BitBuster, MDK-RLE, Nibble | Seventeen accepted direct-to-VRAM runtimes including AMYZ; UPKR's external runtime evidence is accepted but compiler integration remains pending | Browser comparison/import and asset metadata; AMYZ commands are available |
 | CVBasic | Pletter | `DEFINE CHAR/COLOR/SPRITE/VRAM PLETTER` | Explicit source keyword |
 | z88dk | ZX0/1/2/7 and aPLib families, multiple speed/size decoders | Stock decoders target RAM; ZX0* and ZX7* Coleco VRAM adaptations verified here | Manual headers/linking and host tools |
 | ugBASIC | MSC1 and RLE types in compiler source | MSC1 image fallback verified; RLE is not implemented for Coleco | Resource compiler can choose compression when it wins |
@@ -403,6 +405,8 @@ their output independently.
 
 | Candidate | Honest Amy name | Current evidence | Integration condition |
 |---|---|---|---|
+| AMYZ | `AMYZ` / codecs `amyz`, `amyzt`, `amyzshared`, `amyzfast` | Exact JavaScript round trips; standalone and shared-table VRAM runtime proof; published Warrior ROM is pixel-exact | Integrated; shared 15-byte table is preferred when several assets use one fitted model |
+| UPKR | `UPKR` / codec `upkr` | Byte-identical JavaScript/Rust level-9 streams on 200 files; Claude's 221-byte VRAM decoder passes the 200-file timing and RAM harness | Candidate runtime; reserve an aligned 322-byte workspace and guard NMI/display before compiler integration |
 | ZX0 | `ZX0` / codec `zx0` | Existing v2 browser encoder and Coleco VRAM decoder | Keep as the default |
 | ZX1 | `ZX1` / codec `zx1` | Byte-identical browser encoder; exact GearColeco VRAM and cycle proof | Integrated and measured |
 | ZX2 | `ZX2` / codec `zx2` | Exact corpus round-trip, five-profile VRAM proof, and cycle proof | Integrated and measured |
@@ -422,7 +426,15 @@ Warrior and Cake, official ZX1, ZX2, and aPLib do not beat Amy's ZX0 first-use R
 nevertheless cuts the devkitSMS Warrior ROM from 13,680 raw bytes to 4,713 occupied bytes. ZX1 is now
 an integrated Amy codec with a 127-byte direct-to-VRAM decoder and exact runtime and cycle proofs.
 ugBASIC's MSC1 is a valid comparison candidate, not ten separate codecs. Amy Studio now exposes
-the same stream family independently; it does not improve the Warrior resource over ZX0.
+the same stream family independently. AMYZ supersedes ZX0 for Warrior by 10 occupied bytes.
+
+AMYZ now does improve that resource: the shared-table Warrior ROM occupies **3,203 bytes**, versus
+3,213 for the prior ZX0 build. The total includes the two streams, one 15-byte model and the linked
+182-byte decoder; exact VRAM and pixel checks pass. Claude's independent UPKR package adds a
+221-byte small VRAM decoder measured over 200 files (320-byte probability workspace plus offset
+and stack). Its two Warrior streams total 2,616 bytes, so it is a promising one-shot loader, but it
+is not counted as an integrated Amy codec until the aligned RAM reservation, NMI/display guard and
+compiler selection are implemented and revalidated in this corpus.
 
 ### What MSC1 actually is
 
@@ -638,7 +650,7 @@ padding, and a smaller result counts only when the shared runtime oracle passes.
 ## Amy Studio: next work
 
 The earlier gap list has largely been completed: metasprites and protected-priority flicker,
-MegaCart packaging and debugging, native and hybrid ADAM disk projects, sixteen direct-to-VRAM
+MegaCart packaging and debugging, native and hybrid ADAM disk projects, seventeen direct-to-VRAM
 codecs, sound inspection and conversion, VoxPCM/SP0256 support, and the expanded runtime regression
 suite are shipping capabilities. The remaining plan is deliberately narrower:
 
@@ -660,7 +672,7 @@ declared independent bank outputs do not depend on that extension.
 
 Completed foundations include exact nine-tool metasprite, state-update, and tile-animation runtime
 oracles; native metasprites and protected-priority flicker; complete 2D arrays and record/overlay
-fields; and sixteen direct-to-VRAM codecs measured for size, cycles, RAM, and 42-picture ranks.
+fields; and seventeen integrated direct-to-VRAM codecs measured for size, cycles, RAM, and 42-picture ranks.
 
 The shipping tools also cover indexed graphics, sound inspection and editing, VoxPCM and SP0256,
 Web MIDI, GearColeco 1.7.0 with F18A/ADAM support, native and hybrid EOS disk targets, and universal
