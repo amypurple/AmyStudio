@@ -325,3 +325,10 @@ not JavaScript, so loading one cannot execute host code.
 Changing only a breakpoint does not modify ROM bytes. Changing source or project files makes the existing source map and compiled ROM stale and requires a rebuild.
 
 Repository-wide automated ROM tests remain a CLI maintainer feature. See [Automated ColecoVision ROM Testing](rom-runtime-testing.md).
+
+For cycle-sensitive VRAM code, `tools/vdpcheck.mjs` provides the shared
+TMS9918A access-slot checker used with the GearColeco test core. Its report
+states the enforced timing model and records chained I/O instructions. Use the
+current checker for loops containing consecutive `OUT` or `IN` instructions:
+older copies could miss the second access when two candidate instructions were
+adjacent, so affected historical reports should be regenerated.

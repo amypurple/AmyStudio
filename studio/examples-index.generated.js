@@ -16789,5 +16789,25 @@ export const exampleManifest = [
     ],
     "originKind": "expanded-adaptation",
     "originLabel": "Adaptation + expanded AI"
+  },
+  {
+    "id": "poulet-contre-zombie-acte1",
+    "label": "Poulet contre Zombie - Acte I (2026)",
+    "detail": "Amy & Claude's original ColecoVision action game: charge the zombie's kick, send the clockwork chicken into baskets, and survive six increasingly hazardous garden levels.",
+    "projectName": "Poulet contre Zombie - Acte I",
+    "sourceLang": "amy",
+    "memoryProfile": "colecovision_legacy_sdcc",
+    "editorialTrack": "manual-canon",
+    "category": "Games",
+    "tags": [
+      "amy",
+      "amy-and-claude",
+      "original",
+      "action",
+      "amyz",
+      "game"
+    ],
+    "originKind": "original",
+    "originLabel": "Original"
   }
 ];
