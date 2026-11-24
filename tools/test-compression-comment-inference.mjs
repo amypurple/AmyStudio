@@ -30,6 +30,8 @@ goto Forever
 try {
   assert.doesNotMatch(build("  ; ZX0 uses zx0_decompress", "comment"), /include\s+"src\/compression\/zx0_vram\.asm"/i);
   assert.doesNotMatch(build('MsgData: db "ZX0 zx0_decompress",0', "string"), /include\s+"src\/compression\/zx0_vram\.asm"/i);
+  assert.doesNotMatch(build("  ld a,';' ; zx0_decompress", "character-semicolon"), /include\s+"src\/compression\/zx0_vram\.asm"/i);
+  assert.doesNotMatch(build("  ex af,af' ; zx0_decompress", "alternate-register"), /include\s+"src\/compression\/zx0_vram\.asm"/i);
   assert.match(build("  call zx0_decompress", "call"), /include\s+"src\/compression\/zx0_vram\.asm"/i);
   console.log("Compression comment inference: PASS");
 } finally {

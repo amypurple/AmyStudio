@@ -445,10 +445,18 @@ export const ASM = (() => {
   function parseBytes(txt) {
     if (!txt) return [];
 
-    // Remove comments first - everything after ';' is a comment
-    const commentIndex = txt.indexOf(';');
-    if (commentIndex !== -1) {
-      txt = txt.slice(0, commentIndex);
+    // A semicolon inside a quoted byte literal is data, not a comment marker.
+    let quote = '';
+    for (let i = 0; i < txt.length; i++) {
+      const ch = txt[i];
+      if (quote) {
+        if (ch === quote && txt[i - 1] !== '\\') quote = '';
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === ';') {
+        txt = txt.slice(0, i);
+        break;
+      }
     }
 
     const out = [];

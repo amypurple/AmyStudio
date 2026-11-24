@@ -4,6 +4,7 @@ import { getRamLayout, buildColecoLegacyRuntimeMap } from "../ramLayouts.js";
 import { inferAmyMemoryCapabilities, inferControllerBackendFromSource, stripAmyCommentsForCapabilityScan } from "./compilerFrontend.js?v=20260609-show-picture-nmi1";
 import { EOS_PUBLIC_VECTORS } from "./firmwareMaps.js";
 import { normalizeCompressionIncludes } from "./compressionIncludes.js";
+import { scanAsmLine } from "../vendor/amyscvassembly/parserCore.js";
 
 function isColecoOs7MemoryProfile(memoryProfile) {
   return memoryProfile === "colecovision_legacy_sdcc"
@@ -1259,26 +1260,9 @@ function splitHeaderAndCodeIncludes(paths) {
 }
 
 function stripAsmCommentsAndStrings(sourceText) {
-  return String(sourceText || "").split(/\r?\n/).map((line) => {
-    let out = "";
-    let quote = "";
-    for (let i = 0; i < line.length; i += 1) {
-      const ch = line[i];
-      if (quote) {
-        if (ch === quote && line[i - 1] !== "\\") quote = "";
-        out += " ";
-        continue;
-      }
-      if (ch === '"' || ch === "'") {
-        quote = ch;
-        out += " ";
-        continue;
-      }
-      if (ch === ";") break;
-      out += ch;
-    }
-    return out;
-  }).join("\n");
+  return String(sourceText || "").split(/\r?\n/)
+    .map((line) => scanAsmLine(line, { maskQuoted: true }))
+    .join("\n");
 }
 
 function inferRequiredCompressionIncludes(sourceText, assetDeclarations = []) {

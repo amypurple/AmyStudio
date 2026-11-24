@@ -68,6 +68,7 @@ const quickTests = [
   "test-user-asm-relax.mjs",
   "test-user-asm-jr-final-legalization.mjs",
   "test-asm-comment-capability-inference.mjs",
+  "test-asm-semicolon-literal.mjs",
   "test-inline-asm-cli-diagnostic.mjs",
   "test-inline-asm-duplicate-label-diagnostic.mjs",
   "test-display-off-quiet-codegen.mjs",

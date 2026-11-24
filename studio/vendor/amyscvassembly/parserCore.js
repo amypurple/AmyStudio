@@ -26,6 +26,39 @@ export class Operand {
     }
 }
 
+function startsSingleQuotedLiteral(line, index) {
+    const previous = index > 0 ? line[index - 1] : '';
+    if (/[A-Za-z0-9_]/.test(previous)) return false;
+    for (let i = index + 1; i < line.length; i++) {
+        if (line[i] === "'" && line[i - 1] !== '\\') return true;
+    }
+    return false;
+}
+
+// Z80 uses both quoted literals and apostrophes in alternate registers (AF').
+// Only an apostrophe in operand position with a matching closer starts a literal.
+export function scanAsmLine(line, { maskQuoted = false } = {}) {
+    const text = String(line || '');
+    let out = '';
+    let quote = '';
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (quote) {
+            if (ch === quote && text[i - 1] !== '\\') quote = '';
+            out += maskQuoted ? ' ' : ch;
+            continue;
+        }
+        if (ch === '"' || (ch === "'" && startsSingleQuotedLiteral(text, i))) {
+            quote = ch;
+            out += maskQuoted ? ' ' : ch;
+            continue;
+        }
+        if (ch === ';') break;
+        out += ch;
+    }
+    return out;
+}
+
 // Enhanced Number Parser with multiple format support
 export class NumberParser {
     constructor() {
@@ -322,7 +355,7 @@ export class Lexer {
         const lines = this.code.split('\n');
         for (let lineNum = 0; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
-            let trimmedLine = line.split(';')[0].trim();
+            let trimmedLine = scanAsmLine(line).trim();
             if (!trimmedLine) continue;
 
             // Match tokens, handling shadow register notation (A', B', BC', DE', HL', AF')

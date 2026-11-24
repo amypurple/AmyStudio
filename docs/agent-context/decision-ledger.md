@@ -2140,3 +2140,13 @@ Add an entry only when it prevents repeated investigation or changes the recomme
   selected move. Keep loader/menu automation separate from the engine adapter
   so later snapshots can start directly at the engine-ready state.
 
+## 2026-11-23 - ASM comment scanning is quote-aware
+
+- A semicolon begins a comment only outside quoted strings and character literals, so
+  `ld a,';'` assembles as `3E 3B` instead of being truncated to `ld a,`.
+- A single quote starts a literal only in operand position with a matching closer;
+  alternate-register notation such as `AF'` and apostrophes in prose are not strings.
+- The assembler and conditional codec scanner share this lexical rule. Regression
+  evidence is `test-asm-semicolon-literal.mjs`,
+  `test-compression-comment-inference.mjs`, and `amy-qa quick`.
+
