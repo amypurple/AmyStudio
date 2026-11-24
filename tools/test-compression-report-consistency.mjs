@@ -23,7 +23,7 @@ const codecs = getCompressionCatalog().filter(({ codecId }) => codecId !== "raw"
 assert.equal(codecs.length, 18, "Update the documented active-codec count");
 assert.equal(ratios.aggregate.length, codecs.length, "Compression corpus/catalog mismatch");
 assert.equal(ratios.rows.length * codecs.length, 756, "Documented corpus result count is stale");
-const runtimeCodecs = codecs.filter(({ codecId }) => codecId !== "upkr" && codecId !== "amyz");
+const runtimeCodecs = codecs.filter(({ codecId }) => codecId !== "upkr");
 assert.equal(cycles.ranking.length, runtimeCodecs.length, "Cycle ranking/catalog mismatch");
 assert.equal(cycles.rows.length, runtimeCodecs.length * 3, "Representative cycle suite must cover three pictures per runtime codec");
 assert.ok(cycles.rows.every((row) => row.exactVram), "Cycle evidence contains a VRAM mismatch");
