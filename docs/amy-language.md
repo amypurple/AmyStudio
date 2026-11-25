@@ -4021,6 +4021,7 @@ wait count, and optional xor mask are compile-time constants. `step` must divide
 | `joypad(N).up/.right/.down/.left` | Canonical inline direction tests |
 | `joypad(N).button1/.button2/.button3/.button4` | Canonical inline button tests |
 | `joypad(N).fire` | Either standard fire button (`button1` or `button2`), emitted as one `$C0` mask test |
+| `joypad(N).leftfire` / `joypad(N).rightfire` | Aliases for `button1` / `button2`; also support `.pressed` and `.released` |
 | `joypad(N).action` | Any of the four Super Action buttons, emitted as one `$F0` mask test; keypad keys are excluded |
 | `joypad(N).property.pressed` | One-frame edge test for a direction, button, `fire`, or `action`; repeated reads are stable and held input does not repeat |
 | `joypad(N).property.released` | One-frame release test for a direction, button, `fire`, or `action`; repeated reads are stable |

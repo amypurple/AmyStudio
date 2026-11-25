@@ -2475,6 +2475,12 @@ function isIxIyDisplacementOperandText(value) {
                 }
                 const equEntries = [...equEntriesByKey.values()];
                 const equKeys = new Set(equEntries.map(entry => entry.key));
+                for (const [name, info] of Object.entries(this.symbolInfo)) {
+                    const equ = equEntriesByKey.get(name.toLowerCase());
+                    if (equ && name !== equ.label && info.category !== 'constant') {
+                        throw new Error(`Line ${info.lineNumber}: Label '${name}' collides with EQU '${equ.label}' (assembler names are case-insensitive)`);
+                    }
+                }
                 const knownNames = new Set([
                     ...Object.keys(this.symbolTable || {}),
                     ...Object.keys(this.constantTable || {}),

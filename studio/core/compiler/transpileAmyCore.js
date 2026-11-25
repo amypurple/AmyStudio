@@ -6056,6 +6056,7 @@ export function transpileAmyCore(sourceText, deps) {
       });
       if (vramTextStmt.handled) {
         if (!vramTextStmt.ok) return { ok: false, asmBody: "", log: vramTextStmt.log };
+        if (vramTextStmt.warning) addCompilerWarning(`line ${sourceLineNumber + 1}: ${vramTextStmt.warning}`);
         body.push(...vramTextStmt.lines);
         continue;
       }

@@ -1225,7 +1225,8 @@ export function handleVramTextStatement({
 
   const fillToVram = line.match(/^fill\s+(.+?)\s+count\s+(.+?)\s+to\s+(.+)$/i);
   if (fillToVram) {
-    const targetCode = emitLoadVramAddressIntoHL(fillToVram[3].trim());
+    const target = fillToVram[3].trim();
+    const targetCode = emitLoadVramAddressIntoHL(target);
     const countCode = emitLoadCountIntoDE(fillToVram[2].trim());
     const loadValue = emitLoadInt8ValueInto("a", fillToVram[1].trim());
     if (!targetCode) return { ok: false, handled: true, log: `fill to VRAM requires a valid VRAM target: ${rawLine}` };
@@ -1233,11 +1234,35 @@ export function handleVramTextStatement({
     if (!loadValue) return { ok: false, handled: true, log: `fill to VRAM value must be a byte value: ${rawLine}` };
     const constantCount = tryEvaluateConstantExpression(fillToVram[2].trim());
     if (constantCount === 0) return { ok: true, handled: true, lines: [] };
-    const doneLabel = constantCount === null ? makeGeneratedLabel("FillVramCountZero") : null;
-    const guardedCall = doneLabel
-      ? [...targetCode, ...countCode, "    ld a,d", "    or e", `    jr z,${doneLabel}`, ...loadValue, "    call FILL_VRAM", `${doneLabel}:`]
-      : [...targetCode, ...countCode, ...loadValue, "    call FILL_VRAM"];
-    return { ok: true, handled: true, lines: wrapVramUploadLines(guardedCall) };
+    const tableBases = { pattern: 0, color: 0x2000, name: 0x1800, spr_pat: 0x3800, spr_attr: 0x1b00 };
+    const address = target.match(/^vram(?:\.(\w+)|\s+(\$[0-9a-f]+|[0-9]+))(?:\s*\+\s*(.+))?$/i);
+    const offset = address?.[3] ? tryEvaluateConstantExpression(address[3]) : 0;
+    const base = address?.[1] ? tableBases[address[1].toLowerCase()] : tryEvaluateConstantExpression(address?.[2] || "");
+    const start = address && Number.isInteger(base) && Number.isInteger(offset) ? base + offset : null;
+    if ((start !== null && (start < 0 || start > 0x3fff || (Number.isInteger(constantCount) && start + constantCount > 0x4000)))
+        || (Number.isInteger(constantCount) && (constantCount < 0 || constantCount > 0x4000))) {
+      return { ok: false, handled: true, log: `fill to VRAM exceeds the 14-bit VRAM range ($0000..$3FFF): ${rawLine}` };
+    }
+    const needsRangeCheck = start === null || !Number.isInteger(constantCount);
+    const done = needsRangeCheck ? makeGeneratedLabel("FillVramDone") : null;
+    const guardedCall = [...targetCode];
+    if (start === null && targetCode.at(-1)?.trim() === "add hl,de") guardedCall.push(`    jp c,${done}`);
+    guardedCall.push(...countCode);
+    if (!Number.isInteger(constantCount)) guardedCall.push("    ld a,d", "    or e", `    jp z,${done}`);
+    if (needsRangeCheck) {
+      // Check the inclusive final address without changing HL or DE for FILL_VRAM.
+      guardedCall.push("    ld a,h", "    and $C0", `    jp nz,${done}`,
+        "    push hl", "    push de", "    dec de", "    add hl,de", "    ld a,h", "    pop de", "    pop hl",
+        `    jp c,${done}`, "    and $C0", `    jp nz,${done}`);
+    }
+    guardedCall.push(...loadValue, "    call FILL_VRAM");
+    if (done) guardedCall.push(`${done}:`);
+    return {
+      ok: true, handled: true, lines: wrapVramUploadLines(guardedCall),
+      warning: start === null && address?.[1] && address[3]
+        ? "VRAM fill adds a runtime offset to the table base; pass a relative offset, not an absolute address. An out-of-range fill is skipped."
+        : null
+    };
   }
 
   const findTileBox = line.match(new RegExp(`^find\\s+tile\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+under\\s+box\\s+(.+?)\\s*,\\s*(.+?)\\s+size\\s+(.+?)\\s*,\\s*(.+?)\\s+into\\s+${qualifiedByteTarget}\\s*,\\s*${qualifiedByteTarget}$`, "i"));

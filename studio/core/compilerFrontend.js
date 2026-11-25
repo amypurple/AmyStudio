@@ -54,8 +54,8 @@ export function inferControllerBackendFromSource(sourceText) {
       unsupported = true;
       continue;
     }
-    if (/^(?:up|right|down|left|button1)$/.test(property)) add(port, "segment0", "joypad");
-    else if (property === "button2") add(port, "segment1", "joypad");
+    if (/^(?:up|right|down|left|button1|leftfire)$/.test(property)) add(port, "segment0", "joypad");
+    else if (property === "button2" || property === "rightfire") add(port, "segment1", "joypad");
     else if (property === "fire") addStandardFire(port);
     else unsupported = true;
   }

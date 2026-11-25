@@ -510,7 +510,11 @@ export function createValueParseHelpers({
       };
     }
     if (node.kind === "member") {
-      const property = String(node.property || "").toLowerCase();
+      const canonicalButton = value => {
+        const key = String(value || "").toLowerCase();
+        return key === "leftfire" ? "button1" : key === "rightfire" ? "button2" : key;
+      };
+      const property = canonicalButton(node.property);
       if (property === "status" && node.object?.kind === "identifier" && String(node.object.name || "").toLowerCase() === "vdp") {
         return {
           source: "vdp_status",
@@ -520,7 +524,7 @@ export function createValueParseHelpers({
         };
       }
       if ((property === "pressed" || property === "released") && node.object?.kind === "member") {
-        const edgeProperty = String(node.object.property || "").toLowerCase();
+        const edgeProperty = canonicalButton(node.object.property);
         const joypadSource = parseBuiltinInputRef(node.object.object);
         if (joypadSource?.source !== "joypad") return null;
         const bits = { up: 0, right: 1, down: 2, left: 3, button4: 4, button3: 5, button2: 6, button1: 7 };

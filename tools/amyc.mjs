@@ -683,8 +683,20 @@ async function main() {
   });
   if (!assembled.ok) {
     let err = String(assembled.log || "").split("\n").filter((l) => /error/i.test(l)).slice(0, 3).join(" | ");
+    const collision = err.match(/Label '([^']+)' collides with EQU '([^']+)'/i);
+    if (collision) {
+      const sourceLines = sourceText.split(/\r?\n/);
+      const definitions = sourceLines.flatMap((line, index) => {
+        const label = /^\s*([^\s:]+)\s*:/.exec(line)?.[1];
+        return label === collision[1] ? [index] : [];
+      });
+      if (definitions.length === 1) {
+        const index = definitions[0];
+        err = `Amy line ${index + 1} (inline ASM): ${err}. Source: ${sourceLines[index].trim()}`;
+      }
+    }
     const generatedLine = Number.parseInt(err.match(/\bLine\s+(\d+)\b/i)?.[1] || "", 10);
-    if (Number.isInteger(generatedLine) && generatedLine > 0) {
+    if (!collision && Number.isInteger(generatedLine) && generatedLine > 0) {
       const asmLines = generatedAsm.split(/\r?\n/);
       const failedInstruction = err.match(/\bLine\s+\d+:\s*(.+?)\s+-\s+[^|]+/i)?.[1]?.trim();
       const normalizeAsm = (line) => String(line || "").replace(/;.*/, "").replace(/\s+/g, "").toLowerCase();
