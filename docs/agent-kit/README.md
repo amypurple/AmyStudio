@@ -97,7 +97,9 @@ when the selected recipe cannot answer a concrete question.
 - [Multi-file projects and publication](skills/multifile-projects.md)
 
 ## External harness comparison
+- [Crate Switch: model soft-lock proof and controller-driven ROM test](../../examples/ports/crate-switch/README.md)
 - [Claude toolbox comparison and adoption plan](claude-toolbox-comparison-2026-11-08.md)
+- [November 25 toolbox comparison and integration priorities](claude-toolbox-comparison-2026-11-25.md)
 - [Deeper toolbox lessons and risk-selected QA](claude-toolbox-lessons-2026-11-08.md)
 - [Z.AI small-model toolbox audit](zai-small-model-audit-2026-11-08.md)
 - [Toolbox readiness report](readiness-report-2026-11-08.md)
