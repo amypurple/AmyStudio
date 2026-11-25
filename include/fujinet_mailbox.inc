@@ -84,7 +84,9 @@ FN_PARAM16:
     call FN_TX_BYTE
     pop hl
     ld a,l
+    push hl
     call FN_TX_BYTE
+    pop hl
     ld a,h
     jp FN_TX_BYTE
 

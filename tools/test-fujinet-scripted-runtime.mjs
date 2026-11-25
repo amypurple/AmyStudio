@@ -26,13 +26,18 @@ try {
   core.setFujiNetTestProfile("loopback");
   core.loadBios(readFileSync(resolve(root, "studio/bios/colecovision.rom")));
   core.loadRom(readFileSync(romPath));
-  for (let frame = 0; frame < 240 && core.readRam(openedAddress, 1)[0] !== 1; frame += 1) core.runFrame();
+  for (let frame = 0; frame < 240; frame += 1) {
+    core.runFrame();
+    if (core.getFujiNetTrace().filter(entry => entry.direction === "tx").length >= 2) break;
+  }
   assert.equal(core.readRam(openedAddress, 1)[0], 1, "OPEN transaction completed through the scripted mapper");
-  const trace = core.getFujiNetTrace();
-  assert.equal(trace.length, 1, "one OPEN request reached the JavaScript server");
+  const trace = core.getFujiNetTrace().filter(entry => entry.direction === "tx");
+  assert.equal(trace.length, 2, "OPEN and READ reached the JavaScript server");
   assert.equal(trace[0].device, 0x71);
   assert.equal(trace[0].command, 0x4F);
   assert.equal(trace[0].payload.length, 260, "size-prefixed OPEN parameters and padded URL were preserved");
+  assert.equal(trace[1].command, 0x52);
+  assert.deepEqual(Array.from(trace[1].payload), [0x02, 0x23, 0x01], "FN_PARAM16 preserves the high byte on the wire");
   console.log("FujiNet scripted runtime: pass");
 } finally {
   core.destroy();
