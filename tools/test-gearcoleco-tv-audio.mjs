@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { GearcolecoTestCore, GEARCOLECO_TEST_REGION } from "../studio/core/gearcolecoTestCore.js";
+import { colecoTvMixProfile, DEFAULT_COLECO_TV_MIX } from "../studio/core/colecoTvMix.js";
 
 const root = resolve(import.meta.dirname, "..");
 const work = mkdtempSync(join(tmpdir(), "amy-tv-audio-"));
@@ -49,6 +50,13 @@ try {
   const exactAgain = await capture("accurate");
   const television = await capture("tv");
   const televisionAgain = await capture("tv");
+  assert.equal(colecoTvMixProfile(0), "tv");
+  assert.equal(colecoTvMixProfile(100), "accurate");
+  const preferredProfile = colecoTvMixProfile(DEFAULT_COLECO_TV_MIX);
+  const preferred = await capture(preferredProfile);
+  assert.deepEqual(await capture(preferredProfile), preferred, "D profile must be deterministic");
+  assert.notDeepEqual(preferred, television, "D must not be the legacy TV output");
+  assert.notDeepEqual(preferred, exact, "D must not be raw PSG");
   assert.deepEqual(exactAgain, exact, "exact output changed between deterministic runs");
   assert.deepEqual(televisionAgain, television, "TV output changed between deterministic runs");
   assert.notDeepEqual(television, exact, "TV profile did not alter the output waveform");

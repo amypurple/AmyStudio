@@ -5,7 +5,8 @@ import {
   GEARCOLECO_MACHINE,
   GEARCOLECO_TEST_INPUT,
   GEARCOLECO_TEST_REGION
-} from "./gearcolecoTestCore.js?v=20261115-vdp-slots1";
+} from "./gearcolecoTestCore.js?v=20261125-tv-slider";
+import { colecoTvMixProfile, DEFAULT_COLECO_TV_MIX } from "./colecoTvMix.js?v=20261125";
 import { clearAdamFirmwareFromBrowser, loadAdamFirmwareFromBrowser, loadLocalAdamFirmware, saveAdamFirmwareToBrowser } from "./adamFirmwareStorage.js?v=20260925-adam-local-firmware2";
 import { RomTestRecorder } from "./romTestRecorder.js";
 import { RomTestAudioSink } from "./romTestAudioSink.js?v=20260817-lazy-audio-copy";
@@ -435,7 +436,11 @@ function buildDialog() {
           <label>Machine<select data-field="machine"><option value="colecovision" selected>ColecoVision</option><option value="adam-computer">Coleco ADAM</option></select></label>
           <label>Zoom<select data-field="scale"><option value="fit">Fit</option><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           <label>Region<button class="rom-recorder__region-toggle" type="button" data-field="region" value="-1" title="Cycle video region">AUTO</button></label>
-          <label>Audio output<select data-field="audioOutput" title="Keep exact PSG output or apply a deterministic Coleco television speaker response"><option value="accurate" selected>PSG accurate</option><option value="tv">Coleco TV</option></select></label>
+          <label>Audio output
+            <input type="range" min="0" max="100" step="1" value="${DEFAULT_COLECO_TV_MIX}" list="amy-audio-ticks" data-field="audioOutput" aria-label="Audio output mix" title="0: Original TV. 50: D, the default. 100: Raw PSG. Changing the mix restarts recording.">
+            <span>Original TV · <strong>D (default)</strong> · Raw PSG</span>
+            <datalist id="amy-audio-ticks"><option value="0"></option><option value="${DEFAULT_COLECO_TV_MIX}" label="D"></option><option value="100"></option></datalist>
+          </label>
           <div class="rom-recorder__settings-actions"><button class="rom-recorder__compact-action" type="button" data-action="crtView" title="Simulate overscan on a Coleco ADAM CRT monitor" aria-label="Coleco ADAM CRT monitor view" aria-pressed="false">CRT</button><button class="rom-recorder__compact-action" type="button" data-action="captureScreen" title="Download the displayed screen as PNG" aria-label="Capture displayed screen">PNG</button><button class="rom-recorder__compact-action" type="button" data-action="controllerSetup" title="Controller setup" aria-label="Controller setup">&#x2699;</button><button class="rom-recorder__compact-action" type="button" data-action="muteAudio" title="Mute audio" aria-label="Mute audio" aria-pressed="false">&#x1F50A;</button><button class="rom-recorder__compact-action" type="button" data-action="mouseSpinner" title="Enable mouse spinner" aria-label="Enable mouse spinner" aria-pressed="false">&#x1F5B1;</button></div>
           <div class="rom-recorder__settings-actions" data-field="adamResetActions" hidden><button type="button" data-action="resetAdam" title="Operate the ADAM computer-reset switch and boot EOS">RESET ADAM</button><button type="button" data-action="resetColecoVision" title="Operate the ColecoVision-reset switch and boot the inserted cartridge through OS7">RESET CV</button></div>
         </div>
@@ -567,6 +572,7 @@ export function createRomTestRecorderUi({
   let routeReplayActive = false;
 
   const field = (name) => dialog.querySelector(`[data-field="${name}"]`);
+  const selectedAudioProfile = () => colecoTvMixProfile(field("audioOutput").value);
   const action = (name) => dialog.querySelector(`[data-action="${name}"]`);
 
   function setRecorderStatus(message) {
@@ -1005,7 +1011,7 @@ export function createRomTestRecorderUi({
         region: field("region").value,
         videoChip: field("videoChip").value,
         vdpTiming: field("vdpTiming").value,
-        audioOutput: field("audioOutput").value,
+        audioOutput: selectedAudioProfile(),
         fujinet: field("fujinet").value,
         voiceModule: field("voiceModule").value,
         adamSound: field("adamSound").value,
@@ -1801,7 +1807,7 @@ export function createRomTestRecorderUi({
     loadedAdamMedia = adam ? adamMediaBytes : null;
     core.setVideoChip(field("videoChip").value);
     core.setAccurateVdpTiming(field("vdpTiming").value === "realistic");
-    core.setAudioOutputProfile(field("audioOutput").value);
+    core.setAudioOutputProfile(selectedAudioProfile());
     core.setFujiNetEnabled(field("fujinet").value !== "off");
     if (field("fujinet").value !== "off") core.setFujiNetTestProfile(field("fujinet").value, fujiNetScript);
     const serialSetting = field("adamSerial").value;
@@ -2153,7 +2159,7 @@ export function createRomTestRecorderUi({
       } catch (error) { setRecorderStatus(error.message || String(error)); }
     });
     field("audioOutput").addEventListener("change", async () => {
-      const profile = field("audioOutput").selectedOptions[0]?.textContent || field("audioOutput").value;
+      const profile = selectedAudioProfile();
       setRecorderStatus(`Restarting with audio output: ${profile}...`);
       try {
         await startCore();
@@ -2537,7 +2543,7 @@ export function createRomTestRecorderUi({
         const fujiNetProfile = testCase.environment?.fujinet || field("fujinet").value;
         core.setFujiNetEnabled(fujiNetProfile !== "off");
         if (fujiNetProfile !== "off") core.setFujiNetTestProfile(fujiNetProfile === "test" ? "presence" : fujiNetProfile, fujiNetScript);
-        core.setAudioOutputProfile(testCase.environment?.audioOutput || field("audioOutput").value);
+        core.setAudioOutputProfile(testCase.environment?.audioOutput || selectedAudioProfile());
         core.loadBios(bios);
         const replayRegion = testCase.environment?.region === "pal" ? GEARCOLECO_TEST_REGION.PAL : GEARCOLECO_TEST_REGION.NTSC;
         field("region").value = String(replayRegion);

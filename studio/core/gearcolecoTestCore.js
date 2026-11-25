@@ -1,5 +1,6 @@
 import { validateTms9918Snapshot } from "./tms9918StateValidator.js";
 import { FujiNetTestServer } from "./fujinetTestServer.js";
+import { createColecoTvMix } from "./colecoTvMix.js?v=20261125";
 
 const DEFAULT_MODULE_URL = new URL(
   "../vendor/gearcoleco-test-core/gearcoleco-test-core.js?v=20261120-fujinet-scripted",
@@ -566,14 +567,20 @@ export class GearcolecoTestCore {
 
   setAudioOutputProfile(profile) {
     this.assertAlive();
+    const mix = /^mix:(\d+)$/.exec(String(profile));
     const profiles = { accurate: 0, tv: 1, colecotv: 1 };
-    const value = typeof profile === "number" ? profile : profiles[String(profile).toLowerCase()];
+    const position = mix ? Number(mix[1]) : null;
+    const value = mix && position > 0 && position < 100 ? 0
+      : typeof profile === "number" ? profile : profiles[String(profile).toLowerCase()];
     if (!Number.isInteger(value) || value < 0 || value > 1) {
       throw new RangeError(`Unknown audio-output profile '${profile}'.`);
     }
     if (this.module._gcw_set_audio_output_profile(value) !== 1) {
       throw new Error("GearColeco could not configure the audio-output profile.");
     }
+    this.audioMixPosition = position;
+    this.audioMixFilter = null;
+    this.audioMixCache = null;
   }
 
   getAudioOutputProfile() {
@@ -602,6 +609,16 @@ export class GearcolecoTestCore {
       pointer >>> 1,
       (pointer >>> 1) + sampleCount
     );
+    if (this.audioMixPosition != null && samples.length) {
+      const clock = this.getMasterClockCycles();
+      if (this.audioMixCache?.clock === clock) {
+        samples.set(this.audioMixCache.samples);
+      } else {
+        this.audioMixFilter ??= createColecoTvMix(this.audioMixPosition, sampleRate);
+        this.audioMixFilter(samples);
+        this.audioMixCache = { clock, samples: samples.slice() };
+      }
+    }
     return {
       sampleRate,
       channels: 2,
